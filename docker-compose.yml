@@ -1,27 +1,7 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: argo-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: argo
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-      POSTGRES_DB: argo
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U argo -d argo"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    # Uncomment to reach the database from your machine (e.g. when running
-    # the bot outside Docker). Bound to localhost only.
-    # ports:
-    #   - "127.0.0.1:5432:5432"
-
   argo:
     build: .
-    container_name: argo
+    container_name: ArgoRobot
     restart: unless-stopped
     init: true
     stop_grace_period: 15s
