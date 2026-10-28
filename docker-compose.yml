@@ -1,23 +1,18 @@
 services:
   argo:
     build: .
-    container_name: ArgoRobot
+    container_name: argo
     restart: unless-stopped
     init: true
     stop_grace_period: 15s
-    depends_on:
-      postgres:
-        condition: service_healthy
     env_file:
       - .env
-    environment:
-      # Overrides DATABASE_URL from .env: inside Docker the host is "postgres".
-      DATABASE_URL: postgresql://argo:${POSTGRES_PASSWORD}@postgres:5432/argo
+    extra_hosts:
+      # Lets the container reach a PostgreSQL running on the VPS itself:
+      # use host.docker.internal as the host in DATABASE_URL.
+      - "host.docker.internal:host-gateway"
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
-
-volumes:
-  pgdata:
