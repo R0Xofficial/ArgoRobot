@@ -5,8 +5,16 @@ services:
     restart: unless-stopped
     init: true
     stop_grace_period: 15s
-    env_file:
-      - .env
+    # Values come from the stack's environment variables (Portainer) or from a
+    # .env file next to this file (plain `docker compose`). Compose fails at
+    # deploy time with a clear message if a required one is missing.
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN:?BOT_TOKEN is not set}
+      OWNER_ID: ${OWNER_ID:?OWNER_ID is not set}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is not set}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_CHAT_ID: ${LOG_CHAT_ID:-}
+      LOG_THREAD_ID: ${LOG_THREAD_ID:-}
     networks:
       - default             # outbound access to the Telegram API
       - postgres-internal   # access to the PostgreSQL container
