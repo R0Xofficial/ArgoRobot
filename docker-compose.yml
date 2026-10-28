@@ -1,0 +1,22 @@
+services:
+  argo:
+    build: .
+    container_name: argo
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 15s
+    env_file:
+      - .env
+    environment:
+      # Always use the container path, whatever DATABASE_PATH says in .env.
+      DATABASE_PATH: /app/data/argo.db
+    volumes:
+      - argo-data:/app/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  argo-data:

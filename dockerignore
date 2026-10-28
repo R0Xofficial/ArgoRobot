@@ -1,0 +1,22 @@
+# Secrets and local data must never be baked into the image
+.env
+data/
+*.db
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Repo / editor files
+.git
+.gitignore
+.idea/
+.vscode/
+
+# Docker files themselves
+Dockerfile
+docker-compose.yml
+.dockerignore
