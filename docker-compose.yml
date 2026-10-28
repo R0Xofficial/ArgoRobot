@@ -1,18 +1,22 @@
 services:
   argo:
     build: .
-    container_name: ArgoRobot
+    container_name: argo
     restart: unless-stopped
     init: true
     stop_grace_period: 15s
     env_file:
       - .env
-    extra_hosts:
-      # Lets the container reach a PostgreSQL running on the VPS itself:
-      # use host.docker.internal as the host in DATABASE_URL.
-      - "host.docker.internal:host-gateway"
+    networks:
+      - default             # outbound access to the Telegram API
+      - postgres-internal   # access to the PostgreSQL container
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
+networks:
+  # Created by the PostgreSQL compose project; the bot only joins it.
+  postgres-internal:
+    external: true
