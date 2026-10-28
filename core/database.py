@@ -1,81 +1,97 @@
 """
-Async SQLite access (aiosqlite).
+Async PostgreSQL access (asyncpg connection pool).
 
-A single shared connection is used. aiosqlite runs queries in its own worker
-thread, so awaiting them never blocks the event loop.
+Queries use PostgreSQL placeholders ($1, $2, ...). The helpers below keep the
+interface small so modules never deal with the pool directly:
+
+    await database.execute("DELETE FROM roles WHERE user_id = $1", user_id)
+    row  = await database.fetch_one("SELECT * FROM roles WHERE user_id = $1", user_id)
+    rows = await database.fetch_all("SELECT user_id, role FROM roles")
+
+Note: Telegram user and chat ids do not fit in 32 bits, so every id column
+must be BIGINT.
 """
 
+import asyncio
 import logging
-from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
-import aiosqlite
+import asyncpg
 
 from config import settings
 
 log = logging.getLogger(__name__)
 
-_conn: aiosqlite.Connection | None = None
+_pool: asyncpg.Pool | None = None
+
+CONNECT_ATTEMPTS = 6
+CONNECT_DELAY = 3  # seconds between attempts
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS roles (
-    user_id  INTEGER PRIMARY KEY,
-    role     INTEGER NOT NULL,
-    added_by INTEGER,
-    added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    user_id  BIGINT PRIMARY KEY,
+    role     SMALLINT NOT NULL,
+    added_by BIGINT,
+    added_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS modules (
     name    TEXT PRIMARY KEY,
-    enabled INTEGER NOT NULL
+    enabled BOOLEAN NOT NULL
 );
 """
 
 
 async def init() -> None:
-    """Open the database and create tables if they do not exist."""
-    global _conn
+    """Connect (retrying while the server starts up) and create tables."""
+    global _pool
 
-    path = Path(settings.DATABASE_PATH)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    for attempt in range(1, CONNECT_ATTEMPTS + 1):
+        try:
+            _pool = await asyncpg.create_pool(
+                dsn=settings.DATABASE_URL,
+                min_size=1,
+                max_size=10,
+            )
+            break
+        except (OSError, asyncpg.CannotConnectNowError) as exc:
+            if attempt == CONNECT_ATTEMPTS:
+                log.critical("Could not connect to the database: %s", exc)
+                raise
+            log.warning(
+                "Database not reachable (attempt %d/%d): %s",
+                attempt,
+                CONNECT_ATTEMPTS,
+                exc,
+            )
+            await asyncio.sleep(CONNECT_DELAY)
 
-    _conn = await aiosqlite.connect(path)
-    _conn.row_factory = aiosqlite.Row
-    await _conn.execute("PRAGMA journal_mode=WAL")
-    await _conn.execute("PRAGMA foreign_keys=ON")
-    await _conn.executescript(SCHEMA)
-    await _conn.commit()
-
-    log.info("Database ready: %s", path)
+    await _db().execute(SCHEMA)
+    log.info("Database ready")
 
 
 async def close() -> None:
-    global _conn
-    if _conn is not None:
-        await _conn.close()
-        _conn = None
+    global _pool
+    if _pool is not None:
+        await _pool.close()
+        _pool = None
 
 
-def _db() -> aiosqlite.Connection:
-    if _conn is None:
+def _db() -> asyncpg.Pool:
+    if _pool is None:
         raise RuntimeError("Database is not initialized. Call database.init() first.")
-    return _conn
+    return _pool
 
 
-async def execute(sql: str, params: Sequence[Any] = ()) -> None:
-    """Run a write statement and commit."""
-    db = _db()
-    await db.execute(sql, params)
-    await db.commit()
+async def execute(sql: str, *args: Any) -> None:
+    await _db().execute(sql, *args)
 
 
-async def fetch_one(sql: str, params: Sequence[Any] = ()) -> dict[str, Any] | None:
-    async with _db().execute(sql, params) as cursor:
-        row = await cursor.fetchone()
+async def fetch_one(sql: str, *args: Any) -> dict[str, Any] | None:
+    row = await _db().fetchrow(sql, *args)
     return dict(row) if row else None
 
 
-async def fetch_all(sql: str, params: Sequence[Any] = ()) -> list[dict[str, Any]]:
-    async with _db().execute(sql, params) as cursor:
-        rows = await cursor.fetchall()
+async def fetch_all(sql: str, *args: Any) -> list[dict[str, Any]]:
+    rows = await _db().fetch(sql, *args)
     return [dict(row) for row in rows]

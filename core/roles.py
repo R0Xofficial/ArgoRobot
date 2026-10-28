@@ -53,9 +53,11 @@ async def set_role(user_id: int, role: Role, added_by: int | None = None) -> Non
         raise ValueError("The owner's role cannot be changed.")
 
     await database.execute(
-        "INSERT INTO roles (user_id, role, added_by) VALUES (?, ?, ?) "
-        "ON CONFLICT(user_id) DO UPDATE SET role = excluded.role, added_by = excluded.added_by",
-        (user_id, int(role), added_by),
+        "INSERT INTO roles (user_id, role, added_by) VALUES ($1, $2, $3) "
+        "ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role, added_by = EXCLUDED.added_by",
+        user_id,
+        int(role),
+        added_by,
     )
     await _load()
 
@@ -64,5 +66,5 @@ async def remove_role(user_id: int) -> None:
     if user_id == settings.OWNER_ID:
         raise ValueError("The owner cannot be demoted.")
 
-    await database.execute("DELETE FROM roles WHERE user_id = ?", (user_id,))
+    await database.execute("DELETE FROM roles WHERE user_id = $1", user_id)
     await _load()

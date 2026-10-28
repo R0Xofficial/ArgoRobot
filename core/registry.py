@@ -74,9 +74,10 @@ async def set_enabled(name: str, enabled: bool) -> bool:
 
     info.enabled = enabled
     await database.execute(
-        "INSERT INTO modules (name, enabled) VALUES (?, ?) "
-        "ON CONFLICT(name) DO UPDATE SET enabled = excluded.enabled",
-        (info.name, int(enabled)),
+        "INSERT INTO modules (name, enabled) VALUES ($1, $2) "
+        "ON CONFLICT (name) DO UPDATE SET enabled = EXCLUDED.enabled",
+        info.name,
+        enabled,
     )
     log.info("Module '%s' %s", info.name, "enabled" if enabled else "disabled")
     return True

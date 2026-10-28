@@ -11,10 +11,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-# Run as an unprivileged user. /app/data is created here and owned by that
-# user, so a named volume mounted on it is writable.
+# Run as an unprivileged user.
 RUN useradd --create-home --uid 1000 argo \
-    && mkdir -p /app/data \
     && chown -R argo:argo /app
 
 COPY --chown=argo:argo . .

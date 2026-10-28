@@ -32,14 +32,12 @@ class Settings(BaseSettings):
     # --- Required ---------------------------------------------------------
     BOT_TOKEN: str
     OWNER_ID: int
+    DATABASE_URL: str  # postgresql://user:password@host:5432/dbname
 
     # --- Logging ----------------------------------------------------------
     LOG_LEVEL: str = "INFO"
     LOG_CHAT_ID: int | None = None      # chat for service messages (falls back to OWNER_ID)
     LOG_THREAD_ID: int | None = None    # topic id, if LOG_CHAT_ID is a forum group
-
-    # --- Storage ----------------------------------------------------------
-    DATABASE_PATH: Path = BASE_DIR / "data" / "argo.db"
 
     # --- Optional external services ---------------------------------------
     # Add API keys here as modules need them, e.g.:
@@ -49,6 +47,14 @@ class Settings(BaseSettings):
     @classmethod
     def _normalize_log_level(cls, value: str) -> str:
         return value.strip().upper()
+
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def _check_database_url(cls, value: str) -> str:
+        value = value.strip()
+        if not value.startswith(("postgresql://", "postgres://")):
+            raise ValueError("must start with postgresql://")
+        return value
 
     @field_validator("BOT_TOKEN")
     @classmethod
