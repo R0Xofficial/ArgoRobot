@@ -1,18 +1,17 @@
 # Secrets
 .env
- 
+
 # Local data
 data/
 *.db
 *.sqlite3
- 
+
 # Python
 __pycache__/
 *.py[cod]
 .venv/
 venv/
- 
+
 # Editors
 .idea/
 .vscode/
- 
