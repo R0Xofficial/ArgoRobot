@@ -21,6 +21,12 @@ part of a name ("Jan" of "Jan Kowalski"), the rest of the name is skipped too.
 
 @usernames and ids are looked up in the phone book (core/users.py) first and
 only then asked from Telegram, which knows users only when the bot has met them.
+
+Commands that also make sense for bots, groups and channels (/id, /info) call
+resolve_target(..., allow_bots=True, allow_chats=True). Then a target can also be
+a chat: a @username or a negative id, or a replied-to message that was sent on
+behalf of a channel (what premium users can do), in which case Target.kind says
+what it is. Commands that give roles keep the defaults and only ever get users.
 """
 
 import logging
@@ -37,6 +43,7 @@ from core import users
 log = logging.getLogger(__name__)
 
 _USERNAME_RE = re.compile(r"^@?([A-Za-z][A-Za-z0-9_]{3,31})$")
+_ID_RE = re.compile(r"^-?\d+$")
 
 _HINT = "Reply to a user's message, mention them, or give a user id or @username."
 
@@ -47,9 +54,31 @@ class TargetError(Exception):
 
 @dataclass
 class Target:
-    user_id: int
+    user_id: int  # the id of the user, or of the chat when kind is a chat type
     name: str | None
     extra: str = ""  # everything after the user: a reason, a duration, ...
+    kind: str = "user"  # user, bot, group, supergroup or channel
+    first_name: str | None = None
+    last_name: str | None = None
+    username: str | None = None
+    title: str | None = None
+
+    @property
+    def is_chat(self) -> bool:
+        return self.kind in CHAT_KINDS
+
+
+CHAT_KINDS = ("group", "supergroup", "channel")
+_NOT_A_USER_MESSAGE = "That message was not sent by a regular user."
+
+
+def _value(thing) -> str:
+    return getattr(thing, "value", thing)
+
+
+def _user_kind(is_bot: bool, username: str | None) -> str:
+    # Only bots can have a username ending in "bot".
+    return "bot" if is_bot or (username or "").lower().endswith("bot") else "user"
 
 
 async def _learn(chat) -> None:
@@ -77,21 +106,72 @@ async def display_name(bot: Bot, user_id: int, stored: str | None = None) -> str
         return stored
 
 
-async def _by_id(bot: Bot, user_id: int) -> Target:
+def _from_user(user, allow_bots: bool = False) -> Target:
+    username = getattr(user, "username", None)
+    kind = _user_kind(getattr(user, "is_bot", False), username)
+    if kind == "bot" and not allow_bots:
+        raise TargetError("Bots cannot hold roles.")
+    return Target(
+        user.id,
+        user.full_name,
+        kind=kind,
+        first_name=getattr(user, "first_name", None),
+        last_name=getattr(user, "last_name", None),
+        username=username,
+    )
+
+
+def _from_row(row: dict, allow_bots: bool) -> Target:
+    kind = _user_kind(row["is_bot"], row["username"])
+    if kind == "bot" and not allow_bots:
+        raise TargetError("Bots cannot hold roles.")
+    return Target(
+        row["user_id"],
+        row["name"],
+        kind=kind,
+        first_name=row.get("first_name"),
+        last_name=row.get("last_name"),
+        username=row["username"],
+    )
+
+
+def _from_chat(chat, allow_bots: bool, allow_chats: bool) -> Target:
+    """A Target from what Telegram returned for a chat (private chats are users)."""
+    kind = _value(chat.type)
+    if kind == "private":
+        return _from_user(chat, allow_bots)
+    if kind not in CHAT_KINDS or not allow_chats:
+        raise TargetError("That is not a user.")
+    return Target(chat.id, chat.title, kind=kind, username=chat.username, title=chat.title)
+
+
+async def _by_id(bot: Bot, user_id: int, allow_bots: bool, allow_chats: bool) -> Target:
+    if user_id < 0:
+        # Groups and channels have negative ids.
+        if not allow_chats:
+            raise TargetError("That is not a valid user id.")
+        try:
+            chat = await bot.get_chat(user_id)
+        except TelegramAPIError:
+            raise TargetError("I don't know that chat.") from None
+        return _from_chat(chat, allow_bots, allow_chats)
+
     row = await users.get(user_id)
     if row is not None:
-        if row["is_bot"]:
-            raise TargetError("Bots cannot hold roles.")
-        return Target(user_id, row["name"])
-    return Target(user_id, await display_name(bot, user_id))
+        return _from_row(row, allow_bots)
+
+    try:
+        chat = await bot.get_chat(user_id)
+    except TelegramAPIError:
+        return Target(user_id, None)  # never met: only the id is known
+    await _learn(chat)
+    return _from_chat(chat, allow_bots, allow_chats)
 
 
-async def _by_username(bot: Bot, username: str) -> Target:
+async def _by_username(bot: Bot, username: str, allow_bots: bool, allow_chats: bool) -> Target:
     row = await users.find_by_username(username)
     if row is not None:
-        if row["is_bot"]:
-            raise TargetError("Bots cannot hold roles.")
-        return Target(row["user_id"], row["name"])
+        return _from_row(row, allow_bots)
 
     try:
         chat = await bot.get_chat(f"@{username}")
@@ -99,16 +179,34 @@ async def _by_username(bot: Bot, username: str) -> Target:
         raise TargetError(
             f"I don't know @{username} yet. Reply to their message, mention them or use their id."
         ) from None
-    if getattr(chat.type, "value", chat.type) != "private":
-        raise TargetError("That is not a user.")
-    await _learn(chat)
-    return Target(chat.id, chat.full_name)
+    if _value(chat.type) == "private":
+        await _learn(chat)
+    return _from_chat(chat, allow_bots, allow_chats)
 
 
-def _from_user(user) -> Target:
-    if getattr(user, "is_bot", False):
-        raise TargetError("Bots cannot hold roles.")
-    return Target(user.id, user.full_name)
+def replied_message(message: Message):
+    """
+    The message a command replies to, or None.
+
+    In forum topics every message "replies" to the service message that created
+    the topic. That is not a person the command is aimed at.
+    """
+    reply = message.reply_to_message
+    if reply is not None and getattr(reply, "forum_topic_created", None) is not None:
+        return None
+    return reply
+
+
+def sender_as_target(message: Message) -> Target:
+    """
+    Whoever sent the command. A premium user (or an anonymous admin) can write on
+    behalf of a channel or group; then the target is that chat, not the user.
+    """
+    chat = getattr(message, "sender_chat", None)
+    user = message.from_user
+    if chat is not None and (user is None or user.id in users.IGNORED_IDS):
+        return _from_chat(chat, allow_bots=True, allow_chats=True)
+    return _from_user(user, allow_bots=True)
 
 
 def _first_argument_offset(text: str) -> int | None:
@@ -152,20 +250,23 @@ def _strip_name_remainder(extra: str, linked_text: str, full_name: str | None) -
 
 def _looks_like_user(token: str) -> bool:
     """Whether a word is clearly meant as a user (an id or a @username)."""
-    return token.isdigit() or (token.startswith("@") and _USERNAME_RE.match(token) is not None)
+    return _ID_RE.match(token) is not None or (
+        token.startswith("@") and _USERNAME_RE.match(token) is not None
+    )
 
 
-async def resolve_target(message: Message, command: CommandObject) -> Target:
+async def resolve_target(
+    message: Message,
+    command: CommandObject,
+    *,
+    allow_bots: bool = False,
+    allow_chats: bool = False,
+) -> Target:
     """Return the user a command refers to (plus extra data), or raise TargetError."""
     bot = message.bot
     text = message.text or ""
     parts = (command.args or "").split(maxsplit=1)
-
-    reply = message.reply_to_message
-    # In forum topics every message "replies" to the service message that
-    # created the topic. That is not a person the command is aimed at.
-    if reply is not None and getattr(reply, "forum_topic_created", None) is not None:
-        reply = None
+    reply = replied_message(message)
 
     # 1. A mention standing in the first argument position.
     start = _first_argument_offset(text)
@@ -177,10 +278,10 @@ async def resolve_target(message: Message, command: CommandObject) -> Target:
             linked = _utf16_slice(text, entity.offset, entity.offset + entity.length)
             extra = _utf16_slice(text, entity.offset + entity.length).strip(" \t\n,:")
             if kind == "text_mention" and entity.user is not None:
-                target = _from_user(entity.user)
+                target = _from_user(entity.user, allow_bots)
                 extra = _strip_name_remainder(extra, linked, entity.user.full_name).strip(" \t\n,:")
             elif kind == "mention":
-                target = await _by_username(bot, linked.lstrip("@"))
+                target = await _by_username(bot, linked.lstrip("@"), allow_bots, allow_chats)
             else:
                 continue
             target.extra = extra
@@ -190,24 +291,37 @@ async def resolve_target(message: Message, command: CommandObject) -> Target:
     #    word is extra data for the replied-to person, not a user name.
     if parts and (reply is None or _looks_like_user(parts[0])):
         first, extra = parts[0], (parts[1].strip() if len(parts) > 1 else "")
-        if first.isdigit():
+        if _ID_RE.match(first):
             user_id = int(first)
-            if user_id <= 0:
+            if user_id == 0:
                 raise TargetError("That is not a valid user id.")
-            target = await _by_id(bot, user_id)
+            target = await _by_id(bot, user_id, allow_bots, allow_chats)
         else:
             match = _USERNAME_RE.match(first)
             if not match:
                 raise TargetError(_HINT)
-            target = await _by_username(bot, match.group(1))
+            target = await _by_username(bot, match.group(1), allow_bots, allow_chats)
         target.extra = extra
         return target
 
     # 3. The message being replied to; everything typed is extra data.
     if reply is None:
         raise TargetError(_HINT)
-    if reply.from_user is None:
+
+    sender = reply.from_user
+    sender_chat = getattr(reply, "sender_chat", None)
+    if sender is None and sender_chat is None:
         raise TargetError("I can't tell who wrote that message.")
-    target = _from_user(reply.from_user)
+
+    if sender is None or sender.id in users.IGNORED_IDS:
+        # Written on behalf of a channel or group (or by a Telegram service account).
+        if sender_chat is not None and allow_chats:
+            target = _from_chat(sender_chat, allow_bots, allow_chats)
+        elif not allow_chats or sender is None:
+            raise TargetError(_NOT_A_USER_MESSAGE)
+        else:
+            target = _from_user(sender, allow_bots)
+    else:
+        target = _from_user(sender, allow_bots)
     target.extra = (command.args or "").strip()
     return target

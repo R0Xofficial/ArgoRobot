@@ -29,7 +29,7 @@ from aiogram.enums import ParseMode
 
 import modules
 from config import settings
-from core import database, logs, registry
+from core import chats, database, logs, registry, users
 from core.errors import setup_error_handling
 from core.middlewares import LoggingMiddleware, RolesMiddleware, UsersMiddleware
 from core.text import esc
@@ -102,9 +102,13 @@ async def on_startup(bot: Bot) -> None:
         f"Modules enabled: {registry.count_enabled()}/{registry.count_loaded()}.",
     )
 
+    # Periodically forget chats the bot has been removed from (see core/chats.py).
+    chats.start_cleanup_schedule(bot, settings.CHAT_CLEANUP_HOURS)
+
 
 async def on_shutdown(bot: Bot) -> None:
     log.info("Shutting down")
+    await chats.stop_cleanup_schedule()
     await logs.dev_log(bot, "Bot stopped.")
     try:
         await database.close()
@@ -134,13 +138,12 @@ async def main() -> None:
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
 
-    # Must be called after all routers are attached. Only update types that
-    # handlers actually use are requested, so Telegram does not even send
-    # edited messages unless some handler needs them.
-    await dp.start_polling(
-        bot,
-        allowed_updates=dp.resolve_used_update_types(),
-    )
+    # Must be called after all routers are attached. Telegram sends only the
+    # update types that are asked for: the ones handlers use, plus everything
+    # that carries users for the phone book (joins, leaves, reactions, ...).
+    allowed_updates = sorted(set(dp.resolve_used_update_types()) | set(users.UPDATE_TYPES))
+    log.info("Requesting update types: %s", ", ".join(allowed_updates))
+    await dp.start_polling(bot, allowed_updates=allowed_updates)
 
 
 if __name__ == "__main__":

@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     LOG_CHAT_ID: int | None = None
     LOG_THREAD_ID: int | None = None       # topic id, if LOG_CHAT_ID is a forum group
 
+    # --- Housekeeping -----------------------------------------------------
+    # How often the bot checks which stored chats it has been removed from, in
+    # hours. 0 turns the scheduled check off (/cleanchats still works).
+    CHAT_CLEANUP_HOURS: float = 24
+
     # --- Commands and links -----------------------------------------------
     COMMAND_PREFIXES: str = "/!"        # characters that can start a command
     GITHUB_URL: str | None = "https://github.com/R0Xofficial/ArgoRobot"  # button in /start (private chat)

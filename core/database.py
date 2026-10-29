@@ -50,6 +50,32 @@ CREATE TABLE IF NOT EXISTS users (
     last_seen  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS users_username_idx ON users (lower(username));
+-- The name split in two, for /info. Older rows fill in the next time the user is seen.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT;
+
+-- Groups and channels the bot is in. Cleaned of chats the bot has left, either
+-- on a schedule or with /cleanchats (see core/chats.py).
+CREATE TABLE IF NOT EXISTS chats (
+    chat_id    BIGINT PRIMARY KEY,
+    type       TEXT NOT NULL,
+    title      TEXT,
+    username   TEXT,
+    bot_admin  BOOLEAN,              -- NULL until known
+    first_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_seen  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Where each user has been seen (wrote, joined, left, reacted ...). Groundwork
+-- for global bans and federations: "in which of my chats is this person?".
+CREATE TABLE IF NOT EXISTS user_chats (
+    user_id    BIGINT NOT NULL,
+    chat_id    BIGINT NOT NULL,
+    first_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_seen  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, chat_id)
+);
+CREATE INDEX IF NOT EXISTS user_chats_chat_idx ON user_chats (chat_id);
 
 CREATE TABLE IF NOT EXISTS modules (
     name    TEXT PRIMARY KEY,

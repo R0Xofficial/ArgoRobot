@@ -13,7 +13,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import Update
 
 from config import settings
-from core import roles, users
+from core import chats, roles, users
 
 log = logging.getLogger("usage")
 
@@ -80,6 +80,11 @@ class UsersMiddleware(BaseMiddleware):
 
     TIMEOUT = 5  # seconds; a slow database must not hold up the update
 
+    @staticmethod
+    async def _record(event: Update) -> None:
+        await users.remember_all(users.collect(event))
+        await chats.record(event)  # chats the bot is in, and who was seen where
+
     async def __call__(
         self,
         handler: Callable[[Update, dict[str, Any]], Awaitable[Any]],
@@ -87,8 +92,15 @@ class UsersMiddleware(BaseMiddleware):
         data: dict[str, Any],
     ) -> Any:
         try:
-            await asyncio.wait_for(users.remember_all(users.collect(event)), self.TIMEOUT)
+            await asyncio.wait_for(self._record(event), self.TIMEOUT)
         except Exception as exc:
             # The book is a convenience, never a reason to drop an update.
             users.log.warning("Could not update the user registry: %r", exc)
+
+        bot = data.get("bot")
+        if bot is not None:
+            # Just added to (or promoted in) a group: look at its admins right away.
+            joined = getattr(event, "my_chat_member", None) is not None
+            for chat_id in users.group_chats(event):
+                users.schedule_admin_refresh(bot, chat_id, force=joined)
         return await handler(event, data)
