@@ -12,7 +12,7 @@ from aiogram.filters import CommandObject
 from aiogram.types import LinkPreviewOptions, Message, ReplyParameters
 
 from config import settings
-from core import afk, immunity
+from core import afk, immunity, info_hooks
 from core.filters import cmd
 from core.helpers import reply
 from core.moderation import GROUP_TYPES, format_duration
@@ -261,3 +261,12 @@ async def _watch(message: Message) -> bool:
 @router.message(_watch)
 async def _never(message: Message) -> None:
     """Not reached: _watch never matches, it only looks."""
+
+
+# --- /info ------------------------------------------------------------------------
+
+async def _info_flags(bot: Any, user_id: int, chat_id: int | None) -> list[tuple[str, bool]]:
+    return [("AFK", await afk.get(user_id) is not None)]
+
+
+info_hooks.register("afk", _info_flags)

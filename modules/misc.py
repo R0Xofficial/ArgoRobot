@@ -21,6 +21,7 @@ from core.roles import Role
 from core.targets import (
     Target,
     TargetError,
+    UnknownUserError,
     replied_message,
     resolve_target,
     sender_as_target,
@@ -38,7 +39,7 @@ HELP = [
     ("/start", "Say hello. In a group I only point you to a private chat, where I can show you what I do."),
     ("/help", "Open this panel. In a group you get a button that opens it in a private chat."),
     ("/id [user]", "Show your Telegram ID, plus the chat's ID when you use it in a group. Give a user, group or channel to see their ID instead."),
-    ("/info [user]", "Show what I know about a user, bot, group or channel: name, username, ID, and in a group also their status here (member, admin, banned, muted) and flags from other modules such as Approved or GBanned."),
+    ("/info [user]", "Show what I know about a user, bot, group or channel: name, username, ID, and in a group their status (Owner, Admin, Member) and bot role. Everyone else gets a list of Yes/No flags: Banned, Muted, Approved, GBanned, Whitelisted, Immune and AFK. People with a role show no flags. If I have no data on someone, I say so: they have to message me first, or I have to see them in a chat I am in."),
 ]
 
 router = Router(name="misc")
@@ -244,6 +245,12 @@ async def _subject(message: Message, command: CommandObject) -> tuple[Target, bo
     return sender_as_target(message), False
 
 
+UNKNOWN_USER = (
+    "I don't know this user. They have to message me first, "
+    "or I have to see them in a chat I'm in."
+)
+
+
 def _line(label: str, value: str) -> str:
     return f"<b>{label}:</b> {value}"
 
@@ -301,16 +308,24 @@ def _chat_status(member) -> str:
     return "Not in chat"  # left or kicked
 
 
-def _restriction_lines(member) -> list[str]:
-    """Banned / Muted flags, shown only when they apply."""
-    if member == "gone":
+# The order of the yes/no flags in /info. Flags from modules this list doesn't know come last.
+FLAG_ORDER = ("Banned", "Muted", "Approved", "GBanned", "Whitelisted", "Immune", "AFK")
+
+
+def _restriction_flags(member) -> list[tuple[str, bool]]:
+    """Banned and Muted, for a person whose membership is known."""
+    if member is None or member == "gone":
         return []
     status = getattr(member.status, "value", member.status)
-    if status == "kicked":
-        return [_line("Banned", "<code>Yes</code>")]
-    if status == "restricted" and getattr(member, "is_member", True) and not getattr(member, "can_send_messages", True):
-        return [_line("Muted", "<code>Yes</code>")]
-    return []
+    muted = status == "restricted" and getattr(member, "is_member", True) and not getattr(member, "can_send_messages", True)
+    return [("Banned", status == "kicked"), ("Muted", muted)]
+
+
+def _flag_lines(flags: list[tuple[str, bool]]) -> list[str]:
+    def rank(flag: tuple[str, bool]) -> int:
+        return FLAG_ORDER.index(flag[0]) if flag[0] in FLAG_ORDER else len(FLAG_ORDER)
+
+    return [_line(name, f"<code>{'Yes' if value else 'No'}</code>") for name, value in sorted(flags, key=rank)]
 
 
 async def _refresh_user(bot, target: Target) -> None:
@@ -344,17 +359,21 @@ async def _user_info(bot, chat, target: Target) -> list[str]:
         lines.append(_line("Username", f"@{esc(target.username)}"))
     lines.append(_line("User link", f'<a href="tg://user?id={target.user_id}">link</a>'))
 
-    if chat.type in ("group", "supergroup"):
-        member = await _chat_member(bot, chat.id, target.user_id)
-        if member is not None:
-            lines.append(_line("Status", f"<code>{_chat_status(member)}</code>"))
-            lines.extend(_restriction_lines(member))
+    in_group = chat.type in ("group", "supergroup")
+    member = await _chat_member(bot, chat.id, target.user_id) if in_group else None
+    if member is not None:
+        lines.append(_line("Status", f"<code>{_chat_status(member)}</code>"))
 
     role = await roles.get_role(target.user_id)
     if role is not None:
-        lines.append(_line("Bot role", f"<code>{roles.label(role)}</code>"))
+        lines.append(_line("Bot Role", f"<code>{roles.label(role)}</code>"))
 
-    lines.extend(await info_hooks.lines_for(bot, target.user_id, chat.id if chat.type in ("group", "supergroup") else None))
+    # A role settles it: admins and the bot's staff have no flags to list.
+    has_role = role is not None or (member not in (None, "gone") and _chat_status(member) in ("Owner", "Admin"))
+    if not has_role:
+        flags = _restriction_flags(member) if in_group else []
+        flags += await info_hooks.flags_for(bot, target.user_id, chat.id if in_group else None)
+        lines.extend(_flag_lines(flags))
     return lines
 
 
@@ -379,8 +398,15 @@ async def _chat_info(bot, target: Target) -> list[str]:
 async def cmd_info(message: Message, command: CommandObject) -> None:
     try:
         target, _ = await _subject(message, command)
+    except UnknownUserError:
+        await reply(message, UNKNOWN_USER)
+        return
     except TargetError as exc:
         await reply(message, esc(str(exc)))
+        return
+
+    if not target.is_known:
+        await reply(message, UNKNOWN_USER)
         return
 
     if target.is_chat:

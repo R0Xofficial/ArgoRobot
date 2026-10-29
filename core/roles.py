@@ -33,7 +33,7 @@ class Role(IntEnum):
 MANAGED_BY: dict[Role, Role] = {
     Role.DEVELOPER: Role.OWNER,
     Role.SUDO: Role.DEVELOPER,
-    Role.SUPPORT: Role.SUDO,
+    Role.SUPPORT: Role.DEVELOPER,
 }
 
 # Role log tags: (granted, revoked).

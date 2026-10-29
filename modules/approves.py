@@ -194,10 +194,10 @@ async def cb_disapproveall(callback: CallbackQuery) -> None:
         await edit(message, "Cancelled. Nobody was unapproved.", reply_markup=None)
 
 
-async def _info_lines(bot, user_id: int, chat_id: int | None) -> list[str]:
-    if chat_id is not None and await approvals.is_approved(chat_id, user_id):
-        return ["<b>Approved:</b> <code>Yes</code>"]
-    return []
+async def _info_flags(bot, user_id: int, chat_id: int | None) -> list[tuple[str, bool]]:
+    if chat_id is None:
+        return []  # approval belongs to a chat
+    return [("Approved", await approvals.is_approved(chat_id, user_id))]
 
 
-info_hooks.register("approves", _info_lines)
+info_hooks.register("approves", _info_flags)

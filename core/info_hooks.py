@@ -1,22 +1,22 @@
 """
-Extra lines for /info.
+Extra flags for /info.
 
-/info (modules/misc.py) shows what the bot knows about everyone: id, name, role
-in the chat, role in the bot. Other modules add their own facts about a user
-(Whitelisted, GBanned, federation roles ...) by registering a provider:
+/info (modules/misc.py) shows what the bot knows about everyone: id, name, standing
+in the chat, role in the bot, and a list of yes/no flags. Modules add their own flags
+(GBanned, Whitelisted, Approved ...) by registering a provider:
 
     from core import info_hooks
 
-    async def _info_lines(bot, user_id, chat_id):
-        if await is_gbanned(user_id):
-            return ["<b>GBanned:</b> <code>Yes</code>"]
-        return []
+    async def _info_flags(bot, user_id, chat_id):
+        return [("GBanned", await is_gbanned(user_id))]
 
-    info_hooks.register("gbans", _info_lines)
+    info_hooks.register("gbans", _info_flags)
 
-`chat_id` is the chat /info was used in (None in private chats), for facts that
-belong to a chat, like approval. A provider returns ready-made HTML lines (escape anything that came from a user)
-or an empty list. It is skipped while its module is disabled, and a provider that
+A provider returns (name, value) pairs, always, so that /info can say "No" as well
+as "Yes". `chat_id` is the chat /info was used in (None in private chats); a flag that
+belongs to a chat, like Approved, is simply left out when there is none. /info decides
+whether to show flags at all (people with a role show none) and in which order
+(misc.FLAG_ORDER). A provider is skipped while its module is disabled, and one that
 fails never breaks /info.
 """
 
@@ -29,7 +29,7 @@ from core import registry
 
 log = logging.getLogger(__name__)
 
-Provider = Callable[[Bot, int, int | None], Awaitable[list[str]]]
+Provider = Callable[[Bot, int, int | None], Awaitable[list[tuple[str, bool]]]]
 
 _providers: list[tuple[str, Provider]] = []
 
@@ -39,14 +39,14 @@ def register(module_name: str, provider: Provider) -> None:
     _providers.append((module_name, provider))
 
 
-async def lines_for(bot: Bot, user_id: int, chat_id: int | None = None) -> list[str]:
-    lines: list[str] = []
+async def flags_for(bot: Bot, user_id: int, chat_id: int | None = None) -> list[tuple[str, bool]]:
+    flags: list[tuple[str, bool]] = []
     for module_name, provider in _providers:
         info = registry.get(module_name)
         if info is not None and not info.enabled:
             continue
         try:
-            lines.extend(await provider(bot, user_id, chat_id))
+            flags.extend(await provider(bot, user_id, chat_id))
         except Exception:
             log.exception("Info provider of '%s' failed", module_name)
-    return lines
+    return flags

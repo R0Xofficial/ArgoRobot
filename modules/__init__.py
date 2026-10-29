@@ -20,7 +20,8 @@ Conventions for a module:
     extra data comes back in `target.extra`.
   * Commands that also work on bots, groups and channels (like /info) call
     resolve_target(message, command, allow_bots=True, allow_chats=True).
-  * A module can add lines to /info with core.info_hooks.register(name, provider).
+  * A module can add yes/no flags to /info with core.info_hooks.register(name, provider);
+    the provider returns (name, value) pairs. Add the flag's name to misc.FLAG_ORDER.
   * PROTECTED = True makes the module impossible to disable (only for core
     bot-management modules such as root).
 """

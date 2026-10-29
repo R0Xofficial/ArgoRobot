@@ -9,7 +9,7 @@ from aiogram.filters import CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from config import settings
-from core import chats, database, gbans, logs, registry, roles, speedtest, whitelist
+from core import chats, database, gbans, immunity, info_hooks, logs, registry, roles, speedtest, whitelist
 from core.filters import HasRole, cmd
 from core.helpers import edit, reply
 from core.roles import Role
@@ -24,7 +24,9 @@ PROTECTED = True
 ABOUT = """
 Commands for running the bot itself. Most of them are for my staff, so you only see the ones your role allows.
 
-Staff roles, from lowest to highest: Support, Sudo, Developer, Owner. A role can grant and remove the roles below it: Sudo manages Support, Developer manages Sudo, and the Owner manages Developers.
+Staff roles, from lowest to highest: Support, Sudo, Developer, Owner. The Owner grants and removes Developers; Developers grant and remove Sudo and Support users.
+
+The whitelist shields people from global actions: someone on it can't be globally banned, in any chat I'm in. It is different from /approve, which only works in one chat. Sudo and up manage it.
 """
 
 HELP = [
@@ -40,8 +42,10 @@ HELP = [
     ("/rmdev <user>", "Remove the Developer role.", Role.OWNER),
     ("/addsudo <user>", "Grant the Sudo role.", Role.DEVELOPER),
     ("/rmsudo <user>", "Remove the Sudo role.", Role.DEVELOPER),
-    ("/addsupport <user>", "Grant the Support role.", Role.SUDO),
-    ("/rmsupport <user>", "Remove the Support role.", Role.SUDO),
+    ("/addsupport <user>", "Grant the Support role.", Role.DEVELOPER),
+    ("/rmsupport <user>", "Remove the Support role.", Role.DEVELOPER),
+    ("/whitelist <user>", "Protect a user from global bans.", Role.SUDO),
+    ("/unwhitelist <user>", "Remove a user's protection.", Role.SUDO),
 ]
 
 router = Router(name="root")
@@ -349,3 +353,52 @@ async def cb_staff_role(callback: CallbackQuery) -> None:
     if isinstance(callback.message, Message):
         text = await _staff_list_text(callback.bot, role)
         await edit(callback.message, text, reply_markup=_staff_back_keyboard())
+
+
+# --- Whitelist ------------------------------------------------------------------
+
+# Sudo users and up (Developers, the Owner) manage the list.
+WHITELIST_ROLE = Role.SUDO
+
+
+@router.message(cmd("whitelist", "unwhitelist"), HasRole(WHITELIST_ROLE))
+async def cmd_whitelist(message: Message, command: CommandObject) -> None:
+    adding = command.command == "whitelist"
+    actor = message.from_user
+
+    try:
+        target = await resolve_target(message, command, allow_bots=True)
+    except TargetError as exc:
+        await reply(message, esc(exc))
+        return
+
+    if target.user_id == actor.id:
+        await reply(message, "You can't change your own whitelist status.")
+        return
+
+    who = user_link(target.user_id, target.name)
+    if immunity.is_immune(target.user_id):
+        await reply(message, f"{who} is immune to all bot actions and doesn't need to be whitelisted.")
+        return
+
+    if adding:
+        if not await whitelist.add(target.user_id, actor.id, target.name, actor.full_name):
+            await reply(message, f"{who} is already whitelisted.")
+            return
+        tag = "#WHITELIST"
+        await reply(message, f"{who} has been whitelisted.")
+    else:
+        if not await whitelist.remove(target.user_id):
+            await reply(message, f"{who} is not whitelisted.")
+            return
+        tag = "#UNWHITELIST"
+        await reply(message, f"{who} has been removed from the whitelist.")
+
+    await logs.role_log(message.bot, logs.audit_text(tag, target.user_id, target.name, actor))
+
+
+async def _info_flags(bot, user_id: int, chat_id: int | None) -> list[tuple[str, bool]]:
+    return [("Immune", immunity.is_immune(user_id)), ("Whitelisted", await whitelist.is_whitelisted(user_id))]
+
+
+info_hooks.register("root", _info_flags)

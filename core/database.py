@@ -110,6 +110,18 @@ CREATE TABLE IF NOT EXISTS blacklist_settings (
     delete_matches BOOLEAN NOT NULL DEFAULT TRUE
 );
 
+-- Saved replies to keywords (see core/filterstore.py). content is the text as its author wrote it.
+CREATE TABLE IF NOT EXISTS filters (
+    id            BIGSERIAL,
+    chat_id       BIGINT NOT NULL,
+    pattern       TEXT NOT NULL,       -- normalized: lowercase, single spaces, modifier included
+    content       TEXT NOT NULL DEFAULT '',
+    media_type    TEXT,                -- photo / video / animation / document / audio / voice / sticker / video_note
+    media_file_id TEXT,
+    created_by    BIGINT,
+    PRIMARY KEY (chat_id, pattern)
+);
+
 -- Global bans (see core/gbans.py). admin_id is NULL for imported bans.
 CREATE TABLE IF NOT EXISTS gbans (
     user_id          BIGINT PRIMARY KEY,

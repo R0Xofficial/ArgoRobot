@@ -52,6 +52,10 @@ class TargetError(Exception):
     """Raised with a message that is safe to show to the user (plain text)."""
 
 
+class UnknownUserError(TargetError):
+    """A @username nobody has ever been seen with."""
+
+
 @dataclass
 class Target:
     user_id: int  # the id of the user, or of the chat when kind is a chat type
@@ -66,6 +70,11 @@ class Target:
     @property
     def is_chat(self) -> bool:
         return self.kind in CHAT_KINDS
+
+    @property
+    def is_known(self) -> bool:
+        """Whether anything but the id is known (an id nobody has ever seen has no name)."""
+        return self.is_chat or any((self.name, self.first_name, self.username))
 
 
 CHAT_KINDS = ("group", "supergroup", "channel")
@@ -176,7 +185,7 @@ async def _by_username(bot: Bot, username: str, allow_bots: bool, allow_chats: b
     try:
         chat = await bot.get_chat(f"@{username}")
     except TelegramAPIError:
-        raise TargetError(
+        raise UnknownUserError(
             f"I don't know @{username} yet. Reply to their message, mention them or use their id."
         ) from None
     if _value(chat.type) == "private":

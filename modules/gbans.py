@@ -844,10 +844,8 @@ async def enforce_on_join(event: ChatMemberUpdated, bot: Bot) -> None:
 
 # --- /info ----------------------------------------------------------------------------------------------------
 
-async def _info_lines(bot: Bot, user_id: int, chat_id: int | None) -> list[str]:
-    if await gbans.is_gbanned(user_id):
-        return ["<b>GBanned:</b> <code>Yes</code>"]
-    return []
+async def _info_flags(bot: Bot, user_id: int, chat_id: int | None) -> list[tuple[str, bool]]:
+    return [("GBanned", await gbans.is_gbanned(user_id))]
 
 
-info_hooks.register("gbans", _info_lines)
+info_hooks.register("gbans", _info_flags)
