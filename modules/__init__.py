@@ -7,6 +7,10 @@ Conventions for a module:
     in /modules and /help, so keep it to a few words, e.g. Core bot commands.
   * HELP is a list of (usage, description[, minimum_role]) entries. It feeds the
     /help panel (see core/help_index.py). Modules without HELP are not listed there.
+  * Commands that act on a user use the syntax `/command <user> [extra data]`:
+    the user first (reply, mention, @username or id), then whatever the command
+    needs, e.g. `/ban @name spamming`. Use core.targets.resolve_target(); the
+    extra data comes back in `target.extra`.
   * PROTECTED = True makes the module impossible to disable (only for core
     bot-management modules such as root).
 """

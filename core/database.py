@@ -40,6 +40,17 @@ CREATE TABLE IF NOT EXISTS roles (
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS name TEXT;
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS added_by_name TEXT;
 
+-- Phone book: every user the bot has seen, so it can resolve @usernames and ids.
+CREATE TABLE IF NOT EXISTS users (
+    user_id    BIGINT PRIMARY KEY,
+    name       TEXT,
+    username   TEXT,
+    is_bot     BOOLEAN NOT NULL DEFAULT FALSE,
+    first_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_seen  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS users_username_idx ON users (lower(username));
+
 CREATE TABLE IF NOT EXISTS modules (
     name    TEXT PRIMARY KEY,
     enabled BOOLEAN NOT NULL

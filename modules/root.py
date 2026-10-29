@@ -269,10 +269,10 @@ def _timestamp(when: datetime | None = None) -> str:
 
 def _role_log_text(tag: str, user_id: int, name: str | None, admin) -> str:
     return (
-        f"{tag}\n"
-        f"User: {user_ref(user_id, name)}\n"
-        f"Timestamp: {_timestamp()}\n"
-        f"Admin: {user_ref(admin.id, admin.full_name)}"
+        f"<b>{tag}</b>\n"
+        f"<b>User:</b> {user_ref(user_id, name)}\n"
+        f"<b>Timestamp:</b> {_timestamp()}\n"
+        f"<b>Admin:</b> {user_ref(admin.id, admin.full_name)}"
     )
 
 

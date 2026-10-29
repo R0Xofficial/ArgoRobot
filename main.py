@@ -31,7 +31,7 @@ import modules
 from config import settings
 from core import database, logs, registry
 from core.errors import setup_error_handling
-from core.middlewares import LoggingMiddleware, RolesMiddleware
+from core.middlewares import LoggingMiddleware, RolesMiddleware, UsersMiddleware
 from core.text import esc
 
 log = logging.getLogger("main")
@@ -125,6 +125,7 @@ async def main() -> None:
     # in modules/root.py, which is a protected module.)
     dp.update.outer_middleware(LoggingMiddleware())
     dp.update.outer_middleware(RolesMiddleware())
+    dp.update.outer_middleware(UsersMiddleware())
     setup_error_handling(dp, bot)
 
     # Feature modules: auto-discovered, toggleable.

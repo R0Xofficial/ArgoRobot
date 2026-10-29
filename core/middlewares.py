@@ -5,6 +5,7 @@ Order matters: aiogram's own user-context middleware runs first and puts
 `event_from_user` into the data dict, which RolesMiddleware relies on.
 """
 
+import asyncio
 import logging
 from typing import Any, Awaitable, Callable
 
@@ -12,7 +13,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import Update
 
 from config import settings
-from core import roles
+from core import roles, users
 
 log = logging.getLogger("usage")
 
@@ -71,4 +72,23 @@ class RolesMiddleware(BaseMiddleware):
     ) -> Any:
         user = data.get("event_from_user")
         data["role"] = await roles.get_role(user.id) if user else None
+        return await handler(event, data)
+
+
+class UsersMiddleware(BaseMiddleware):
+    """Keeps the user phone book (core/users.py) up to date."""
+
+    TIMEOUT = 5  # seconds; a slow database must not hold up the update
+
+    async def __call__(
+        self,
+        handler: Callable[[Update, dict[str, Any]], Awaitable[Any]],
+        event: Update,
+        data: dict[str, Any],
+    ) -> Any:
+        try:
+            await asyncio.wait_for(users.remember_all(users.collect(event)), self.TIMEOUT)
+        except Exception as exc:
+            # The book is a convenience, never a reason to drop an update.
+            users.log.warning("Could not update the user registry: %r", exc)
         return await handler(event, data)
