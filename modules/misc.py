@@ -25,9 +25,6 @@ from core.targets import (
 )
 from core.text import esc
 
-# Start, help and the info commands must always work, so this module cannot be disabled.
-PROTECTED = True
-
 # Commands shown in /help (see core/help_index.py).
 HELP = [
     ("/start", "Introduction"),
