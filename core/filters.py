@@ -1,9 +1,22 @@
 """Reusable filters."""
 
-from aiogram.filters import BaseFilter
+from aiogram.filters import BaseFilter, Command
 from aiogram.types import TelegramObject
 
+from config import settings
 from core.roles import Role
+
+
+def cmd(*names: str) -> Command:
+    """
+    Command filter that honours the configured prefixes (default: / and !).
+
+        @router.message(cmd("ping"))
+
+    Note: in groups Telegram only delivers "!" commands to bots that are
+    admins or have privacy mode disabled in BotFather.
+    """
+    return Command(*names, prefix=settings.COMMAND_PREFIXES)
 
 
 class HasRole(BaseFilter):

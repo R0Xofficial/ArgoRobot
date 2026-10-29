@@ -11,6 +11,7 @@ from typing import Any, Awaitable, Callable
 from aiogram import BaseMiddleware
 from aiogram.types import Update
 
+from config import settings
 from core import roles
 
 log = logging.getLogger("usage")
@@ -35,7 +36,7 @@ class LoggingMiddleware(BaseMiddleware):
     @staticmethod
     def _log(event: Update) -> None:
         message = event.message
-        if message and message.text and message.text.startswith("/"):
+        if message and message.text and message.text.startswith(tuple(settings.COMMAND_PREFIXES)):
             user = message.from_user
             thread = f" thread={message.message_thread_id}" if message.is_topic_message else ""
             log.info(
@@ -44,7 +45,7 @@ class LoggingMiddleware(BaseMiddleware):
                 user.id if user else "?",
                 user.username if user else "-",
                 message.chat.id,
-                message.chat.type,
+                getattr(message.chat.type, "value", message.chat.type),
                 thread,
             )
             return

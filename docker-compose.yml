@@ -15,6 +15,8 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_CHAT_ID: ${LOG_CHAT_ID:-}
       LOG_THREAD_ID: ${LOG_THREAD_ID:-}
+      COMMAND_PREFIXES: ${COMMAND_PREFIXES:-/!}
+      GITHUB_URL: ${GITHUB_URL:-}
     networks:
       - default             # outbound access to the Telegram API
       - postgres-internal   # access to the PostgreSQL container

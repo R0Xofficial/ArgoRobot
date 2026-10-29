@@ -1,43 +1,43 @@
 """
 main.py - application entry point.
- 
+
 Responsibilities:
   * configure console logging
   * build the Bot and Dispatcher
-  * wire up the core layer (roles, usage logging, error handling, core handlers)
+  * wire up the core layer (roles, usage logging, error handling and traceback reports)
   * auto-discover feature modules from the modules/ package
   * announce startup and shutdown
   * run long polling
- 
+
 Module contract (modules/<name>.py or modules/<name>/__init__.py):
   router: aiogram.Router   (required)
- 
+
 Files starting with "_" are ignored. Enabling and disabling modules at runtime
 is handled by core.registry, so dropping a new file into modules/ is all that
 is needed to add a feature.
 """
- 
+
 import asyncio
 import importlib
 import logging
 import pkgutil
 import sys
- 
+
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramAPIError
- 
+
 import modules
 from config import settings
 from core import database, registry
 from core.errors import setup_error_handling
-from core.handlers import router as core_router
 from core.middlewares import LoggingMiddleware, RolesMiddleware
- 
+from core.text import esc
+
 log = logging.getLogger("main")
- 
- 
+
+
 def setup_logging() -> None:
     """Configure console logging."""
     logging.basicConfig(
@@ -49,22 +49,22 @@ def setup_logging() -> None:
     # Usage logging is done by our own middleware, so silence the per-update
     # "Update id=... is handled" lines coming from aiogram.
     logging.getLogger("aiogram.event").setLevel(logging.WARNING)
- 
- 
+
+
 def discover_modules(dp: Dispatcher) -> None:
     """
     Import every module found in modules/ and attach its router.
- 
+
     A broken module is logged and skipped; it must never prevent the bot
     from starting.
     """
     loaded = 0
     failed = 0
- 
+
     for info in sorted(pkgutil.iter_modules(modules.__path__), key=lambda i: i.name):
         if info.name.startswith("_"):
             continue
- 
+
         try:
             module = importlib.import_module(f"{modules.__name__}.{info.name}")
             router = getattr(module, "router", None)
@@ -72,7 +72,7 @@ def discover_modules(dp: Dispatcher) -> None:
                 log.warning("Module '%s' has no 'router' attribute, skipping", info.name)
                 failed += 1
                 continue
- 
+
             # The registry remembers the module and gates its router, so it
             # can be toggled on and off without detaching anything.
             registry.register(info.name, module, router)
@@ -82,10 +82,10 @@ def discover_modules(dp: Dispatcher) -> None:
         except Exception:
             failed += 1
             log.exception("Failed to load module '%s'", info.name)
- 
+
     log.info("Module discovery finished: %d loaded, %d failed", loaded, failed)
- 
- 
+
+
 async def notify(bot: Bot, text: str) -> None:
     """Send a service message to the log chat (or to the owner as a fallback)."""
     chat_id = settings.LOG_CHAT_ID or settings.OWNER_ID
@@ -97,26 +97,26 @@ async def notify(bot: Bot, text: str) -> None:
         )
     except TelegramAPIError as exc:
         log.warning("Could not send service message to %s: %s", chat_id, exc)
- 
- 
+
+
 async def on_startup(bot: Bot) -> None:
     await database.init()
     await registry.load_state()
- 
+
     # Updates that piled up while the bot was offline are discarded so old
     # commands are not executed after a restart.
     await bot.delete_webhook(drop_pending_updates=True)
- 
+
     me = await bot.get_me()
     log.info("Authorized as @%s (id=%s)", me.username, me.id)
- 
+
     await notify(
         bot,
-        f"Bot started (@{me.username}). "
+        f"Bot started (@{esc(me.username)}). "
         f"Modules enabled: {registry.count_enabled()}/{registry.count_loaded()}.",
     )
- 
- 
+
+
 async def on_shutdown(bot: Bot) -> None:
     log.info("Shutting down")
     await notify(bot, "Bot stopped.")
@@ -124,29 +124,29 @@ async def on_shutdown(bot: Bot) -> None:
         await database.close()
     except Exception:
         log.exception("Error while closing the database")
- 
- 
+
+
 async def main() -> None:
     setup_logging()
- 
+
     bot = Bot(
         token=settings.BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher()
- 
-    # Core layer: always active, cannot be disabled.
+
+    # Core layer: always active, cannot be disabled. (The management commands live
+    # in modules/root.py, which is a protected module.)
     dp.update.outer_middleware(LoggingMiddleware())
     dp.update.outer_middleware(RolesMiddleware())
-    setup_error_handling(dp)
-    dp.include_router(core_router)
- 
+    setup_error_handling(dp, bot)
+
     # Feature modules: auto-discovered, toggleable.
     discover_modules(dp)
- 
+
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
- 
+
     # Must be called after all routers are attached. Only update types that
     # handlers actually use are requested, so Telegram does not even send
     # edited messages unless some handler needs them.
@@ -154,8 +154,8 @@ async def main() -> None:
         bot,
         allowed_updates=dp.resolve_used_update_types(),
     )
- 
- 
+
+
 if __name__ == "__main__":
     try:
         asyncio.run(main())

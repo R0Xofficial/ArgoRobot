@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     LOG_CHAT_ID: int | None = None      # chat for service messages (falls back to OWNER_ID)
     LOG_THREAD_ID: int | None = None    # topic id, if LOG_CHAT_ID is a forum group
 
+    # --- Commands and links -----------------------------------------------
+    COMMAND_PREFIXES: str = "/!"        # characters that can start a command
+    GITHUB_URL: str | None = "https://github.com/R0Xofficial/ArgoRobot"  # button in /start (private chat)
+
     # --- Optional external services ---------------------------------------
     # Add API keys here as modules need them, e.g.:
     # GIPHY_API_KEY: str | None = None
@@ -55,6 +59,24 @@ class Settings(BaseSettings):
         if not value.startswith(("postgresql://", "postgres://")):
             raise ValueError("must start with postgresql://")
         return value
+
+    @field_validator("COMMAND_PREFIXES")
+    @classmethod
+    def _check_prefixes(cls, value: str) -> str:
+        value = value.strip()
+        if not value or any(ch.isalnum() or ch.isspace() for ch in value):
+            raise ValueError("must contain only symbol characters, e.g. /!")
+        return value
+
+    @field_validator("GITHUB_URL")
+    @classmethod
+    def _check_github_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if value and not value.startswith(("https://", "http://")):
+            raise ValueError("must start with https://")
+        return value or None
 
     @field_validator("BOT_TOKEN")
     @classmethod

@@ -6,7 +6,8 @@ gate: every router of a module gets a filter that checks the module's `enabled`
 flag. A disabled module simply does not match any event, and the event falls
 through to the next router. The state is persisted in the database.
 
-The core layer is never registered here, so it can never be disabled.
+A module can protect itself from being disabled by defining `PROTECTED = True`
+(modules/root.py does this, so management commands can never be switched off).
 """
 
 import logging
@@ -20,12 +21,20 @@ from core import database
 log = logging.getLogger(__name__)
 
 
+class ProtectedModuleError(ValueError):
+    """Raised when someone tries to disable a protected module."""
+
+
 @dataclass
 class ModuleInfo:
     name: str
     module: ModuleType
     router: Router
     enabled: bool = True
+
+    @property
+    def protected(self) -> bool:
+        return bool(getattr(self.module, "PROTECTED", False))
 
     @property
     def description(self) -> str:
@@ -48,6 +57,9 @@ def register(name: str, module: ModuleType, router: Router) -> None:
     info = ModuleInfo(name=name.lower(), module=module, router=router)
     _modules[info.name] = info
 
+    if info.protected:
+        return
+
     gate = _make_gate(info)
     for event_name, observer in router.observers.items():
         if event_name == "error":
@@ -60,17 +72,23 @@ async def load_state() -> None:
     rows = await database.fetch_all("SELECT name, enabled FROM modules")
     for row in rows:
         info = _modules.get(row["name"])
-        if info is not None:
+        if info is not None and not info.protected:
             info.enabled = bool(row["enabled"])
             if not info.enabled:
                 log.info("Module '%s' is disabled (stored state)", info.name)
 
 
 async def set_enabled(name: str, enabled: bool) -> bool:
-    """Enable or disable a module. Returns False if it does not exist."""
+    """
+    Enable or disable a module. Returns False if it does not exist.
+    Raises ProtectedModuleError when asked to disable a protected module.
+    """
     info = _modules.get(name.lower())
     if info is None:
         return False
+
+    if info.protected and not enabled:
+        raise ProtectedModuleError(f"Module '{info.name}' is protected and cannot be disabled.")
 
     info.enabled = enabled
     await database.execute(
