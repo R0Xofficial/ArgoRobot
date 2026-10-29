@@ -1,6 +1,7 @@
 """Everyday commands"""
 
 import inspect
+import time
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
@@ -14,7 +15,7 @@ from aiogram.types import (
 )
 
 from config import settings
-from core import help_index, info_hooks, registry, roles, users
+from core import help_index, info_hooks, lookup, registry, roles, users, web
 from core.filters import cmd
 from core.helpers import edit, reply
 from core.roles import Role
@@ -33,6 +34,8 @@ ABOUT = """
 The basics: get to know me, find your way around, and look people up.
 
 /id and /info accept a user, a bot, a group or a channel. Reply to one of their messages, or give a @username or a numeric ID. Without a target they describe you.
+
+/tr, /dict, /time, /weather and /cash look things up on free public services, so they can be slow or unavailable now and then. Each person can use them once every few seconds.
 """
 
 HELP = [
@@ -40,6 +43,25 @@ HELP = [
     ("/help", "Open this panel. In a group you get a button that opens it in a private chat."),
     ("/id [user]", "Show your Telegram ID, plus the chat's ID when you use it in a group. Give a user, group or channel to see their ID instead."),
     ("/info [user]", "Show what I know about a user, bot, group or channel: name, username, ID, and in a group their status (Owner, Admin, Member) and bot role. Everyone else gets a list of Yes/No flags: Banned, Muted, Approved, GBanned, Whitelisted, Immune and AFK. People with a role show no flags. If I have no data on someone, I say so: they have to message me first, or I have to see them in a chat I am in."),
+    ("/tr [language] <text>", "Translate text into a language (default: English). Give a language code like pl, de or es first, or reply to a message to translate it."),
+    ("/dict <word>", "Look up an English word: how it is pronounced and what it means."),
+    ("/time <place or timezone>", "Show the current time and date in a city or a timezone, like Tokyo or Europe/Warsaw."),
+    ("/weather <place>", "Show the current weather in a city."),
+    ("/cash <amount> <from> <to>", "Convert money between currencies, like /cash 100 usd pln."),
+]
+
+HELP_NOTES = [
+    (
+        "Examples",
+        """
+        /tr pl good morning - translate into Polish.
+        /tr - reply to a message to get it in English.
+        /tr en no way - a language code at the start always counts as the target, so to translate a text that starts with one (no, it, is, hi...) name the target first.
+        /time Tokyo - the time in Tokyo.
+        /weather Warsaw, Poland - the weather in Warsaw.
+        /cash 100 usd pln - one hundred US dollars in zloty.
+        """,
+    ),
 ]
 
 router = Router(name="misc")
@@ -129,7 +151,8 @@ def _help_home_keyboard(role: Role | None) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text=_help_title(info), callback_data=f"{CB_HELP_MODULE}{info.name}")
         for info in help_index.categories(role)
     ]
-    rows = [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
+    # Three to a row. A last row of two or one is stretched over the whole width by Telegram.
+    rows = [buttons[i : i + 3] for i in range(0, len(buttons), 3)]
     rows.append([InlineKeyboardButton(text="Back", callback_data=CB_START)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -255,6 +278,11 @@ def _line(label: str, value: str) -> str:
     return f"<b>{label}:</b> {value}"
 
 
+def _item(label: str, value: str) -> str:
+    """One bulleted 'Label: value' line, as used in /info."""
+    return f"• {_line(label, value)}"
+
+
 @router.message(cmd("id"))
 async def cmd_id(message: Message, command: CommandObject) -> None:
     try:
@@ -325,7 +353,7 @@ def _flag_lines(flags: list[tuple[str, bool]]) -> list[str]:
     def rank(flag: tuple[str, bool]) -> int:
         return FLAG_ORDER.index(flag[0]) if flag[0] in FLAG_ORDER else len(FLAG_ORDER)
 
-    return [_line(name, f"<code>{'Yes' if value else 'No'}</code>") for name, value in sorted(flags, key=rank)]
+    return [_item(name, f"<code>{'Yes' if value else 'No'}</code>") for name, value in sorted(flags, key=rank)]
 
 
 async def _refresh_user(bot, target: Target) -> None:
@@ -350,23 +378,23 @@ async def _refresh_user(bot, target: Target) -> None:
 async def _user_info(bot, chat, target: Target) -> list[str]:
     await _refresh_user(bot, target)
 
-    lines = [_line("ID", f"<code>{target.user_id}</code>")]
+    lines = ["<b>User Info</b>", _item("ID", f"<code>{target.user_id}</code>")]
     if target.first_name:
-        lines.append(_line("First Name", esc(target.first_name)))
+        lines.append(_item("First Name", esc(target.first_name)))
     if target.last_name:
-        lines.append(_line("Last Name", esc(target.last_name)))
+        lines.append(_item("Last Name", esc(target.last_name)))
     if target.username:
-        lines.append(_line("Username", f"@{esc(target.username)}"))
-    lines.append(_line("User link", f'<a href="tg://user?id={target.user_id}">link</a>'))
+        lines.append(_item("Username", f"@{esc(target.username)}"))
+    lines.append(_item("User link", f'<a href="tg://user?id={target.user_id}">link</a>'))
 
     in_group = chat.type in ("group", "supergroup")
     member = await _chat_member(bot, chat.id, target.user_id) if in_group else None
     if member is not None:
-        lines.append(_line("Status", f"<code>{_chat_status(member)}</code>"))
+        lines.append(_item("Status", f"<code>{_chat_status(member)}</code>"))
 
     role = await roles.get_role(target.user_id)
     if role is not None:
-        lines.append(_line("Bot Role", f"<code>{roles.label(role)}</code>"))
+        lines.append(_item("Bot Role", f"<code>{roles.label(role)}</code>"))
 
     # A role settles it: admins and the bot's staff have no flags to list.
     has_role = role is not None or (member not in (None, "gone") and _chat_status(member) in ("Owner", "Admin"))
@@ -378,19 +406,19 @@ async def _user_info(bot, chat, target: Target) -> list[str]:
 
 
 async def _chat_info(bot, target: Target) -> list[str]:
-    lines = [_line("ID", f"<code>{target.user_id}</code>")]
+    lines = ["<b>Chat Info</b>", _item("ID", f"<code>{target.user_id}</code>")]
     if target.title:
-        lines.append(_line("Title", esc(target.title)))
-    lines.append(_line("Type", f"<code>{KIND_LABELS[target.kind]}</code>"))
+        lines.append(_item("Title", esc(target.title)))
+    lines.append(_item("Type", f"<code>{KIND_LABELS[target.kind]}</code>"))
     if target.username:
-        lines.append(_line("Username", f"@{esc(target.username)}"))
-        lines.append(_line("Link", f'<a href="https://t.me/{esc(target.username)}">link</a>'))
+        lines.append(_item("Username", f"@{esc(target.username)}"))
+        lines.append(_item("Link", f'<a href="https://t.me/{esc(target.username)}">link</a>'))
     try:
         members = await bot.get_chat_member_count(target.user_id)
     except TelegramAPIError:
         members = None
     if members is not None:
-        lines.append(_line("Members", f"<code>{members}</code>"))
+        lines.append(_item("Members", f"<code>{members}</code>"))
     return lines
 
 
@@ -414,3 +442,99 @@ async def cmd_info(message: Message, command: CommandObject) -> None:
     else:
         lines = await _user_info(message.bot, message.chat, target)
     await reply(message, "\n".join(lines), link_preview_options=NO_PREVIEW)
+
+
+# --- Lookups: /tr, /dict, /time, /weather, /cash -------------------------------------
+
+LOOKUP_COOLDOWN = 3.0  # seconds between lookups of one person, to be kind to the free services
+_last_lookup: dict[int, float] = {}
+
+
+def _too_fast(message: Message) -> bool:
+    user = message.from_user
+    if user is None:
+        return False
+    now = time.monotonic()
+    if now - _last_lookup.get(user.id, 0.0) < LOOKUP_COOLDOWN:
+        return True
+    if len(_last_lookup) >= 5000:
+        _last_lookup.clear()
+    _last_lookup[user.id] = now
+    return False
+
+
+async def _lookup(message: Message, work) -> None:
+    """Run one lookup (a coroutine function) and send its text, or the reason it failed."""
+    if _too_fast(message):
+        await reply(message, "Slow down a little and try again in a few seconds.")
+        return
+    try:
+        text = await work()
+    except web.WebError as exc:
+        text = str(exc)  # always a ready-made sentence, already safe for HTML
+    await reply(message, text, link_preview_options=NO_PREVIEW)
+
+
+@router.message(cmd("tr"))
+async def cmd_tr(message: Message, command: CommandObject) -> None:
+    words = (command.args or "").split(maxsplit=1)
+    target = "en"
+    rest = command.args or ""
+    if words and lookup.is_language(words[0]):
+        target = words[0].lower()
+        rest = words[1] if len(words) > 1 else ""
+    text = rest.strip()
+    if not text:
+        replied = replied_message(message)
+        text = ((replied.text or replied.caption or "") if replied else "").strip()
+    if not text:
+        await reply(message, "Use /tr [language] &lt;text&gt;, or reply to a message with /tr.")
+        return
+    await _lookup(message, lambda: lookup.translate(text, target))
+
+
+@router.message(cmd("dict"))
+async def cmd_dict(message: Message, command: CommandObject) -> None:
+    word = (command.args or "").strip()
+    if not word:
+        await reply(message, "Use /dict &lt;word&gt;.")
+        return
+    if len(word) > 60:
+        await reply(message, "That is too long for a word.")
+        return
+    await _lookup(message, lambda: lookup.dictionary(word))
+
+
+@router.message(cmd("time"))
+async def cmd_time(message: Message, command: CommandObject) -> None:
+    query = (command.args or "").strip()
+    if not query:
+        await reply(message, "Use /time &lt;place or timezone&gt;, like /time Tokyo or /time Europe/Warsaw.")
+        return
+    await _lookup(message, lambda: lookup.time_in(query[:100]))
+
+
+@router.message(cmd("weather"))
+async def cmd_weather(message: Message, command: CommandObject) -> None:
+    query = (command.args or "").strip()
+    if not query:
+        await reply(message, "Use /weather &lt;place&gt;, like /weather Warsaw.")
+        return
+    await _lookup(message, lambda: lookup.weather(query[:100]))
+
+
+@router.message(cmd("cash"))
+async def cmd_cash(message: Message, command: CommandObject) -> None:
+    usage = "Use /cash &lt;amount&gt; &lt;from&gt; &lt;to&gt;, like /cash 100 usd pln."
+    words = (command.args or "").split()
+    if len(words) == 2 and all(w.isalpha() for w in words):
+        words = ["1"] + words  # /cash usd pln
+    if len(words) != 3:
+        await reply(message, usage)
+        return
+    amount = lookup.parse_amount(words[0])
+    source, target = words[1], words[2]
+    if amount is None or not (len(source) == 3 and len(target) == 3 and source.isalpha() and target.isalpha()):
+        await reply(message, usage)
+        return
+    await _lookup(message, lambda: lookup.currency(amount, source, target))

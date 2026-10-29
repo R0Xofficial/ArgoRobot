@@ -133,11 +133,16 @@ def escape_wildcards(text: str) -> str:
     return re.sub(r"([*?])", r"\\\1", text)
 
 
+def word_regex(body: str) -> re.Pattern:
+    """A wildcard text as a regular expression that finds it as whole words, ignoring case."""
+    return re.compile(r"(?<!\w)" + _glob(body) + r"(?!\w)", re.IGNORECASE | re.DOTALL)
+
+
 def build(pattern: str, action: str | None, seconds: int, reason: str | None) -> Trigger:
     kind, body = split_modifier(pattern)
     regex = None
     if kind == "plain":
-        regex = re.compile(r"(?<!\w)" + _glob(body) + r"(?!\w)", re.IGNORECASE | re.DOTALL)
+        regex = word_regex(body)
     elif kind == "exact":
         regex = re.compile(r"\A" + _glob(body) + r"\Z", re.IGNORECASE | re.DOTALL)
     elif kind == "prefix":

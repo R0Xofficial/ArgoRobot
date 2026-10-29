@@ -79,6 +79,8 @@ CREATE TABLE IF NOT EXISTS chat_settings (
 ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS gban_enforce BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS admin_errors BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS anon_admin BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS clean_commands BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS reports BOOLEAN NOT NULL DEFAULT TRUE;
 
 -- Antiflood settings of a chat (see core/flood.py). flood_limit and timer_count of 0 mean "off".
 CREATE TABLE IF NOT EXISTS flood_settings (
@@ -108,6 +110,73 @@ CREATE TABLE IF NOT EXISTS blacklist_settings (
     mode           TEXT NOT NULL DEFAULT 'del',
     mode_seconds   INTEGER NOT NULL DEFAULT 0,
     delete_matches BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+-- Welcome and goodbye messages of a chat and what goes with them (see core/greetings.py).
+-- A NULL content means "the default message".
+CREATE TABLE IF NOT EXISTS greetings (
+    chat_id               BIGINT PRIMARY KEY,
+    welcome_on            BOOLEAN NOT NULL DEFAULT TRUE,
+    welcome_content       TEXT,
+    welcome_media_type    TEXT,
+    welcome_media_file_id TEXT,
+    goodbye_on            BOOLEAN NOT NULL DEFAULT FALSE,
+    goodbye_content       TEXT,
+    goodbye_media_type    TEXT,
+    goodbye_media_file_id TEXT,
+    welcome_mute          BOOLEAN NOT NULL DEFAULT FALSE,
+    clean_welcome         BOOLEAN NOT NULL DEFAULT FALSE,
+    clean_service         BOOLEAN NOT NULL DEFAULT FALSE,
+    last_welcome_id       BIGINT
+);
+
+-- Locks: kinds of messages a chat does not allow (see core/locks.py).
+CREATE TABLE IF NOT EXISTS locks (
+    chat_id BIGINT NOT NULL,
+    item    TEXT NOT NULL,
+    PRIMARY KEY (chat_id, item)
+);
+CREATE TABLE IF NOT EXISTS lock_settings (
+    chat_id BIGINT PRIMARY KEY,
+    warn    BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE IF NOT EXISTS lock_allowlist (
+    chat_id BIGINT NOT NULL,
+    entry   TEXT NOT NULL,
+    PRIMARY KEY (chat_id, entry)
+);
+
+-- The rules of a chat (see core/rulestore.py).
+CREATE TABLE IF NOT EXISTS rules (
+    chat_id       BIGINT PRIMARY KEY,
+    content       TEXT NOT NULL DEFAULT '',
+    media_type    TEXT,
+    media_file_id TEXT
+);
+
+-- Words that keep people out when their profile contains them (see core/joinblacklist.py).
+CREATE TABLE IF NOT EXISTS join_blacklist (
+    chat_id BIGINT NOT NULL,
+    kind    TEXT NOT NULL,      -- name / username / bio / channel
+    pattern TEXT NOT NULL,
+    PRIMARY KEY (chat_id, kind, pattern)
+);
+
+-- Admins who turned off report alerts in their private chat with the bot (see core/reports.py).
+CREATE TABLE IF NOT EXISTS report_optout (
+    user_id BIGINT PRIMARY KEY
+);
+
+-- Notes of a chat (see core/notestore.py). content is the text as its author wrote it.
+CREATE TABLE IF NOT EXISTS notes (
+    chat_id       BIGINT NOT NULL,
+    name          TEXT NOT NULL,
+    content       TEXT NOT NULL DEFAULT '',
+    media_type    TEXT,
+    media_file_id TEXT,
+    created_by    BIGINT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (chat_id, name)
 );
 
 -- Saved replies to keywords (see core/filterstore.py). content is the text as its author wrote it.

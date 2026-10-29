@@ -36,7 +36,7 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
 )
 
-from core import blacklist, chatsettings, database, filterstore, flood, logs
+from core import blacklist, chatsettings, database, filterstore, flood, joinblacklist, locks, logs
 from core.errors import report_exception
 from core.text import esc
 from core.users import CACHE_LIMIT, IGNORED_IDS, REFRESH_SECONDS
@@ -223,12 +223,14 @@ async def migrate_chat(old_id: int, new_id: int) -> None:
         new_id,
     )
     # Settings, warns and approvals follow the chat to its new id.
-    for table in ("chat_settings", "warn_settings", "warns", "approvals", "gban_bans", "flood_settings", "blacklist", "blacklist_settings", "filters"):
+    for table in ("chat_settings", "warn_settings", "warns", "approvals", "gban_bans", "flood_settings", "blacklist", "blacklist_settings", "filters", "greetings", "join_blacklist", "notes", "rules", "locks", "lock_settings", "lock_allowlist"):
         await database.execute(f"UPDATE {table} SET chat_id = $2 WHERE chat_id = $1", old_id, new_id)
     chatsettings.forget(old_id)
     flood.forget(old_id)
     blacklist.forget(old_id)
     filterstore.forget(old_id)
+    joinblacklist.forget(old_id)
+    locks.forget(old_id)
     await remove_chat(old_id)
 
 

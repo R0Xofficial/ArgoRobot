@@ -2,7 +2,7 @@
 The whitelist: users protected from global bans and federation bans.
 
 Developers and sudo users manage it with /whitelist and /unwhitelist
-(modules/whitelist.py). Modules that ban people across chats ask `is_protected()`
+(modules/root.py). Modules that ban people across chats ask `is_protected()`
 before acting; it covers both the whitelist and the fixed immunity list
 (core/immunity.py).
 

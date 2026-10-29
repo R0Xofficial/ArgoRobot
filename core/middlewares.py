@@ -10,10 +10,12 @@ import logging
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
+from aiogram.dispatcher.event.bases import UNHANDLED
+from aiogram.exceptions import TelegramAPIError
 from aiogram.types import Update
 
 from config import settings
-from core import chats, roles, users
+from core import chatsettings, chats, registry, roles, users
 
 log = logging.getLogger("usage")
 
@@ -104,3 +106,47 @@ class UsersMiddleware(BaseMiddleware):
             for chat_id in users.group_chats(event):
                 users.schedule_admin_refresh(bot, chat_id, force=joined)
         return await handler(event, data)
+
+
+class CleanCommandsMiddleware(BaseMiddleware):
+    """
+    Deletes the commands people sent once the bot has dealt with them, in chats whose
+    admins turned that on with /cleanbluetext (modules/admin.py).
+
+    Only commands the bot handled are removed, and only those meant for this bot:
+    /cmd@otherbot is left alone.
+    """
+
+    async def __call__(
+        self,
+        handler: Callable[[Update, dict[str, Any]], Awaitable[Any]],
+        event: Update,
+        data: dict[str, Any],
+    ) -> Any:
+        result = await handler(event, data)
+        message = event.message
+        if result is UNHANDLED or message is None:
+            return result
+        try:
+            if await self._should_delete(message, data.get("bot")):
+                await message.delete()
+        except TelegramAPIError:
+            pass  # no right to delete, or already gone: nothing to do
+        except Exception:
+            log.debug("Failed to clean a command", exc_info=True)
+        return result
+
+    @staticmethod
+    async def _should_delete(message, bot) -> bool:
+        info = registry.get("admin")
+        if info is not None and not info.enabled:
+            return False
+        if message.chat.type not in ("group", "supergroup") or not message.text:
+            return False
+        word = message.text.split(maxsplit=1)[0]
+        if not word.startswith(tuple(settings.COMMAND_PREFIXES)) or len(word) < 2:
+            return False
+        _, _, addressed = word.partition("@")
+        if addressed and bot is not None and addressed.lower() != ((await bot.me()).username or "").lower():
+            return False
+        return await chatsettings.clean_commands(message.chat.id)

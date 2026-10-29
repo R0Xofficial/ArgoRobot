@@ -15,6 +15,10 @@ therefore cached in memory:
                 admin command. On by default; /adminerror.
   anon_admin    whether anonymous admins may use every command without their rights
                 being checked (Telegram hides who they are). Off by default; /anonadmin.
+  clean_commands  whether the bot deletes the commands people send after answering them
+                (core/middlewares.py). Off by default; /cleanbluetext.
+  reports       whether people may report messages to the admins (modules/reporting.py).
+                On by default; /reports.
 """
 
 from core import database
@@ -25,6 +29,8 @@ DEFAULTS = {
     "gban_enforce": True,
     "admin_errors": True,
     "anon_admin": False,
+    "clean_commands": False,
+    "reports": True,
 }
 
 _cache: dict[str, dict[int, bool]] = {name: {} for name in DEFAULTS}
@@ -83,6 +89,22 @@ async def anon_admin(chat_id: int) -> bool:
 
 async def set_anon_admin(chat_id: int, enabled: bool) -> None:
     await _set("anon_admin", chat_id, enabled)
+
+
+async def clean_commands(chat_id: int) -> bool:
+    return await _get("clean_commands", chat_id)
+
+
+async def set_clean_commands(chat_id: int, enabled: bool) -> None:
+    await _set("clean_commands", chat_id, enabled)
+
+
+async def reports(chat_id: int) -> bool:
+    return await _get("reports", chat_id)
+
+
+async def set_reports(chat_id: int, enabled: bool) -> None:
+    await _set("reports", chat_id, enabled)
 
 
 def forget(chat_id: int) -> None:

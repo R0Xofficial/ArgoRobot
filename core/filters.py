@@ -13,10 +13,12 @@ def cmd(*names: str) -> Command:
 
         @router.message(cmd("ping"))
 
+    Commands are case-insensitive: /Ban and /joinBlacklists work like /ban and /joinblacklists.
+
     Note: in groups Telegram only delivers "!" commands to bots that are
     admins or have privacy mode disabled in BotFather.
     """
-    return Command(*names, prefix=settings.COMMAND_PREFIXES)
+    return Command(*names, prefix=settings.COMMAND_PREFIXES, ignore_case=True)
 
 
 class HasRole(BaseFilter):

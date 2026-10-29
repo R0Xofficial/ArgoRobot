@@ -2,23 +2,15 @@
 
 import logging
 import time
-from contextlib import suppress
 from typing import Any
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
-from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    LinkPreviewOptions,
-    Message,
-    ReplyParameters,
-)
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions, Message
 
 from config import settings
-from core import filterstore, markup, moderation
+from core import filterstore, moderation, sender
 from core.filterstore import FilterError
 from core.filters import cmd
 from core.helpers import edit, reply
@@ -124,34 +116,11 @@ CB_CLEAR = "filters:clear:"  # filters:clear:yes / filters:clear:no
 COOLDOWN = 5.0  # seconds before the same filter answers again in the same chat
 MAX_LISTED = 100
 NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
-CAPTION_LIMIT = 1024
-MESSAGE_LIMIT = 4096
 
 _answered: dict[tuple[int, str], float] = {}
 
 
 # --- Reading what to save -----------------------------------------------------------
-
-def _media_of(message: Message | None) -> tuple[str, str] | None:
-    if message is None:
-        return None
-    if getattr(message, "animation", None):  # a GIF is also a document
-        return "animation", message.animation.file_id
-    for kind in ("video", "audio", "voice", "video_note", "sticker", "document"):
-        found = getattr(message, kind, None)
-        if found:
-            return kind, found.file_id
-    photo = getattr(message, "photo", None)
-    if photo:
-        return "photo", photo[-1].file_id  # the biggest size comes last
-    return None
-
-
-def _text_of(message: Message) -> str:
-    if message.text:
-        return markup.from_entities(message.text, message.entities)
-    return markup.from_entities(message.caption or "", message.caption_entities)
-
 
 # --- Commands -------------------------------------------------------------------------------
 
@@ -190,23 +159,14 @@ async def cmd_filter(message: Message, command: CommandObject, role: Role | None
         return
 
     replied = replied_message(message)
-    media = _media_of(replied)
+    media = sender.media_of(replied)
     if not text and replied is not None:
-        text = _text_of(replied)
+        text = sender.text_of(replied)
     if not text and media is None:
         await reply(message, "Tell me what to answer with: write the text after the keyword, or reply to a message.")
         return
-    if len(text) > filterstore.MAX_CONTENT:
-        await reply(message, f"That reply is too long: at most {filterstore.MAX_CONTENT} characters.")
-        return
     try:
-        markup.check(text)
-        for variant in markup.variants(text):
-            html = markup.parse(variant).html
-            if len(html) > MESSAGE_LIMIT:
-                raise MarkupError("A variant is too long once formatted.")
-            if not html and media is None:
-                raise MarkupError("A message needs some text (buttons alone are not enough).")
+        sender.validate(text, media is not None)
     except MarkupError as exc:
         await reply(message, esc(exc))
         return
@@ -313,96 +273,11 @@ async def _matched(message: Message) -> dict[str, Any] | bool:
     return {"filter_pattern": pattern}
 
 
-async def _fillings(message: Message, source: str) -> dict[str, str]:
-    user = message.from_user
-    values = {
-        "first": user.first_name or "",
-        "last": user.last_name or "",
-        "fullname": user.full_name,
-        "username": f"@{user.username}" if user.username else "",
-        "mention": user.full_name,
-        "id": str(user.id),
-        "chatname": message.chat.title or "",
-        "count": "",
-    }
-    if "{count}" in source:
-        with suppress(TelegramAPIError):
-            values["count"] = str(await message.bot.get_chat_member_count(message.chat.id))
-    return values
-
-
-def _keyboard(parsed: markup.Parsed) -> InlineKeyboardMarkup | None:
-    if not parsed.buttons:
-        return None
-    return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text=text, url=url) for text, url in row] for row in parsed.buttons]
-    )
-
-
-async def _send_media(message: Message, kind: str, file_id: str, caption: str | None, extra: dict[str, Any]) -> None:
-    method = {
-        "photo": "send_photo",
-        "video": "send_video",
-        "animation": "send_animation",
-        "document": "send_document",
-        "audio": "send_audio",
-        "voice": "send_voice",
-        "sticker": "send_sticker",
-        "video_note": "send_video_note",
-    }[kind]
-    kwargs: dict[str, Any] = {
-        "chat_id": message.chat.id,
-        kind: file_id,
-        "message_thread_id": message.message_thread_id if message.is_topic_message else None,
-        "reply_parameters": ReplyParameters(message_id=message.message_id, allow_sending_without_reply=True),
-        **extra,
-    }
-    if caption is not None and kind not in ("sticker", "video_note"):
-        kwargs["caption"] = caption
-    await getattr(message.bot, method)(**kwargs)
-
-
 @router.message(_matched)
 async def on_match(message: Message, bot: Bot, filter_pattern: str) -> None:
     row = await filterstore.get(message.chat.id, filter_pattern)
     if row is None:
         return
-    source = markup.pick(row["content"])
-    try:
-        parsed = markup.parse(source, await _fillings(message, source))
-    except MarkupError:
-        log.warning("Filter %r in chat %s can no longer be sent", filter_pattern, message.chat.id)
-        return
-
-    keyboard = _keyboard(parsed)
-    extra: dict[str, Any] = {}
-    if "protect" in parsed.options:
-        extra["protect_content"] = True
-    if "nonotif" in parsed.options:
-        extra["disable_notification"] = True
-
-    kind, file_id = row["media_type"], row["media_file_id"]
-    text_extra = {
-        **extra,
-        "link_preview_options": LinkPreviewOptions(is_disabled="preview" not in parsed.options),
-    }
-    if kind:
-        media_extra = dict(extra)
-        if "mediaspoiler" in parsed.options and kind in ("photo", "video", "animation"):
-            media_extra["has_spoiler"] = True
-        # A caption has to be short and a sticker has none: then the text follows on its own.
-        inline = bool(parsed.html) and len(parsed.html) <= CAPTION_LIMIT and kind not in ("sticker", "video_note")
-        text_follows = bool(parsed.html) and not inline
-        if keyboard and not text_follows:
-            media_extra["reply_markup"] = keyboard  # nothing else carries the buttons
-        try:
-            await _send_media(message, kind, file_id, parsed.html if inline else None, media_extra)
-        except TelegramAPIError:
-            log.warning("Filter %r in chat %s: its media can't be sent", filter_pattern, message.chat.id)
-            if not parsed.html:
-                return
-            text_follows = True  # fall back to the text alone
-        if not text_follows:
-            return
-    with suppress(TelegramAPIError):
-        await reply(message, parsed.html, reply_markup=keyboard, **text_extra)
+    await sender.send(
+        message, message.from_user, row["content"], row["media_type"], row["media_file_id"], label=f"filter {filter_pattern!r}"
+    )

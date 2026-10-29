@@ -651,24 +651,24 @@ async def cmd_gstat(message: Message, command: CommandObject, role: Role | None 
     ban = await gbans.get(target_id)
     name = await display_name(bot, target_id, (ban or {}).get("name") or stored_name)
     title = "Your Global Ban Status:" if target_id == viewer.id else "Global Ban Status:"
-    lines = [f"<b>{title}</b>", f"<b>User:</b> {user_ref(target_id, name)}", ""]
+    lines = [f"<b>{title}</b>", f"• <b>User:</b> {user_ref(target_id, name)}", ""]
 
     target_role = await roles.get_role(target_id)
     if target_role is not None:
-        lines.append(f"<b>Status:</b> <code>{roles.label(target_role)}</code>")
+        lines.append(f"• <b>Status:</b> <code>{roles.label(target_role)}</code>")
     elif ban:
-        lines.append("<b>Status:</b> <code>Banned</code>")
-        lines.append(f"<b>Reason:</b> {esc(ban['reason'])}")
-        lines.append(f"<b>Timestamp:</b> {logs.timestamp(ban['created_at'])}")
+        lines.append("• <b>Status:</b> <code>Banned</code>")
+        lines.append(f"• <b>Reason:</b> {esc(ban['reason'])}")
+        lines.append(f"• <b>Timestamp:</b> {logs.timestamp(ban['created_at'])}")
         if await whitelist.is_whitelisted(target_id):
-            lines.append("<b>Whitelisted:</b> <code>Yes</code> (not removed from chats)")
+            lines.append("• <b>Whitelisted:</b> <code>Yes</code> (not removed from chats)")
         if role is not None and role >= SUDO:
             if ban["admin_id"] is None:
-                lines.append("<b>Admin:</b> This ban is imported.")
+                lines.append("• <b>Admin:</b> This ban is imported.")
             else:
-                lines.append(f"<b>Admin:</b> {user_ref(ban['admin_id'], ban['admin_name'])}")
+                lines.append(f"• <b>Admin:</b> {user_ref(ban['admin_id'], ban['admin_name'])}")
     else:
-        lines.append("<b>Status:</b> <code>Not Banned</code>")
+        lines.append("• <b>Status:</b> <code>Not Banned</code>")
 
     await reply(message, "\n".join(lines), link_preview_options=LinkPreviewOptions(is_disabled=True))
 

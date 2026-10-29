@@ -3,7 +3,7 @@
 from typing import Awaitable, Callable
 
 from aiogram import Router
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.filters import CommandObject
 from aiogram.types import LinkPreviewOptions, Message
 
@@ -12,6 +12,7 @@ from core.filters import cmd
 from core.helpers import reply
 from core.moderation import ModerationError, perform
 from core.roles import Role
+from core.targets import replied_message
 from core.text import esc, truncate, user_link
 
 ABOUT = """
@@ -24,6 +25,9 @@ HELP = [
     ("/link [request|count]", "Get the chat's invite link. /link request makes one where joining needs an admin's approval, /link <count> makes one that stops working after that many uses. Needs the right to invite users.", "admins"),
     ("/gtitle <new title>", "Change the chat's title (up to 128 characters). Needs the right to change chat info.", "admins"),
     ("/adminlist", "List the admins of this chat."),
+    ("/pin [loud]", "Reply to a message to pin it. People are not notified unless you add loud (or notify). Needs the right to pin messages.", "admins"),
+    ("/unpin", "Reply to a pinned message to unpin it. Without a reply, the most recent pinned message is unpinned. Needs the right to pin messages.", "admins"),
+    ("/cleanbluetext [on|off]", "Delete commands after I have dealt with them, so only my answers stay in the chat. Off by default. I need the right to delete messages; commands meant for other bots are left alone. Needs the right to change chat info.", "admins"),
     ("/adminerror [on|off]", "Choose whether I answer people who try admin commands without being admins. On by default; off makes me ignore them silently.", "chat owner"),
     ("/anonadmin [yes|no|on|off]", "Let anonymous admins use every command without their rights being checked, because Telegram hides who they are. Off by default and not recommended: anyone who can post anonymously gets full use of my commands.", "chat owner"),
     ("/staffhelp [on|off|yes|no]", "Let my staff (Sudo and up) help moderate this chat, or not. On by default. They can never change the chat's settings either way.", "chat owner"),
@@ -32,6 +36,7 @@ HELP = [
 router = Router(name="admin")
 
 NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
+CLEAN_RIGHT = "can_change_info"  # the admin right needed for /cleanbluetext
 MAX_TITLE = 128  # Telegram's limit for a chat title
 MAX_LINK_USES = 99999
 MAX_ADMINS_SHOWN = 80
@@ -287,3 +292,107 @@ async def cmd_adminlist(message: Message) -> None:
         if len(others) > MAX_ADMINS_SHOWN:
             lines.append(f"…and {len(others) - MAX_ADMINS_SHOWN} more.")
     await reply(message, "\n".join(lines), link_preview_options=NO_PREVIEW)
+
+
+# --- /cleanbluetext: the deleting itself is CleanCommandsMiddleware (core/middlewares.py) ---
+
+async def _bot_can_delete(message: Message) -> bool:
+    try:
+        me = await message.bot.get_chat_member(message.chat.id, message.bot.id)
+    except TelegramAPIError:
+        return False
+    return getattr(me, "status", None) == "creator" or bool(getattr(me, "can_delete_messages", False))
+
+
+@router.message(cmd("cleanbluetext"))
+async def cmd_cleanbluetext(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    if message.chat.type not in moderation.GROUP_TYPES:
+        await reply(message, "This command only works in groups.")
+        return
+    if await moderation.begin_chat_command(message, role, allow_staff=False, right=CLEAN_RIGHT) is None:
+        return
+    usage = "Use /cleanbluetext on or /cleanbluetext off."
+    argument = (command.args or "").strip().lower()
+    if not argument:
+        current = await chatsettings.clean_commands(message.chat.id)
+        await reply(message, f"Commands are {'<b>deleted</b> after they run' if current else '<b>kept</b>'}.\n{usage}")
+        return
+    if argument not in _ANSWERS:
+        await reply(message, usage)
+        return
+    enabled = _ANSWERS[argument]
+    await chatsettings.set_clean_commands(message.chat.id, enabled)
+    if not enabled:
+        await reply(message, "Commands will be <b>kept</b>.")
+        return
+    text = "Commands will be <b>deleted</b> after they run."
+    if not await _bot_can_delete(message):
+        text += "\nI can't delete messages here yet. Give me that admin right."
+    await reply(message, text)
+
+
+# --- /pin and /unpin --------------------------------------------------------------------------------
+
+PIN_RIGHT = "can_pin_messages"
+PIN_REFUSED = "I can't pin messages here. Make me an admin with permission to pin messages."
+_LOUD = ("loud", "notify", "violent")
+
+
+@router.message(cmd("pin"))
+async def cmd_pin(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    actor = await moderation.begin_chat_command(message, role, allow_staff=False, right=PIN_RIGHT)
+    if actor is None:
+        return
+    argument = (command.args or "").strip().lower()
+    if argument and argument not in _LOUD:
+        await reply(message, "Use /pin as a reply to a message. Add loud to notify everyone: /pin loud.")
+        return
+    target = await moderation.require_reply(message)
+    if target is None:
+        return
+    try:
+        await perform(
+            message.bot.pin_chat_message(message.chat.id, target.message_id, disable_notification=not argument),
+            PIN_REFUSED,
+        )
+    except ModerationError as exc:
+        await moderation.deny(message, exc)
+        return
+    except TelegramBadRequest as exc:
+        await reply(message, esc(_pin_problem(exc, "pin")))
+        return
+    await reply(
+        message,
+        "Pinned the message" + (" and notified everyone." if argument else ".") + moderation.attribution(actor),
+    )
+
+
+@router.message(cmd("unpin"))
+async def cmd_unpin(message: Message, role: Role | None = None) -> None:
+    actor = await moderation.begin_chat_command(message, role, allow_staff=False, right=PIN_RIGHT)
+    if actor is None:
+        return
+    target = replied_message(message)
+    try:
+        await perform(
+            message.bot.unpin_chat_message(message.chat.id, message_id=target.message_id if target else None),
+            PIN_REFUSED,
+        )
+    except ModerationError as exc:
+        await moderation.deny(message, exc)
+        return
+    except TelegramBadRequest as exc:
+        await reply(message, esc(_pin_problem(exc, "unpin")))
+        return
+    what = "the message" if target else "the most recent pinned message"
+    await reply(message, f"Unpinned {what}." + moderation.attribution(actor))
+
+
+def _pin_problem(exc: Exception, action: str) -> str:
+    """A sentence for the failures Telegram reports as plain bad requests."""
+    problem = str(exc).lower()
+    if "not found" in problem or "message_id_invalid" in problem:
+        return "That message isn't pinned." if action == "unpin" else "I can't find that message to pin."
+    if "chat_not_modified" in problem or "not modified" in problem:
+        return "That message is already pinned."
+    return f"I couldn't {action} that message."
