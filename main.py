@@ -26,11 +26,10 @@ import sys
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramAPIError
 
 import modules
 from config import settings
-from core import database, registry
+from core import database, logs, registry
 from core.errors import setup_error_handling
 from core.middlewares import LoggingMiddleware, RolesMiddleware
 from core.text import esc
@@ -86,19 +85,6 @@ def discover_modules(dp: Dispatcher) -> None:
     log.info("Module discovery finished: %d loaded, %d failed", loaded, failed)
 
 
-async def notify(bot: Bot, text: str) -> None:
-    """Send a service message to the log chat (or to the owner as a fallback)."""
-    chat_id = settings.LOG_CHAT_ID or settings.OWNER_ID
-    try:
-        await bot.send_message(
-            chat_id,
-            text,
-            message_thread_id=settings.LOG_THREAD_ID,
-        )
-    except TelegramAPIError as exc:
-        log.warning("Could not send service message to %s: %s", chat_id, exc)
-
-
 async def on_startup(bot: Bot) -> None:
     await database.init()
     await registry.load_state()
@@ -110,7 +96,7 @@ async def on_startup(bot: Bot) -> None:
     me = await bot.get_me()
     log.info("Authorized as @%s (id=%s)", me.username, me.id)
 
-    await notify(
+    await logs.dev_log(
         bot,
         f"Bot started (@{esc(me.username)}). "
         f"Modules enabled: {registry.count_enabled()}/{registry.count_loaded()}.",
@@ -119,7 +105,7 @@ async def on_startup(bot: Bot) -> None:
 
 async def on_shutdown(bot: Bot) -> None:
     log.info("Shutting down")
-    await notify(bot, "Bot stopped.")
+    await logs.dev_log(bot, "Bot stopped.")
     try:
         await database.close()
     except Exception:

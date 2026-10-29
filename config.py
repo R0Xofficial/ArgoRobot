@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",
         env_file_encoding="utf-8",
-        env_ignore_empty=True,  # "LOG_CHAT_ID=" in .env counts as "not set"
+        env_ignore_empty=True,  # "DEV_LOG_CHAT=" in .env counts as "not set"
         extra="ignore",
     )
 
@@ -36,8 +36,12 @@ class Settings(BaseSettings):
 
     # --- Logging ----------------------------------------------------------
     LOG_LEVEL: str = "INFO"
-    LOG_CHAT_ID: int | None = None      # chat for service messages (falls back to OWNER_ID)
-    LOG_THREAD_ID: int | None = None    # topic id, if LOG_CHAT_ID is a forum group
+    # Developer log: bot start/stop and error reports (tracebacks). Falls back to OWNER_ID.
+    DEV_LOG_CHAT: int | None = None
+    DEV_LOG_THREAD_ID: int | None = None   # topic id, if DEV_LOG_CHAT is a forum group
+    # Public log: promotions and demotions (#SUDO, #UNSUDO, ...). Falls back to DEV_LOG_CHAT.
+    ROLE_LOG_CHAT: int | None = None
+    ROLE_LOG_THREAD_ID: int | None = None  # topic id, if ROLE_LOG_CHAT is a forum group
 
     # --- Commands and links -----------------------------------------------
     COMMAND_PREFIXES: str = "/!"        # characters that can start a command

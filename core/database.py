@@ -35,6 +35,11 @@ CREATE TABLE IF NOT EXISTS roles (
     added_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Display names are stored at promotion time so /staff still has something to
+-- show for people the bot cannot look up any more. Added later, hence ALTER.
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS added_by_name TEXT;
+
 CREATE TABLE IF NOT EXISTS modules (
     name    TEXT PRIMARY KEY,
     enabled BOOLEAN NOT NULL

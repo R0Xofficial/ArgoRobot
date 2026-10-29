@@ -43,7 +43,7 @@ from aiogram.exceptions import (
 )
 from aiogram.types import BufferedInputFile, ErrorEvent, Update
 
-from config import settings
+from core import logs
 from core.text import esc, truncate
 
 log = logging.getLogger("errors")
@@ -168,17 +168,18 @@ def _is_throttled(exc: BaseException) -> bool:
 
 
 async def report_exception(bot: Bot, exc: BaseException, update: Any = None) -> None:
-    """Send the traceback as a .txt file to the log chat. Never raises."""
+    """Send the traceback as a .txt file to the developer log chat. Never raises."""
     try:
         if _is_throttled(exc):
             return
 
         caption, filename, content = build_report(exc, update)
+        chat_id, thread_id = logs.dev_target()
         await bot.send_document(
-            chat_id=settings.LOG_CHAT_ID or settings.OWNER_ID,
+            chat_id=chat_id,
             document=BufferedInputFile(content, filename=filename),
             caption=caption,
-            message_thread_id=settings.LOG_THREAD_ID,
+            message_thread_id=thread_id,
         )
     except Exception as send_error:
         log.warning("Could not deliver the error report: %s", send_error)

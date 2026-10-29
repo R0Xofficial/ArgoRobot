@@ -48,3 +48,13 @@ def truncate(text: str, limit: int, suffix: str = "...") -> str:
     if len(text) <= limit:
         return text
     return text[: max(0, limit - len(suffix))] + suffix
+
+
+def user_link(user_id: int, name: str | None) -> str:
+    """Clickable mention that opens the user's profile."""
+    return f'<a href="tg://user?id={int(user_id)}">{esc(name or "User")}</a>'
+
+
+def user_ref(user_id: int, name: str | None) -> str:
+    """Profile link followed by the id: Name [123456789]."""
+    return f"{user_link(user_id, name)} [<code>{int(user_id)}</code>]"
