@@ -1,10 +1,11 @@
 """
 Log destinations.
 
-  * Developer log (DEV_LOG_CHAT): bot start/stop and error reports. Private,
-    meant for the people running the bot. Falls back to the owner's PM.
-  * Role log (ROLE_LOG_CHAT): promotions and demotions of staff. Meant to be a
-    public group anyone can read. Falls back to the developer log.
+  * Developer log (DEV_LOG_CHAT): bot start/stop and error reports (tracebacks).
+    Private, meant for the people running the bot. Falls back to the owner's PM.
+  * User log (LOG_CHAT_ID): promotions and demotions of staff and, later, other
+    public information. Meant to be a group anyone can read. Falls back to the
+    developer log.
 
 Sending never raises: a missing log chat must not break a command.
 """
@@ -27,9 +28,9 @@ def dev_target() -> tuple[int, int | None]:
 
 
 def role_target() -> tuple[int, int | None]:
-    """(chat_id, thread_id) of the public role log."""
-    if settings.ROLE_LOG_CHAT:
-        return settings.ROLE_LOG_CHAT, settings.ROLE_LOG_THREAD_ID
+    """(chat_id, thread_id) of the user log."""
+    if settings.LOG_CHAT_ID:
+        return settings.LOG_CHAT_ID, settings.LOG_THREAD_ID
     return dev_target()
 
 
@@ -53,5 +54,5 @@ async def dev_log(bot: Bot, text: str) -> bool:
 
 
 async def role_log(bot: Bot, text: str) -> bool:
-    """Send a message to the public role log."""
+    """Send a message to the user log (role changes)."""
     return await _send(bot, role_target(), text, "role log message")
