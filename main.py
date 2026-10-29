@@ -12,6 +12,7 @@ Responsibilities:
 Module contract (modules/<name>.py or modules/<name>/__init__.py):
   router: aiogram.Router   (required)
 
+Optional: PRIORITY (int, lower = checked earlier, default 0), PROTECTED (bool).
 Files starting with "_" are ignored. Enabling and disabling modules at runtime
 is handled by core.registry, so dropping a new file into modules/ is all that
 is needed to add a feature.
@@ -59,8 +60,9 @@ def discover_modules(dp: Dispatcher) -> None:
     """
     loaded = 0
     failed = 0
+    found = []
 
-    for info in sorted(pkgutil.iter_modules(modules.__path__), key=lambda i: i.name):
+    for info in pkgutil.iter_modules(modules.__path__):
         if info.name.startswith("_"):
             continue
 
@@ -71,16 +73,28 @@ def discover_modules(dp: Dispatcher) -> None:
                 log.warning("Module '%s' has no 'router' attribute, skipping", info.name)
                 failed += 1
                 continue
-
-            # The registry remembers the module and gates its router, so it
-            # can be toggled on and off without detaching anything.
-            registry.register(info.name, module, router)
-            dp.include_router(router)
-            loaded += 1
-            log.info("Loaded module: %s", info.name)
+            found.append((info.name, module, router))
         except Exception:
             failed += 1
             log.exception("Failed to load module '%s'", info.name)
+
+    # Routers are asked in this order and the first handler that matches wins.
+    # A module can ask to be asked earlier with PRIORITY (lower comes first, the
+    # default is 0); modules/gbans.py uses it so that globally banned users are
+    # dealt with before any command of theirs is looked at.
+    found.sort(key=lambda item: (getattr(item[1], "PRIORITY", 0), item[0]))
+
+    for name, module, router in found:
+        try:
+            # The registry remembers the module and gates its router, so it
+            # can be toggled on and off without detaching anything.
+            registry.register(name, module, router)
+            dp.include_router(router)
+            loaded += 1
+            log.info("Loaded module: %s", name)
+        except Exception:
+            failed += 1
+            log.exception("Failed to load module '%s'", name)
 
     log.info("Module discovery finished: %d loaded, %d failed", loaded, failed)
 

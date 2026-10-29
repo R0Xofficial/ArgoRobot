@@ -36,7 +36,7 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
 )
 
-from core import database, logs
+from core import blacklist, chatsettings, database, flood, logs
 from core.errors import report_exception
 from core.text import esc
 from core.users import CACHE_LIMIT, IGNORED_IDS, REFRESH_SECONDS
@@ -150,7 +150,8 @@ ON CONFLICT (user_id, chat_id) DO UPDATE SET last_seen = now()
 
 # A data-modifying CTE runs even though nothing reads from it.
 DELETE_CHAT = """
-WITH gone AS (DELETE FROM user_chats WHERE chat_id = $1)
+WITH gone AS (DELETE FROM user_chats WHERE chat_id = $1),
+     bans AS (DELETE FROM gban_bans WHERE chat_id = $1)
 DELETE FROM chats WHERE chat_id = $1
 """
 
@@ -221,6 +222,12 @@ async def migrate_chat(old_id: int, new_id: int) -> None:
         old_id,
         new_id,
     )
+    # Settings, warns and approvals follow the chat to its new id.
+    for table in ("chat_settings", "warn_settings", "warns", "approvals", "gban_bans", "flood_settings", "blacklist", "blacklist_settings"):
+        await database.execute(f"UPDATE {table} SET chat_id = $2 WHERE chat_id = $1", old_id, new_id)
+    chatsettings.forget(old_id)
+    flood.forget(old_id)
+    blacklist.forget(old_id)
     await remove_chat(old_id)
 
 
@@ -262,7 +269,7 @@ async def all_chats() -> list[dict[str, Any]]:
 async def chats_of_user(user_id: int) -> list[dict[str, Any]]:
     """Chats the bot has seen this user in."""
     return await database.fetch_all(
-        "SELECT c.chat_id, c.type, c.title, c.username, uc.first_seen, uc.last_seen "
+        "SELECT c.chat_id, c.type, c.title, c.username, c.bot_admin, uc.first_seen, uc.last_seen "
         "FROM user_chats uc JOIN chats c ON c.chat_id = uc.chat_id "
         "WHERE uc.user_id = $1 ORDER BY uc.last_seen DESC",
         user_id,

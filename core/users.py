@@ -26,12 +26,13 @@ from typing import Any, Iterable
 
 from aiogram.exceptions import TelegramAPIError
 
-from core import database
+from core import database, immunity
 
 log = logging.getLogger(__name__)
 
-# Telegram's own service accounts (system messages, anonymous admins, channels).
-IGNORED_IDS = {777000, 1087968824, 136817688}
+# The placeholder accounts behind system messages, anonymous admins and users
+# writing as a channel. They are never recorded as users (see core/immunity.py).
+IGNORED_IDS = set(immunity.PLACEHOLDER_SENDERS)
 
 # Update types that carry users. Some only arrive when the bot is an admin of
 # the chat (chat_member, message_reaction) or has the feature enabled (inline).

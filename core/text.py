@@ -58,3 +58,13 @@ def user_link(user_id: int, name: str | None) -> str:
 def user_ref(user_id: int, name: str | None) -> str:
     """Profile link followed by the id: Name [123456789]."""
     return f"{user_link(user_id, name)} [<code>{int(user_id)}</code>]"
+
+
+def duration_text(seconds: int) -> str:
+    """90 -> '1 minute 30 seconds'."""
+    parts = []
+    for name, size in (("day", 86400), ("hour", 3600), ("minute", 60), ("second", 1)):
+        count, seconds = divmod(seconds, size)
+        if count:
+            parts.append(f"{count} {name}{'' if count == 1 else 's'}")
+    return " ".join(parts)

@@ -2,14 +2,14 @@
 
 import asyncio
 import time
-from datetime import datetime, timezone
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from config import settings
-from core import chats, logs, registry, roles
+from core import chats, database, gbans, logs, registry, roles, speedtest, whitelist
 from core.filters import HasRole, cmd
 from core.helpers import edit, reply
 from core.roles import Role
@@ -21,18 +21,27 @@ from core.text import esc, user_link, user_ref
 PROTECTED = True
 
 # Commands shown in /help (see core/help_index.py).
+ABOUT = """
+Commands for running the bot itself. Most of them are for my staff, so you only see the ones your role allows.
+
+Staff roles, from lowest to highest: Support, Sudo, Developer, Owner. A role can grant and remove the roles below it: Sudo manages Support, Developer manages Sudo, and the Owner manages Developers.
+"""
+
 HELP = [
-    ("/ping", "Check how fast I respond"),
-    ("/modules", "List modules and their status", Role.DEVELOPER),
-    ("/module <enable|disable> <name>", "Enable or disable a module", Role.DEVELOPER),
-    ("/cleanchats", "Forget chats I have been removed from", Role.DEVELOPER),
-    ("/staff", "Show who holds each staff role", Role.SUPPORT),
-    ("/adddev <user>", "Grant the Developer role", Role.OWNER),
-    ("/rmdev <user>", "Remove the Developer role", Role.OWNER),
-    ("/addsudo <user>", "Grant the Sudo role", Role.DEVELOPER),
-    ("/rmsudo <user>", "Remove the Sudo role", Role.DEVELOPER),
-    ("/addsupport <user>", "Grant the Support role", Role.SUDO),
-    ("/rmsupport <user>", "Remove the Support role", Role.SUDO),
+    ("/ping", "Check that I'm alive and how fast I answer."),
+    ("/modules", "List every module and whether it is enabled.", Role.DEVELOPER),
+    ("/module <enable|disable> <name>", "Turn a module on or off. A disabled module stops answering and disappears from /help. Core modules can't be disabled.", Role.DEVELOPER),
+    ("/cleanchats", "Forget the chats I have been removed from and report how many were dropped.", Role.DEVELOPER),
+    ("/stats", "Show what I know: users, chats, bans and more.", Role.DEVELOPER),
+    ("/leave", "Make me leave the chat where you send it.", Role.DEVELOPER),
+    ("/speedtest", "Measure the ping, download and upload speed of my server.", Role.DEVELOPER),
+    ("/staff", "Show who holds each staff role.", Role.SUPPORT),
+    ("/adddev <user>", "Grant the Developer role.", Role.OWNER),
+    ("/rmdev <user>", "Remove the Developer role.", Role.OWNER),
+    ("/addsudo <user>", "Grant the Sudo role.", Role.DEVELOPER),
+    ("/rmsudo <user>", "Remove the Sudo role.", Role.DEVELOPER),
+    ("/addsupport <user>", "Grant the Support role.", Role.SUDO),
+    ("/rmsupport <user>", "Remove the Support role.", Role.SUDO),
 ]
 
 router = Router(name="root")
@@ -126,20 +135,80 @@ async def cmd_cleanchats(message: Message) -> None:
     await edit(sent, chats.report(result, "Chat cleanup finished"))
 
 
+@router.message(cmd("stats"), HasRole(Role.DEVELOPER))
+async def cmd_stats(message: Message) -> None:
+    """What the bot has recorded, in numbers."""
+    people = await database.fetch_one("SELECT count(*) AS total, count(*) FILTER (WHERE is_bot) AS bots FROM users")
+    places = await database.fetch_all("SELECT type, count(*) AS total FROM chats GROUP BY type")
+    by_type = {row["type"]: row["total"] for row in places}
+    groups = by_type.get("group", 0) + by_type.get("supergroup", 0)
+    staff = await database.fetch_one("SELECT count(*) AS total FROM roles")
+    approved = await database.fetch_one("SELECT count(*) AS total FROM approvals")
+
+    lines = [
+        "<b>Bot Statistics:</b>",
+        "",
+        f"• <b>Known Users:</b> <code>{people['total']}</code> (bots: <code>{people['bots']}</code>)",
+        f"• <b>Chats:</b> <code>{sum(by_type.values())}</code> "
+        f"(groups: <code>{groups}</code>, channels: <code>{by_type.get('channel', 0)}</code>)",
+        f"• <b>Global Bans:</b> <code>{await gbans.count()}</code>",
+        f"• <b>Whitelisted:</b> <code>{len(await whitelist.list_all())}</code>",
+        f"• <b>Approved Users:</b> <code>{approved['total']}</code>",
+        f"• <b>Staff:</b> <code>{staff['total'] + 1}</code> (including the owner)",
+        f"• <b>Modules:</b> <code>{registry.count_enabled()}</code> of <code>{registry.count_loaded()}</code> enabled",
+    ]
+    await reply(message, "\n".join(lines))
+
+
+@router.message(cmd("leave"), HasRole(Role.DEVELOPER))
+async def cmd_leave(message: Message) -> None:
+    """Leave the chat the command is used in."""
+    if message.chat.type == "private":
+        await reply(message, "I can only leave groups and channels.")
+        return
+
+    chat_id = message.chat.id
+    await reply(message, "Farewell! My duties here are finished. 🫡")
+    try:
+        await message.bot.leave_chat(chat_id)
+    except TelegramAPIError as exc:
+        await reply(message, f"I couldn't leave this chat: <code>{esc(getattr(exc, 'message', exc))}</code>")
+        return
+    await chats.remove_chat(chat_id)
+
+
+_speedtest_running = False
+
+
+@router.message(cmd("speedtest"), HasRole(Role.DEVELOPER))
+async def cmd_speedtest(message: Message) -> None:
+    global _speedtest_running
+    if _speedtest_running:
+        await reply(message, "A speedtest is already running.")
+        return
+
+    _speedtest_running = True
+    sent = await reply(message, "Running a speedtest, this takes a few seconds...")
+    try:
+        ping, download, upload = await speedtest.run()
+        text = (
+            "<b>Speedtest</b>\n\n"
+            f"• <b>Ping:</b> <code>{ping:.1f} ms</code>\n"
+            f"• <b>Download:</b> <code>{download:.2f} Mbps</code>\n"
+            f"• <b>Upload:</b> <code>{upload:.2f} Mbps</code>"
+        )
+    except Exception as exc:  # network trouble of any kind: report it, don't crash
+        text = f"<b>Speedtest failed:</b> <code>{esc(str(exc) or type(exc).__name__)}</code>"
+    finally:
+        _speedtest_running = False
+    await edit(sent, text)
+
+
 # --- Staff roles ------------------------------------------------------------
 
-def _timestamp(when: datetime | None = None) -> str:
-    when = (when or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    return f"<code>{when:%Y-%m-%d %H:%M:%S} UTC</code>"
-
-
-def _role_log_text(tag: str, user_id: int, name: str | None, admin) -> str:
-    return (
-        f"<b>{tag}</b>\n"
-        f"<b>User:</b> {user_ref(user_id, name)}\n"
-        f"<b>Timestamp:</b> {_timestamp()}\n"
-        f"<b>Admin:</b> {user_ref(admin.id, admin.full_name)}"
-    )
+# Shared with the other modules that write to the user log (see core/logs.py).
+_timestamp = logs.timestamp
+_role_log_text = logs.audit_text
 
 
 @router.message(cmd(*GRANT_COMMANDS, *REVOKE_COMMANDS), HasRole(Role.SUPPORT))
@@ -178,6 +247,9 @@ async def cmd_staff_role(message: Message, command: CommandObject, role: Role | 
                 message,
                 f"{who} is already {roles.label(current)}. Remove that role first.",
             )
+            return
+        if await gbans.is_gbanned(target.user_id):
+            await reply(message, f"{who} is globally banned and can't be promoted.")
             return
         await roles.set_role(target.user_id, target_role, actor.id, target.name, actor.full_name)
         await reply(message, f"{who} has been promoted to <b>{label}</b>.")

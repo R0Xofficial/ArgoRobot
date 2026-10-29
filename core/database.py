@@ -40,6 +40,140 @@ CREATE TABLE IF NOT EXISTS roles (
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS name TEXT;
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS added_by_name TEXT;
 
+-- Users protected from global and federation bans (see core/whitelist.py).
+CREATE TABLE IF NOT EXISTS whitelist (
+    user_id       BIGINT PRIMARY KEY,
+    added_by      BIGINT,
+    added_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    name          TEXT,
+    added_by_name TEXT
+);
+
+-- Warnings given in a chat. Each has its own id, so it can be removed by id.
+CREATE TABLE IF NOT EXISTS warns (
+    id             BIGSERIAL PRIMARY KEY,
+    chat_id        BIGINT NOT NULL,
+    user_id        BIGINT NOT NULL,
+    user_name      TEXT,
+    reason         TEXT,
+    warned_by      BIGINT,
+    warned_by_name TEXT,
+    warned_by_staff BOOLEAN NOT NULL DEFAULT FALSE,  -- given by the bot's staff, not by a chat admin
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE warns ADD COLUMN IF NOT EXISTS warned_by_staff BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS warns_user_idx ON warns (chat_id, user_id);
+
+-- Per-chat warn limit; chats without a row use the default (see modules/warns.py).
+CREATE TABLE IF NOT EXISTS warn_settings (
+    chat_id    BIGINT PRIMARY KEY,
+    warn_limit SMALLINT NOT NULL
+);
+
+-- Settings the owner of a chat controls (see core/chatsettings.py).
+CREATE TABLE IF NOT EXISTS chat_settings (
+    chat_id    BIGINT PRIMARY KEY,
+    staff_help BOOLEAN NOT NULL DEFAULT TRUE
+);
+-- More switches of the chat's owner (see core/chatsettings.py).
+ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS gban_enforce BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS admin_errors BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS anon_admin BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Antiflood settings of a chat (see core/flood.py). flood_limit and timer_count of 0 mean "off".
+CREATE TABLE IF NOT EXISTS flood_settings (
+    chat_id       BIGINT PRIMARY KEY,
+    flood_limit   INTEGER NOT NULL DEFAULT 10,   -- more than this many messages in a row
+    timer_count   INTEGER NOT NULL DEFAULT 0,    -- this many messages ...
+    timer_seconds INTEGER NOT NULL DEFAULT 0,    -- ... within this many seconds
+    mode          TEXT NOT NULL DEFAULT 'mute',  -- ban / kick / mute / tban / tmute
+    mode_seconds  INTEGER NOT NULL DEFAULT 0,    -- length of a tban / tmute
+    clear_flood   BOOLEAN NOT NULL DEFAULT FALSE,
+    antichannel   BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+-- Blacklisted words of a chat and what happens to who says them (see core/blacklist.py).
+CREATE TABLE IF NOT EXISTS blacklist (
+    id             BIGSERIAL,
+    chat_id        BIGINT NOT NULL,
+    pattern        TEXT NOT NULL,       -- normalized: lowercase, single spaces, modifier included
+    action         TEXT,                -- NULL = the chat's default action
+    action_seconds INTEGER NOT NULL DEFAULT 0,
+    reason         TEXT,
+    added_by       BIGINT,
+    PRIMARY KEY (chat_id, pattern)
+);
+CREATE TABLE IF NOT EXISTS blacklist_settings (
+    chat_id        BIGINT PRIMARY KEY,
+    mode           TEXT NOT NULL DEFAULT 'del',
+    mode_seconds   INTEGER NOT NULL DEFAULT 0,
+    delete_matches BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+-- Global bans (see core/gbans.py). admin_id is NULL for imported bans.
+CREATE TABLE IF NOT EXISTS gbans (
+    user_id          BIGINT PRIMARY KEY,
+    name             TEXT,
+    reason           TEXT NOT NULL,
+    admin_id         BIGINT,
+    admin_name       TEXT,
+    approved_by      BIGINT,           -- the Sudo user who approved a Support user's request
+    approved_by_name TEXT,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Requests of Support users, waiting for a Sudo user to approve or decline them.
+-- One request per user at a time (the UNIQUE constraint makes that race-free).
+CREATE TABLE IF NOT EXISTS gban_requests (
+    id                BIGSERIAL PRIMARY KEY,
+    target_id         BIGINT NOT NULL UNIQUE,
+    target_name       TEXT,
+    kind              TEXT NOT NULL,   -- gban, dgban or ungban
+    reason            TEXT NOT NULL,
+    requested_by      BIGINT NOT NULL,
+    requested_by_name TEXT,
+    chat_id           BIGINT NOT NULL,
+    msg_id            BIGINT,
+    thread_id         BIGINT,
+    target_msg_id     BIGINT,
+    origin_html       TEXT NOT NULL,   -- "Initiated From" line, rendered when the request was made
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Users a chat has approved: trusted there, so global bans, federation bans, locks
+-- and the like don't apply to them (see core/approvals.py).
+CREATE TABLE IF NOT EXISTS approvals (
+    chat_id          BIGINT NOT NULL,
+    user_id          BIGINT NOT NULL,
+    name             TEXT,
+    approved_by      BIGINT,
+    approved_by_name TEXT,
+    approved_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (chat_id, user_id)
+);
+
+-- People who are away from keyboard (see core/afk.py). One row per person: AFK is
+-- global, not per chat.
+CREATE TABLE IF NOT EXISTS afk (
+    user_id       BIGINT PRIMARY KEY,
+    name          TEXT,
+    username      TEXT,                -- lowercase, to recognise @mentions without a query
+    reason        TEXT NOT NULL DEFAULT '',
+    since         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    media_type    TEXT,                -- photo / animation / video
+    media_file_id TEXT
+);
+
+-- Chats where the bot itself banned a user because of a global ban, so that
+-- lifting the ban only undoes what the global ban did.
+CREATE TABLE IF NOT EXISTS gban_bans (
+    user_id   BIGINT NOT NULL,
+    chat_id   BIGINT NOT NULL,
+    banned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, chat_id)
+);
+CREATE INDEX IF NOT EXISTS gban_bans_chat_idx ON gban_bans (chat_id);
+
 -- Phone book: every user the bot has seen, so it can resolve @usernames and ids.
 CREATE TABLE IF NOT EXISTS users (
     user_id    BIGINT PRIMARY KEY,

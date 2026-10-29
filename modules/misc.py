@@ -1,5 +1,7 @@
 """Everyday commands"""
 
+import inspect
+
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.filters import CommandObject
@@ -26,11 +28,17 @@ from core.targets import (
 from core.text import esc
 
 # Commands shown in /help (see core/help_index.py).
+ABOUT = """
+The basics: get to know me, find your way around, and look people up.
+
+/id and /info accept a user, a bot, a group or a channel. Reply to one of their messages, or give a @username or a numeric ID. Without a target they describe you.
+"""
+
 HELP = [
-    ("/start", "Introduction"),
-    ("/help", "Show the help panel"),
-    ("/id [user]", "Show your ID, or the ID of a user, group or channel"),
-    ("/info [user]", "Show information about a user, group or channel"),
+    ("/start", "Say hello. In a group I only point you to a private chat, where I can show you what I do."),
+    ("/help", "Open this panel. In a group you get a button that opens it in a private chat."),
+    ("/id [user]", "Show your Telegram ID, plus the chat's ID when you use it in a group. Give a user, group or channel to see their ID instead."),
+    ("/info [user]", "Show what I know about a user, bot, group or channel: name, username, ID, and in a group also their status here (member, admin, banned, muted) and flags from other modules such as Approved or GBanned."),
 ]
 
 router = Router(name="misc")
@@ -67,23 +75,43 @@ def _group_start_text(name: str, username: str) -> str:
     )
 
 
-def _help_home_text() -> str:
+def _help_home_text(role: Role | None = None) -> str:
     prefixes = " ".join(f"<code>{esc(p)}</code>" for p in settings.COMMAND_PREFIXES)
-    return (
-        "<b>Help</b>\n\n"
-        "Choose a category to see its commands.\n\n"
-        f"Commands can start with: {prefixes}"
-    )
+    lines = ["<b>Help</b>", "", "Pick a category to see what it does and how to use its commands.", ""]
+    for info in help_index.categories(role):
+        lines.append(f"• <b>{esc(_help_title(info))}</b> - {esc(info.description)}" if info.description else f"• <b>{esc(_help_title(info))}</b>")
+    lines += ["", f"Commands can start with: {prefixes}"]
+    return "\n".join(lines)
+
+
+def _help_title(info: registry.ModuleInfo) -> str:
+    """Name of a module in /help: its HELP_TITLE if it has one (AFK), else the capitalized name."""
+    return getattr(info.module, "HELP_TITLE", None) or info.name.capitalize()
+
+
+def _paragraphs(text: str) -> str:
+    """Plain text from a module (ABOUT, notes) made safe for HTML; blank lines stay."""
+    return "\n".join(esc(line.rstrip()) for line in inspect.cleandoc(text).splitlines())
 
 
 def _help_category_text(info: registry.ModuleInfo, role: Role | None) -> str:
-    title = f"<b>{esc(info.name)}</b>"
+    """The page of one module: what it is, then every command it offers to this person."""
+    lines = [f"<b>{esc(_help_title(info))}</b>"]
     if info.description:
-        title += f" - {esc(info.description)}"
+        lines.append(f"<i>{esc(info.description)}</i>")
+    about = getattr(info.module, "ABOUT", None)
+    if about:
+        lines += ["", _paragraphs(about)]
 
-    lines = [title, ""]
-    for usage, description in help_index.entries(info.module, role):
-        lines.append(f"{esc(usage)} - {esc(description)}")
+    lines += ["", "<b>Commands</b>"]
+    for usage, description, who in help_index.detailed(info.module, role):
+        head = f"<code>{esc(usage)}</code>"
+        if who:
+            head += f"  <i>({esc(who)})</i>"
+        lines += ["", head, esc(description)]
+
+    for title, text in getattr(info.module, "HELP_NOTES", ()):
+        lines += ["", f"<b>{esc(title)}</b>", _paragraphs(text)]
     return "\n".join(lines)
 
 
@@ -97,7 +125,7 @@ def _start_keyboard() -> InlineKeyboardMarkup:
 
 def _help_home_keyboard(role: Role | None) -> InlineKeyboardMarkup:
     buttons = [
-        InlineKeyboardButton(text=info.name, callback_data=f"{CB_HELP_MODULE}{info.name}")
+        InlineKeyboardButton(text=_help_title(info), callback_data=f"{CB_HELP_MODULE}{info.name}")
         for info in help_index.categories(role)
     ]
     rows = [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
@@ -123,7 +151,7 @@ async def cmd_start(message: Message, command: CommandObject, role: Role | None 
 
     # Deep link from the group's /help button: t.me/<bot>?start=help
     if (command.args or "").strip().lower() == "help":
-        await reply(message, _help_home_text(), reply_markup=_help_home_keyboard(role))
+        await reply(message, _help_home_text(role), reply_markup=_help_home_keyboard(role))
         return
 
     await reply(message, _start_text(_display_name(message)), reply_markup=_start_keyboard())
@@ -159,14 +187,14 @@ async def cmd_help(message: Message, role: Role | None = None) -> None:
         )
         return
 
-    await reply(message, _help_home_text(), reply_markup=_help_home_keyboard(role))
+    await reply(message, _help_home_text(role), reply_markup=_help_home_keyboard(role))
 
 
 @router.callback_query(F.data == CB_HELP)
 async def cb_help_home(callback: CallbackQuery, role: Role | None = None) -> None:
     await callback.answer()
     if isinstance(callback.message, Message):
-        await edit(callback.message, _help_home_text(), reply_markup=_help_home_keyboard(role))
+        await edit(callback.message, _help_home_text(role), reply_markup=_help_home_keyboard(role))
 
 
 @router.callback_query(F.data.startswith(CB_HELP_MODULE))
@@ -244,18 +272,23 @@ async def cmd_id(message: Message, command: CommandObject) -> None:
     await reply(message, "\n".join(lines))
 
 
-async def _chat_status(bot, chat_id: int, user_id: int) -> str | None:
-    """The user's standing in a chat, or None when it cannot be told."""
+async def _chat_member(bot, chat_id: int, user_id: int):
+    """The user's membership in a chat; the string "gone" if Telegram has never seen them; None if unknown."""
     try:
-        member = await bot.get_chat_member(chat_id, user_id)
+        return await bot.get_chat_member(chat_id, user_id)
     except TelegramBadRequest as exc:
         problem = str(exc).lower()
         if "user not found" in problem or "participant_id_invalid" in problem:
-            return "Not in chat"
+            return "gone"
         return None  # e.g. "member list is inaccessible": better to say nothing
     except TelegramAPIError:
         return None
 
+
+def _chat_status(member) -> str:
+    """The user's standing in a chat, from their membership."""
+    if member == "gone":
+        return "Not in chat"
     status = getattr(member.status, "value", member.status)
     if status == "creator":
         return "Owner"
@@ -266,6 +299,18 @@ async def _chat_status(bot, chat_id: int, user_id: int) -> str | None:
     if status == "restricted":
         return "Member" if getattr(member, "is_member", True) else "Not in chat"
     return "Not in chat"  # left or kicked
+
+
+def _restriction_lines(member) -> list[str]:
+    """Banned / Muted flags, shown only when they apply."""
+    if member == "gone":
+        return []
+    status = getattr(member.status, "value", member.status)
+    if status == "kicked":
+        return [_line("Banned", "<code>Yes</code>")]
+    if status == "restricted" and getattr(member, "is_member", True) and not getattr(member, "can_send_messages", True):
+        return [_line("Muted", "<code>Yes</code>")]
+    return []
 
 
 async def _refresh_user(bot, target: Target) -> None:
@@ -300,15 +345,16 @@ async def _user_info(bot, chat, target: Target) -> list[str]:
     lines.append(_line("User link", f'<a href="tg://user?id={target.user_id}">link</a>'))
 
     if chat.type in ("group", "supergroup"):
-        status = await _chat_status(bot, chat.id, target.user_id)
-        if status:
-            lines.append(_line("Status", f"<code>{status}</code>"))
+        member = await _chat_member(bot, chat.id, target.user_id)
+        if member is not None:
+            lines.append(_line("Status", f"<code>{_chat_status(member)}</code>"))
+            lines.extend(_restriction_lines(member))
 
     role = await roles.get_role(target.user_id)
     if role is not None:
         lines.append(_line("Bot role", f"<code>{roles.label(role)}</code>"))
 
-    lines.extend(await info_hooks.lines_for(bot, target.user_id))
+    lines.extend(await info_hooks.lines_for(bot, target.user_id, chat.id if chat.type in ("group", "supergroup") else None))
     return lines
 
 
