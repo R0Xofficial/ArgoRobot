@@ -11,6 +11,7 @@ from aiogram.types import ChatPermissions, Message
 
 from core import approvals, gbans, greetings, immunity, moderation, sender
 from core.filters import cmd
+from core.help_index import Section
 from core.helpers import reply
 from core.markup import MarkupError
 from core.moderation import GROUP_TYPES
@@ -28,20 +29,22 @@ A message can be written after the command or taken from a message you reply to,
 Welcomes are sent when I see someone join, and goodbyes only when someone leaves on their own: people who are removed get none. Bots are not greeted.
 """
 
+S_WELCOME, S_GOODBYE = Section("Welcome Commands"), Section("Goodbye Commands")
+
 HELP = [
-    ("/welcome", "Show whether welcomes are on and the current welcome message.", "admins"),
-    ("/welcome noformat", "Show the welcome message exactly as it was written, without formatting.", "admins"),
-    ("/welcome <on|off>", "Turn welcomes on or off.", "admins"),
-    ("/setwelcome <reply or text>", "Set a custom welcome message. Reply to a message to use it, media included.", "admins"),
-    ("/resetwelcome", "Go back to the default welcome message.", "admins"),
-    ("/goodbye", "Show whether goodbyes are on and the current goodbye message.", "admins"),
-    ("/goodbye noformat", "Show the goodbye message exactly as it was written, without formatting.", "admins"),
-    ("/goodbye <on|off>", "Turn goodbyes on or off.", "admins"),
-    ("/setgoodbye <reply or text>", "Set a custom goodbye message. Reply to a message to use it, media included.", "admins"),
-    ("/resetgoodbye", "Go back to the default goodbye message.", "admins"),
-    ("/welcomemute <on|off>", "Stop new members from sending media, stickers and polls for their first 24 hours. They can still write. Needs the right to restrict users. Approved users are skipped.", "admins"),
-    ("/cleanwelcome <on|off>", "Delete my previous welcome message each time I send a new one.", "admins"),
-    ("/cleanservice <on|off>", "Delete the \"joined\" and \"left\" service messages. I need the right to delete messages.", "admins"),
+    ("/welcome", "Show whether welcomes are on and the current welcome message.", "admins", S_WELCOME),
+    ("/welcome noformat", "Show the welcome message exactly as it was written, without formatting.", "admins", S_WELCOME),
+    ("/welcome <on|off>", "Turn welcomes on or off.", "admins", S_WELCOME),
+    ("/setwelcome <reply or text>", "Set a custom welcome message. Reply to a message to use it, media included.", "admins", S_WELCOME),
+    ("/resetwelcome", "Go back to the default welcome message.", "admins", S_WELCOME),
+    ("/goodbye", "Show whether goodbyes are on and the current goodbye message.", "admins", S_GOODBYE),
+    ("/goodbye noformat", "Show the goodbye message exactly as it was written, without formatting.", "admins", S_GOODBYE),
+    ("/goodbye <on|off>", "Turn goodbyes on or off.", "admins", S_GOODBYE),
+    ("/setgoodbye <reply or text>", "Set a custom goodbye message. Reply to a message to use it, media included.", "admins", S_GOODBYE),
+    ("/resetgoodbye", "Go back to the default goodbye message.", "admins", S_GOODBYE),
+    ("/welcomemute <on|off>", "Stop new members from sending media, stickers and polls for their first 24 hours. They can still write. Needs the right to restrict users. Approved users are skipped.", "admins", S_WELCOME),
+    ("/cleanwelcome <on|off>", "Delete my previous welcome message each time I send a new one.", "admins", S_WELCOME),
+    ("/cleanservice <on|off>", "Delete the \"joined\" and \"left\" service messages. I need the right to delete messages.", "admins", S_WELCOME),
 ]
 
 HELP_NOTES = [

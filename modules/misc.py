@@ -70,6 +70,7 @@ CB_START = "start:home"
 CB_START_LEGACY = "root:start"  # buttons on messages sent before start moved here
 CB_HELP = "help:home"
 CB_HELP_MODULE = "help:module:"
+CB_HELP_SECTION = "help:section:"
 
 NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
@@ -117,24 +118,35 @@ def _paragraphs(text: str) -> str:
     return "\n".join(esc(line.rstrip()) for line in inspect.cleandoc(text).splitlines())
 
 
-def _help_category_text(info: registry.ModuleInfo, role: Role | None) -> str:
-    """The page of one module: what it is, then every command it offers to this person."""
-    lines = [f"<b>{esc(_help_title(info))}</b>"]
-    if info.description:
-        lines.append(f"<i>{esc(info.description)}</i>")
-    about = getattr(info.module, "ABOUT", None)
-    if about:
-        lines += ["", _paragraphs(about)]
+def _help_category_text(info: registry.ModuleInfo, role: Role | None, section: int | None = None) -> str:
+    """
+    The page of one module: what it is, then every command it offers to this person. A module
+    with sections shows the commands that belong to none here, and a page per section.
+    """
+    names = help_index.sections(info.module)
+    chosen = names[section] if section is not None and 0 <= section < len(names) else None
+    lines = [f"<b>{esc(_help_title(info))}</b>" if chosen is None else f"<b>{esc(_help_title(info))} - {esc(chosen)}</b>"]
+    if chosen is None:
+        if info.description:
+            lines.append(f"<i>{esc(info.description)}</i>")
+        about = getattr(info.module, "ABOUT", None)
+        if about:
+            lines += ["", _paragraphs(about)]
 
-    lines += ["", "<b>Commands</b>"]
-    for usage, description, who in help_index.detailed(info.module, role):
+    commands = help_index.detailed(info.module, role, chosen)
+    if commands:
+        lines += ["", "<b>Commands</b>"]
+    for usage, description, who in commands:
         head = f"<code>{esc(usage)}</code>"
         if who:
             head += f"  <i>({esc(who)})</i>"
         lines += ["", head, esc(description)]
+    if chosen is None and help_index.visible_sections(info.module, role):
+        lines += ["", "Pick a section below for the commands."]
 
-    for title, text in getattr(info.module, "HELP_NOTES", ()):
-        lines += ["", f"<b>{esc(title)}</b>", _paragraphs(text)]
+    for title, text, *where in getattr(info.module, "HELP_NOTES", ()):
+        if (str(where[0]) if where else None) == chosen:
+            lines += ["", f"<b>{esc(title)}</b>", _paragraphs(text)]
     return "\n".join(lines)
 
 
@@ -157,10 +169,20 @@ def _help_home_keyboard(role: Role | None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _help_category_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="Back", callback_data=CB_HELP)]]
-    )
+def _help_category_keyboard(info: registry.ModuleInfo | None = None, role: Role | None = None, section: int | None = None) -> InlineKeyboardMarkup:
+    """Back to the list of categories, or to the module's page from one of its sections."""
+    if info is not None and section is not None:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="Back", callback_data=f"{CB_HELP_MODULE}{info.name}")]]
+        )
+    rows = []
+    if info is not None:
+        rows = [
+            [InlineKeyboardButton(text=name, callback_data=f"{CB_HELP_SECTION}{info.name}:{number}")]
+            for number, name in help_index.visible_sections(info.module, role)
+        ]
+    rows.append([InlineKeyboardButton(text="Back", callback_data=CB_HELP)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 # --- /start -----------------------------------------------------------------
@@ -236,7 +258,25 @@ async def cb_help_category(callback: CallbackQuery, role: Role | None = None) ->
         await edit(
             callback.message,
             _help_category_text(info, role),
-            reply_markup=_help_category_keyboard(),
+            reply_markup=_help_category_keyboard(info, role),
+        )
+
+
+@router.callback_query(F.data.startswith(CB_HELP_SECTION))
+async def cb_help_section(callback: CallbackQuery, role: Role | None = None) -> None:
+    name, _, number = (callback.data or "")[len(CB_HELP_SECTION):].rpartition(":")
+    info = registry.get(name)
+    shown = dict(help_index.visible_sections(info.module, role)) if info is not None and info.enabled else {}
+    if not number.isdigit() or int(number) not in shown:
+        await callback.answer("This section is not available.", show_alert=True)
+        return
+
+    await callback.answer()
+    if isinstance(callback.message, Message):
+        await edit(
+            callback.message,
+            _help_category_text(info, role, int(number)),
+            reply_markup=_help_category_keyboard(info, role, int(number)),
         )
 
 
@@ -337,7 +377,7 @@ def _chat_status(member) -> str:
 
 
 # The order of the yes/no flags in /info. Flags from modules this list doesn't know come last.
-FLAG_ORDER = ("Banned", "Muted", "Approved", "GBanned", "Whitelisted", "Immune", "AFK")
+FLAG_ORDER = ("Banned", "Muted", "Approved", "GBanned", "FedBanned", "Whitelisted", "Immune", "AFK", "FedAdmin")
 
 
 def _restriction_flags(member) -> list[tuple[str, bool]]:
@@ -402,6 +442,8 @@ async def _user_info(bot, chat, target: Target) -> list[str]:
         flags = _restriction_flags(member) if in_group else []
         flags += await info_hooks.flags_for(bot, target.user_id, chat.id if in_group else None)
         lines.extend(_flag_lines(flags))
+    # Facts that hold for admins and staff as well.
+    lines.extend(_flag_lines(await info_hooks.flags_for(bot, target.user_id, chat.id if in_group else None, always=True)))
     return lines
 
 

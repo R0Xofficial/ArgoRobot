@@ -31,17 +31,25 @@ log = logging.getLogger(__name__)
 
 Provider = Callable[[Bot, int, int | None], Awaitable[list[tuple[str, bool]]]]
 
-_providers: list[tuple[str, Provider]] = []
+_providers: list[tuple[str, Provider, bool]] = []
 
 
-def register(module_name: str, provider: Provider) -> None:
-    """Add a provider; `module_name` is the module whose enabled state decides if it runs."""
-    _providers.append((module_name, provider))
+def register(module_name: str, provider: Provider, *, always: bool = False) -> None:
+    """
+    Add a provider; `module_name` is the module whose enabled state decides if it runs.
+
+    Flags are normally left out for admins and the bot's staff. A provider registered with
+    always=True is shown for everyone (for facts about the person that an admin can have too).
+    """
+    _providers.append((module_name, provider, always))
 
 
-async def flags_for(bot: Bot, user_id: int, chat_id: int | None = None) -> list[tuple[str, bool]]:
+async def flags_for(bot: Bot, user_id: int, chat_id: int | None = None, *, always: bool = False) -> list[tuple[str, bool]]:
+    """The flags of the providers registered with the same `always` value."""
     flags: list[tuple[str, bool]] = []
-    for module_name, provider in _providers:
+    for module_name, provider, provider_always in _providers:
+        if provider_always != always:
+            continue
         info = registry.get(module_name)
         if info is not None and not info.enabled:
             continue

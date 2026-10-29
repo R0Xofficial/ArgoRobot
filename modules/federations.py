@@ -1,0 +1,1146 @@
+"""Federations: one ban list for many chats"""
+
+import asyncio
+import csv
+import io
+import json
+import logging
+import re
+import time
+from contextlib import suppress
+from typing import Any
+
+from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter
+from aiogram.filters import CommandObject
+from aiogram.types import (
+    BufferedInputFile,
+    CallbackQuery,
+    ChatMemberUpdated,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    LinkPreviewOptions,
+    Message,
+)
+
+from core import approvals, federations, immunity, info_hooks, moderation, roles
+from core.federations import FederationError
+from core.help_index import Section
+from core.filters import cmd
+from core.helpers import edit, reply
+from core.moderation import GROUP_TYPES, ModerationError
+from core.targets import TargetError, replied_message, resolve_target
+from core.text import esc, user_link, user_ref
+
+log = logging.getLogger(__name__)
+
+# After global bans (-100): a federation ban removes someone before anything else looks at them.
+PRIORITY = -95
+
+ABOUT = """
+A federation links chats so that one ban works in all of them. Create one, let your chats join it, and everyone it bans is removed from every chat of the federation when they write or join. A federation can also subscribe to others and inherit their bans.
+
+A chat is in one federation at a time. Chat admins, approved users and my staff are never removed by federation bans, and federation admins can't be banned in their own federation. Federations are identified by an ID like 3f1c2a3e-...: share it with the owners of the chats that should join.
+"""
+
+OWNER = "federation owner"
+FED_ADMINS = "fed admins"
+S_OWNER, S_ADMIN, S_USER = Section("FedOwner Commands"), Section("FedAdmin Commands"), Section("Users Commands")
+
+HELP = [
+    ("/newfed <name>", "Create a federation. You can own one.", S_OWNER, OWNER),
+    ("/renamefed <name>", "Rename your federation.", S_OWNER, OWNER),
+    ("/delfed", "Delete your federation. Nobody is unbanned in their chats.", S_OWNER, OWNER),
+    ("/fedtransfer <user>", "Give your federation to a user, who has to accept.", S_OWNER, OWNER),
+    ("/fedpromote <user>", "Make a user a federation admin. They have to accept.", S_OWNER, OWNER),
+    ("/feddemote <user>", "Take a federation admin's rights away.", S_OWNER, OWNER),
+    ("/fednotif <on|off>", "Get a private message about every action.", S_OWNER, OWNER),
+    ("/fedreason <on|off>", "Make federation bans require a reason.", S_OWNER, OWNER),
+    ("/subfed <FedID>", "Inherit the bans of another federation.", S_OWNER, OWNER),
+    ("/unsubfed <FedID>", "Stop inheriting its bans.", S_OWNER, OWNER),
+    ("/fedexport [csv|minicsv|json|human]", "Get the ban list as a file. The default is csv.", S_OWNER, OWNER),
+    ("/fedimport [overwrite|keep] [csv|minicsv|json|human]", "Reply to a file to import bans. Keep, the default, keeps existing ones; overwrite replaces the list.", S_OWNER, OWNER),
+    ("/setfedlog", "Use this chat as the log of your federation.", S_OWNER, OWNER),
+    ("/unsetfedlog", "Stop logging your federation in a chat.", S_OWNER, OWNER),
+    ("/fban <user> [reason]", "Ban a user in this chat's federation, and in those subscribed to it.", S_ADMIN, FED_ADMINS),
+    ("/unfban <user>", "Lift a federation ban.", S_ADMIN, FED_ADMINS),
+    ("/feddemoteme <FedID>", "Give up your admin rights in a federation.", S_ADMIN, FED_ADMINS),
+    ("/myfeds", "List the federations you own or administer.", S_ADMIN, FED_ADMINS),
+    ("/fedinfo [FedID]", "Show a federation: owner, admins, chats, bans.", S_USER),
+    ("/fedadmins [FedID]", "List the owner and admins of a federation.", S_USER),
+    ("/fedsubs [FedID]", "List the federations a federation is subscribed to.", S_USER),
+    ("/joinfed <FedID>", "Join this chat to a federation. A chat is in one federation at a time.", "chat owner", S_USER),
+    ("/leavefed", "Take this chat out of its federation.", "chat owner", S_USER),
+    ("/chatfed", "Show the federation this chat is in.", S_USER),
+    ("/quietfed <on|off>", "Choose whether I announce removals of fedbanned users here.", "admins", S_USER),
+    ("/fedstat [user] [FedID]", "Where you or another user are banned, or the details of one ban.", S_USER),
+]
+
+HELP_NOTES = [
+    (
+        "Getting started",
+        """
+        1. Create it: /newfed My Network
+        2. Add your chats: send /joinfed <FedID> in each one (the chat owner does this).
+        3. Ban from any of them: reply to a spammer with /fban reason
+        Other federations' bans can be inherited with /subfed <FedID>.
+        """,
+    ),
+    (
+        "Files",
+        """
+        csv - user_id,name,reason,banned_by,banned_at
+        minicsv - user_id,reason
+        json - a list of {"user_id": ..., "name": ..., "reason": ...}
+        human - one line per user, like: Name [123456] - reason
+        """,
+        S_OWNER,
+    ),
+]
+
+router = Router(name="federations")
+
+_FED_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
+_ON_OFF = {"on": True, "yes": True, "off": False, "no": False}
+_FORMATS = ("csv", "minicsv", "json", "human")
+MAX_IMPORT_BYTES = 5 * 1024 * 1024
+MAX_IMPORT_ROWS = 100_000
+EXPORT_COOLDOWN = 30.0
+RECENT_SECONDS = 30
+RIGHT = "can_change_info"
+CB_DELETE, CB_TRANSFER, CB_PROMOTE = "fd:", "fx:", "fp:"
+
+_exported: dict[int, float] = {}
+_recent: dict[tuple[int, int], float] = {}
+_tasks: set[asyncio.Task] = set()
+
+
+# --- Small helpers ----------------------------------------------------------------------------
+
+def _yes_no(value: bool) -> str:
+    return "Yes" if value else "No"
+
+
+def _item(label: str, value: str) -> str:
+    return f"• <b>{label}:</b> {value}"
+
+
+def _spawn(coroutine) -> None:
+    task = asyncio.get_running_loop().create_task(coroutine)
+    _tasks.add(task)
+    task.add_done_callback(_tasks.discard)
+
+
+async def _person(message: Message):
+    """The person who sent a command, or None (after saying why) when they wrote anonymously."""
+    user = message.from_user
+    if user is None or message.sender_chat is not None:
+        await reply(message, "Send this as yourself, not as an anonymous admin or a channel.")
+        return None
+    return user
+
+
+async def _own_fed(message: Message):
+    """(user, federation) of the person who owns one, or None after saying what is wrong."""
+    user = await _person(message)
+    if user is None:
+        return None
+    fed = await federations.owned_by(user.id)
+    if fed is None:
+        await reply(message, "You don't own a federation. Create one with /newfed &lt;name&gt;.")
+        return None
+    return user, fed
+
+
+def _fed_name(fed: dict[str, Any]) -> str:
+    return f"<b>{esc(fed['name'])}</b>"
+
+
+def _owner_link(fed: dict[str, Any]) -> str:
+    return user_link(fed["owner_id"], fed["owner_name"])
+
+
+async def _event(bot: Bot, fed: dict[str, Any], text: str) -> None:
+    """Tell the log chat of the federation, and its owner when they asked for private messages."""
+    sent = False
+    if fed["log_chat_id"]:
+        try:
+            await bot.send_message(fed["log_chat_id"], text, link_preview_options=LinkPreviewOptions(is_disabled=True))
+            sent = True
+        except TelegramAPIError as exc:
+            log.debug("Federation log %s unreachable: %s", fed["log_chat_id"], exc)
+    if fed["notify"] and not (sent and fed["log_chat_id"] == fed["owner_id"]):
+        with suppress(TelegramAPIError):
+            await bot.send_message(fed["owner_id"], text, link_preview_options=LinkPreviewOptions(is_disabled=True))
+
+
+async def _resolve_fed(message: Message, argument: str, user) -> dict[str, Any] | None:
+    """The federation an info command is about: the ID given, else the chat's, else the person's own."""
+    argument = argument.strip()
+    if argument:
+        if not _FED_ID.match(argument):
+            await reply(message, "That is not a federation ID. They look like 3f1c2a3e-1111-2222-3333-444455556666.")
+            return None
+        fed = await federations.get(argument.lower())
+        if fed is None:
+            await reply(message, "I can't find a federation with that ID.")
+        return fed
+    if message.chat.type in GROUP_TYPES:
+        fed = await federations.chat_fed(message.chat.id)
+        if fed is not None:
+            return fed
+    if user is not None:
+        mine = await federations.feds_of(user.id)
+        if len(mine) == 1:
+            return mine[0]
+        if len(mine) > 1:
+            await reply(message, "You are in several federations. Give the ID of the one you mean.")
+            return None
+    await reply(message, "This chat is not in a federation. Give a federation ID.")
+    return None
+
+
+async def _fed_to_ban_in(message: Message, user) -> dict[str, Any] | None:
+    """The federation a fed admin acts in: the chat's, or in private the only one they administer."""
+    if message.chat.type in GROUP_TYPES:
+        fed = await federations.chat_fed(message.chat.id)
+        if fed is None:
+            await reply(message, "This chat is not in a federation. The chat owner can join one with /joinfed.")
+            return None
+        if not await federations.is_admin(fed, user.id):
+            await reply(message, "You are not an admin of this chat's federation.")
+            return None
+        return fed
+    mine = await federations.feds_of(user.id)
+    if not mine:
+        await reply(message, "You are not an admin of any federation.")
+        return None
+    if len(mine) > 1:
+        await reply(message, "You administer several federations. Use this command in a chat that is in the one you mean.")
+        return None
+    return mine[0]
+
+
+async def _target(message: Message, command: CommandObject):
+    try:
+        return await resolve_target(message, command)
+    except TargetError as exc:
+        await reply(message, esc(str(exc)))
+        return None
+
+
+# --- Owner commands ---------------------------------------------------------------------------
+
+@router.message(cmd("newfed"))
+async def cmd_newfed(message: Message, command: CommandObject) -> None:
+    user = await _person(message)
+    if user is None:
+        return
+    if not (command.args or "").strip():
+        await reply(message, "Use /newfed &lt;name&gt;.")
+        return
+    try:
+        fed = await federations.create(command.args, user.id, user.full_name)
+    except FederationError as exc:
+        await reply(message, esc(exc))
+        return
+    await reply(
+        message,
+        "<b>Federation created</b>\n"
+        + "\n".join([_item("Name", f"<code>{esc(fed['name'])}</code>"), _item("ID", f"<code>{fed['fed_id']}</code>")])
+        + "\n\nJoin a chat to it with /joinfed &lt;ID&gt; sent by the chat's owner.",
+    )
+
+
+@router.message(cmd("renamefed"))
+async def cmd_renamefed(message: Message, command: CommandObject) -> None:
+    mine = await _own_fed(message)
+    if mine is None:
+        return
+    _, fed = mine
+    if not (command.args or "").strip():
+        await reply(message, "Use /renamefed &lt;name&gt;.")
+        return
+    try:
+        name = await federations.rename(fed["fed_id"], command.args)
+    except FederationError as exc:
+        await reply(message, esc(exc))
+        return
+    await reply(message, f"Your federation is now called <b>{esc(name)}</b>.")
+
+
+@router.message(cmd("delfed"))
+async def cmd_delfed(message: Message) -> None:
+    mine = await _own_fed(message)
+    if mine is None:
+        return
+    user, fed = mine
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[
+            InlineKeyboardButton(text="Delete", callback_data=f"{CB_DELETE}y:{user.id}"),
+            InlineKeyboardButton(text="Cancel", callback_data=f"{CB_DELETE}n:{user.id}"),
+        ]]
+    )
+    await reply(
+        message,
+        f"Delete the federation {_fed_name(fed)}? Its chats, admins, bans and subscriptions are forgotten. People it banned stay banned in their chats. This cannot be undone.",
+        reply_markup=keyboard,
+    )
+
+
+@router.callback_query(F.data.startswith(CB_DELETE))
+async def cb_delfed(callback: CallbackQuery) -> None:
+    message = callback.message if isinstance(callback.message, Message) else None
+    _, answer, owner = callback.data.split(":")
+    if message is None:
+        await callback.answer("This button is no longer valid.", show_alert=True)
+        return
+    if callback.from_user.id != int(owner):
+        await callback.answer("Only the owner of the federation can do this.", show_alert=True)
+        return
+    fed = await federations.owned_by(callback.from_user.id)
+    await callback.answer()
+    if answer != "y" or fed is None:
+        await edit(message, "Cancelled. Nothing was deleted." if answer != "y" else "You no longer own a federation.", reply_markup=None)
+        return
+    await federations.delete(fed["fed_id"])
+    await edit(message, f"The federation {_fed_name(fed)} is deleted.", reply_markup=None)
+
+
+@router.message(cmd("fedtransfer"))
+async def cmd_fedtransfer(message: Message, command: CommandObject) -> None:
+    mine = await _own_fed(message)
+    if mine is None:
+        return
+    user, fed = mine
+    target = await _target(message, command)
+    if target is None:
+        return
+    if target.is_chat or target.kind == "bot":
+        await reply(message, "A federation can only belong to a person.")
+        return
+    if target.user_id == user.id:
+        await reply(message, "You already own it.")
+        return
+    if await federations.owned_by(target.user_id) is not None:
+        await reply(message, "That person already owns a federation.")
+        return
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[
+            InlineKeyboardButton(text="Accept", callback_data=f"{CB_TRANSFER}y:{target.user_id}:{user.id}"),
+            InlineKeyboardButton(text="Decline", callback_data=f"{CB_TRANSFER}n:{target.user_id}:{user.id}"),
+        ]]
+    )
+    await reply(
+        message,
+        f"{user_link(target.user_id, target.name)}, {user_link(user.id, user.full_name)} wants to give you the federation {_fed_name(fed)}. Do you accept?",
+        reply_markup=keyboard,
+    )
+
+
+@router.callback_query(F.data.startswith(CB_TRANSFER))
+async def cb_fedtransfer(callback: CallbackQuery) -> None:
+    message = callback.message if isinstance(callback.message, Message) else None
+    _, answer, new_id, old_id = callback.data.split(":")
+    if message is None:
+        await callback.answer("This button is no longer valid.", show_alert=True)
+        return
+    if callback.from_user.id != int(new_id):
+        await callback.answer("Only the person it is offered to can answer.", show_alert=True)
+        return
+    await callback.answer()
+    fed = await federations.owned_by(int(old_id))
+    if answer != "y":
+        await edit(message, "The transfer was declined.", reply_markup=None)
+        return
+    if fed is None:
+        await edit(message, "That federation is no longer theirs to give.", reply_markup=None)
+        return
+    try:
+        await federations.transfer(fed["fed_id"], callback.from_user.id, callback.from_user.full_name)
+    except FederationError as exc:
+        await edit(message, esc(exc), reply_markup=None)
+        return
+    await edit(message, f"The federation {_fed_name(fed)} now belongs to {user_link(callback.from_user.id, callback.from_user.full_name)}.", reply_markup=None)
+    await _event(callback.bot, {**fed, "owner_id": callback.from_user.id}, f"<b>Federation transferred</b>\n{_item('Federation', _fed_name(fed))}\n{_item('New owner', user_link(callback.from_user.id, callback.from_user.full_name))}")
+
+
+@router.message(cmd("fedpromote"))
+async def cmd_fedpromote(message: Message, command: CommandObject) -> None:
+    mine = await _own_fed(message)
+    if mine is None:
+        return
+    user, fed = mine
+    target = await _target(message, command)
+    if target is None:
+        return
+    if target.is_chat or target.kind == "bot":
+        await reply(message, "Only people can be federation admins.")
+        return
+    if await federations.is_admin(fed, target.user_id):
+        await reply(message, "That person already is an admin of your federation.")
+        return
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[
+            InlineKeyboardButton(text="Accept", callback_data=f"{CB_PROMOTE}y:{target.user_id}:{fed['fed_id']}"),
+            InlineKeyboardButton(text="Decline", callback_data=f"{CB_PROMOTE}n:{target.user_id}:{fed['fed_id']}"),
+        ]]
+    )
+    await reply(
+        message,
+        f"{user_link(target.user_id, target.name)}, {user_link(user.id, user.full_name)} wants to make you an admin of the federation {_fed_name(fed)}. Do you accept?",
+        reply_markup=keyboard,
+    )
+
+
+@router.callback_query(F.data.startswith(CB_PROMOTE))
+async def cb_fedpromote(callback: CallbackQuery) -> None:
+    message = callback.message if isinstance(callback.message, Message) else None
+    _, answer, user_id, fed_id = callback.data.split(":")
+    if message is None:
+        await callback.answer("This button is no longer valid.", show_alert=True)
+        return
+    if callback.from_user.id != int(user_id):
+        await callback.answer("Only the person it is offered to can answer.", show_alert=True)
+        return
+    await callback.answer()
+    fed = await federations.get(fed_id)
+    if answer != "y":
+        await edit(message, "The offer was declined.", reply_markup=None)
+        return
+    if fed is None:
+        await edit(message, "That federation no longer exists.", reply_markup=None)
+        return
+    try:
+        await federations.add_admin(fed_id, callback.from_user.id, callback.from_user.full_name)
+    except FederationError as exc:
+        await edit(message, esc(exc), reply_markup=None)
+        return
+    who = user_link(callback.from_user.id, callback.from_user.full_name)
+    await edit(message, f"{who} is now an admin of the federation {_fed_name(fed)}.", reply_markup=None)
+    await _event(callback.bot, fed, f"<b>New FedAdmin</b>\n{_item('Federation', _fed_name(fed))}\n{_item('User', who)}")
+
+
+@router.message(cmd("feddemote"))
+async def cmd_feddemote(message: Message, command: CommandObject) -> None:
+    mine = await _own_fed(message)
+    if mine is None:
+        return
+    _, fed = mine
+    target = await _target(message, command)
+    if target is None:
+        return
+    if not await federations.remove_admin(fed["fed_id"], target.user_id):
+        await reply(message, "That person is not an admin of your federation.")
+        return
+    who = user_link(target.user_id, target.name)
+    await reply(message, f"{who} is no longer an admin of {_fed_name(fed)}.")
+    await _event(message.bot, fed, f"<b>FedAdmin removed</b>\n{_item('Federation', _fed_name(fed))}\n{_item('User', who)}")
+
+
+@router.message(cmd("feddemoteme"))
+async def cmd_feddemoteme(message: Message, command: CommandObject) -> None:
+    user = await _person(message)
+    if user is None:
+        return
+    argument = (command.args or "").strip()
+    if not _FED_ID.match(argument):
+        await reply(message, "Use /feddemoteme &lt;FedID&gt;.")
+        return
+    fed = await federations.get(argument.lower())
+    if fed is None:
+        await reply(message, "I can't find a federation with that ID.")
+        return
+    if fed["owner_id"] == user.id:
+        await reply(message, "You own that federation. Transfer it with /fedtransfer or delete it with /delfed.")
+        return
+    if not await federations.remove_admin(fed["fed_id"], user.id):
+        await reply(message, "You are not an admin of that federation.")
+        return
+    await reply(message, f"You are no longer an admin of {_fed_name(fed)}.")
+    await _event(message.bot, fed, f"<b>FedAdmin resigned</b>\n{_item('Federation', _fed_name(fed))}\n{_item('User', user_link(user.id, user.full_name))}")
+
+
+async def _toggle(message: Message, command: CommandObject, field: str, name: str) -> None:
+    mine = await _own_fed(message)
+    if mine is None:
+        return
+    _, fed = mine
+    argument = (command.args or "").strip().lower()
+    if not argument:
+        await reply(message, f"{name} is <b>{'on' if fed[field] else 'off'}</b> for {_fed_name(fed)}.")
+        return
+    if argument not in _ON_OFF:
+        await reply(message, "Use on or off.")
+        return
+    await federations.update(fed["fed_id"], **{field: _ON_OFF[argument]})
+    await reply(message, f"{name} is now <b>{'on' if _ON_OFF[argument] else 'off'}</b> for {_fed_name(fed)}.")
+
+
+@router.message(cmd("fednotif"))
+async def cmd_fednotif(message: Message, command: CommandObject) -> None:
+    await _toggle(message, command, "notify", "Private notifications")
+
+
+@router.message(cmd("fedreason"))
+async def cmd_fedreason(message: Message, command: CommandObject) -> None:
+    await _toggle(message, command, "require_reason", "Requiring a reason")
+
+
+@router.message(cmd("subfed"))
+async def cmd_subfed(message: Message, command: CommandObject) -> None:
+    mine = await _own_fed(message)
+    if mine is None:
+        return
+    _, fed = mine
+    argument = (command.args or "").strip()
+    if not _FED_ID.match(argument):
+        await reply(message, "Use /subfed &lt;FedID&gt;.")
+        return
+    other = await federations.get(argument.lower())
+    if other is None:
+        await reply(message, "I can't find a federation with that ID.")
+        return
+    try:
+        await federations.subscribe(fed["fed_id"], other["fed_id"])
+    except FederationError as exc:
+        await reply(message, esc(exc))
+        return
+    await reply(message, f"{_fed_name(fed)} now inherits the bans of {_fed_name(other)}. Your own ban list is not changed.")
+    await _event(message.bot, fed, f"<b>Federation subscribed</b>\n{_item('Federation', _fed_name(fed))}\n{_item('Subscribed to', _fed_name(other))}")
+
+
+@router.message(cmd("unsubfed"))
+async def cmd_unsubfed(message: Message, command: CommandObject) -> None:
+    mine = await _own_fed(message)
+    if mine is None:
+        return
+    _, fed = mine
+    argument = (command.args or "").strip()
+    if not _FED_ID.match(argument):
+        await reply(message, "Use /unsubfed &lt;FedID&gt;.")
+        return
+    other = await federations.get(argument.lower())
+    if not await federations.unsubscribe(fed["fed_id"], argument.lower()):
+        await reply(message, "Your federation is not subscribed to that one.")
+        return
+    name = _fed_name(other) if other else "that federation"
+    await reply(message, f"{_fed_name(fed)} no longer inherits the bans of {name}.")
+    await _event(message.bot, fed, f"<b>Federation unsubscribed</b>\n{_item('Federation', _fed_name(fed))}\n{_item('Unsubscribed from', name)}")
+
+
+@router.message(cmd("setfedlog"))
+async def cmd_setfedlog(message: Message) -> None:
+    mine = await _own_fed(message)
+    if mine is None:
+        return
+    _, fed = mine
+    if message.chat.type not in GROUP_TYPES:
+        await reply(message, "Send this in the group that should be the log.")
+        return
+    await federations.update(fed["fed_id"], log_chat_id=message.chat.id)
+    await reply(message, f"This chat is now the log of {_fed_name(fed)}.")
+
+
+@router.message(cmd("unsetfedlog"))
+async def cmd_unsetfedlog(message: Message) -> None:
+    mine = await _own_fed(message)
+    if mine is None:
+        return
+    _, fed = mine
+    if not fed["log_chat_id"]:
+        await reply(message, "Your federation has no log chat.")
+        return
+    await federations.update(fed["fed_id"], log_chat_id=None)
+    await reply(message, f"{_fed_name(fed)} is no longer logged in a chat.")
+
+
+# --- Export and import ------------------------------------------------------------------------
+
+def _stamp(row: dict[str, Any]) -> str:
+    when = row.get("created_at")
+    return when.strftime("%Y-%m-%d %H:%M:%S") if hasattr(when, "strftime") else str(when or "")
+
+
+def render_export(rows: list[dict[str, Any]], fmt: str) -> tuple[bytes, str]:
+    """(file content, extension) of a ban list."""
+    if fmt == "json":
+        data = [
+            {"user_id": r["user_id"], "name": r["name"], "reason": r["reason"], "banned_by": r["banned_by_name"], "banned_at": _stamp(r)}
+            for r in rows
+        ]
+        return json.dumps(data, ensure_ascii=False, indent=1).encode(), "json"
+    if fmt == "human":
+        lines = [f"{r['name'] or 'Unknown'} [{r['user_id']}]" + (f" - {r['reason']}" if r["reason"] else "") for r in rows]
+        return "\n".join(lines).encode(), "txt"
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    if fmt == "minicsv":
+        writer.writerow(["user_id", "reason"])
+        for r in rows:
+            writer.writerow([r["user_id"], r["reason"] or ""])
+    else:
+        writer.writerow(["user_id", "name", "reason", "banned_by", "banned_at"])
+        for r in rows:
+            writer.writerow([r["user_id"], r["name"] or "", r["reason"] or "", r["banned_by_name"] or "", _stamp(r)])
+    return out.getvalue().encode(), "csv"
+
+
+@router.message(cmd("fedexport"))
+async def cmd_fedexport(message: Message, command: CommandObject) -> None:
+    mine = await _own_fed(message)
+    if mine is None:
+        return
+    user, fed = mine
+    fmt = (command.args or "csv").strip().lower() or "csv"
+    if fmt not in _FORMATS:
+        await reply(message, "Use /fedexport csv, minicsv, json or human.")
+        return
+    now = time.monotonic()
+    if now - _exported.get(user.id, -EXPORT_COOLDOWN) < EXPORT_COOLDOWN:
+        await reply(message, "Wait a little before exporting again.")
+        return
+    rows = await federations.bans(fed["fed_id"])
+    if not rows:
+        await reply(message, "Your federation has no bans to export.")
+        return
+    _exported[user.id] = now
+    data, extension = render_export(rows, fmt)
+    await message.bot.send_document(
+        message.chat.id,
+        BufferedInputFile(data, filename=f"fedbans_{fed['fed_id'][:8]}.{extension}"),
+        caption=f"{len(rows)} bans of {esc(fed['name'])}.",
+        message_thread_id=message.message_thread_id if message.is_topic_message else None,
+    )
+
+
+def _id_of(text: str) -> int | None:
+    text = text.strip()
+    return int(text) if re.fullmatch(r"-?\d{1,15}", text) and int(text) > 0 else None
+
+
+def parse_import(text: str, fmt: str | None) -> list[tuple[int, str | None, str | None]]:
+    """(user id, name, reason) rows from a file's text. Raises ValueError with a sentence."""
+    text = text.lstrip("﻿").strip()
+    if not text:
+        raise ValueError("The file is empty.")
+    if fmt is None:
+        if text[0] in "[{":
+            fmt = "json"
+        elif re.match(r"^(user_id|id)\b", text, re.IGNORECASE) or re.match(r"^\d+\s*(,|$)", text.splitlines()[0]):
+            fmt = "csv"
+        else:
+            fmt = "human"
+    rows: list[tuple[int, str | None, str | None]] = []
+    if fmt == "json":
+        try:
+            data = json.loads(text)
+        except ValueError:
+            raise ValueError("That is not valid JSON.") from None
+        if isinstance(data, dict):
+            data = data.get("bans", data.get("users", [data]))
+        if not isinstance(data, list):
+            raise ValueError("I expected a list of bans.")
+        for entry in data:
+            if isinstance(entry, dict):
+                user_id = _id_of(str(entry.get("user_id", entry.get("id", ""))))
+                name, reason = entry.get("name"), entry.get("reason")
+            else:
+                user_id, name, reason = _id_of(str(entry)), None, None
+            if user_id:
+                rows.append((user_id, str(name) if name else None, str(reason) if reason else None))
+    elif fmt in ("csv", "minicsv"):
+        table = list(csv.reader(io.StringIO(text)))
+        columns = {"user_id": 0, "name": 1, "reason": 2} if fmt == "csv" else {"user_id": 0, "reason": 1}
+        if table and _id_of(table[0][0] if table[0] else "") is None:
+            header = [cell.strip().lower() for cell in table.pop(0)]
+            columns = {key: header.index(key) for key in ("user_id", "name", "reason") if key in header} or columns
+            if "user_id" not in columns and "id" in header:
+                columns["user_id"] = header.index("id")
+        for row in table:
+            cell = lambda key: (row[columns[key]].strip() if key in columns and columns[key] < len(row) else "")
+            user_id = _id_of(cell("user_id"))
+            if user_id:
+                rows.append((user_id, cell("name") or None, cell("reason") or None))
+    else:
+        for line in text.splitlines():
+            found = re.search(r"\[(\d{1,15})\]", line) or re.match(r"^\s*(\d{1,15})\b", line)
+            if not found:
+                continue
+            before, after = line[: found.start()], line[found.end():]
+            reason = re.sub(r"^\s*[-:–—,]\s*", "", after).strip() or None
+            name = before.strip() or None
+            rows.append((int(found.group(1)), name, reason))
+    if not rows:
+        raise ValueError("I found no user IDs in that file.")
+    if len(rows) > MAX_IMPORT_ROWS:
+        raise ValueError(f"That is too many bans: at most {MAX_IMPORT_ROWS} at once.")
+    return rows
+
+
+@router.message(cmd("fedimport"))
+async def cmd_fedimport(message: Message, command: CommandObject) -> None:
+    mine = await _own_fed(message)
+    if mine is None:
+        return
+    user, fed = mine
+    words = (command.args or "").lower().split()
+    overwrite = "overwrite" in words
+    fmt = next((w for w in words if w in _FORMATS), None)
+    if any(w not in _FORMATS and w not in ("overwrite", "keep") for w in words):
+        await reply(message, "Use /fedimport [overwrite|keep] [csv|minicsv|json|human], as a reply to a file.")
+        return
+    document = getattr(replied_message(message), "document", None)
+    if document is None:
+        await reply(message, "Reply to a file with the bans to import.")
+        return
+    if (document.file_size or 0) > MAX_IMPORT_BYTES:
+        await reply(message, "That file is too big: at most 5 MB.")
+        return
+    try:
+        raw = (await message.bot.download(document.file_id)).read()
+        rows = parse_import(raw.decode("utf-8", errors="replace"), fmt)
+    except ValueError as exc:
+        await reply(message, esc(exc))
+        return
+    except TelegramAPIError:
+        await reply(message, "I couldn't download that file.")
+        return
+    admins = {a["user_id"] for a in await federations.admins(fed["fed_id"])} | {fed["owner_id"], message.bot.id}
+    kept = [r for r in rows if r[0] not in admins and not immunity.is_immune(r[0])]
+    added = await federations.import_bans(fed["fed_id"], kept, overwrite, user.id, user.full_name)
+    skipped = len(rows) - added
+    await reply(
+        message,
+        f"Imported <b>{added}</b> ban{'s' if added != 1 else ''} into {_fed_name(fed)}."
+        + (f" Skipped <b>{skipped}</b> (already banned, or admins)." if skipped else "")
+        + "\nPeople on the list are removed from the chats when they write or join.",
+    )
+    await _event(message.bot, fed, f"<b>Bans imported</b>\n{_item('Federation', _fed_name(fed))}\n{_item('Added', f'<code>{added}</code>')}\n{_item('By', user_link(user.id, user.full_name))}")
+
+
+# --- Fed admin commands -----------------------------------------------------------------------
+
+async def _protected(bot: Bot, fed: dict[str, Any], target) -> str | None:
+    """Why this target can't be banned in the federation, or None."""
+    if target.is_chat:
+        return "Only people can be banned in a federation."
+    if target.user_id == bot.id:
+        return "I'm not banning myself."
+    if immunity.is_immune(target.user_id) or await roles.get_role(target.user_id) is not None:
+        return "That account is protected and can't be banned."
+    if await federations.is_admin(fed, target.user_id):
+        return "That person is an admin of the federation and can't be banned in it."
+    return None
+
+
+def _ban_text(title: str, fed: dict[str, Any], admin, target_id: int, target_name: str | None, reason: str | None) -> str:
+    lines = [
+        f"<b>{title}</b>",
+        _item("Federation", f"<code>{esc(fed['name'])}</code>"),
+        _item("FedAdmin", user_link(admin.id, admin.full_name)),
+        _item("User", user_link(target_id, target_name)),
+        _item("User ID", f"<code>{target_id}</code>"),
+    ]
+    if reason:
+        lines.append(_item("Reason", f"<code>{esc(reason)}</code>"))
+    return "\n".join(lines)
+
+
+@router.message(cmd("fban"))
+async def cmd_fban(message: Message, command: CommandObject) -> None:
+    user = await _person(message)
+    if user is None:
+        return
+    fed = await _fed_to_ban_in(message, user)
+    if fed is None:
+        return
+    target = await _target(message, command)
+    if target is None:
+        return
+    problem = await _protected(message.bot, fed, target)
+    if problem:
+        await reply(message, problem)
+        return
+    reason = target.extra.strip()
+    if fed["require_reason"] and not reason:
+        await reply(message, "This federation requires a reason: /fban &lt;user&gt; &lt;reason&gt;.")
+        return
+    old = await federations.ban(fed["fed_id"], target.user_id, target.name, reason, user.id, user.full_name)
+    title = "FedBan Reason Update" if old else "New FedBan"
+    text = _ban_text(title, fed, user, target.user_id, target.name, reason)
+    await reply(message, text)
+    await _event(message.bot, fed, text)
+    if old is None or (old["reason"] or "") != reason:
+        _spawn(_propagate(message.bot, fed["fed_id"], target.user_id))
+
+
+@router.message(cmd("unfban"))
+async def cmd_unfban(message: Message, command: CommandObject) -> None:
+    user = await _person(message)
+    if user is None:
+        return
+    fed = await _fed_to_ban_in(message, user)
+    if fed is None:
+        return
+    target = await _target(message, command)
+    if target is None:
+        return
+    if await federations.unban(fed["fed_id"], target.user_id) is None:
+        await reply(message, f"{user_link(target.user_id, target.name)} is not banned in {_fed_name(fed)}.")
+        return
+    text = _ban_text("FedBan Revoked", fed, user, target.user_id, target.name, None)
+    await reply(message, text)
+    await _event(message.bot, fed, text)
+    _spawn(_lift(message.bot, fed["fed_id"], target.user_id))
+
+
+@router.message(cmd("myfeds"))
+async def cmd_myfeds(message: Message) -> None:
+    user = await _person(message)
+    if user is None:
+        return
+    mine = await federations.feds_of(user.id)
+    if not mine:
+        await reply(message, "You are not an admin of any federation.")
+        return
+    lines = ["<b>Your federations</b>"]
+    for fed in mine:
+        role = "Owner" if fed["owner_id"] == user.id else "Admin"
+        lines.append(f"• <b>{esc(fed['name'])}</b> ({role})\n  <code>{fed['fed_id']}</code>")
+    await reply(message, "\n".join(lines))
+
+
+# --- Everyone's commands ----------------------------------------------------------------------
+
+@router.message(cmd("fedinfo"))
+async def cmd_fedinfo(message: Message, command: CommandObject) -> None:
+    fed = await _resolve_fed(message, command.args or "", message.from_user)
+    if fed is None:
+        return
+    fed_id = fed["fed_id"]
+    lines = [
+        "<b>Federation Info</b>",
+        _item("Name", f"<code>{esc(fed['name'])}</code>"),
+        _item("ID", f"<code>{fed_id}</code>"),
+        _item("Owner", _owner_link(fed)),
+        _item("Admins", f"<code>{len(await federations.admins(fed_id))}</code>"),
+        _item("Chats", f"<code>{await federations.chat_count(fed_id)}</code>"),
+        _item("Banned users", f"<code>{await federations.ban_count(fed_id)}</code>"),
+        _item("Subscribed to", f"<code>{len(await federations.subs_of(fed_id))}</code>"),
+    ]
+    await reply(message, "\n".join(lines))
+
+
+@router.message(cmd("fedadmins"))
+async def cmd_fedadmins(message: Message, command: CommandObject) -> None:
+    fed = await _resolve_fed(message, command.args or "", message.from_user)
+    if fed is None:
+        return
+    lines = [f"<b>Admins of {esc(fed['name'])}</b>", _item("Owner", _owner_link(fed))]
+    for admin in await federations.admins(fed["fed_id"]):
+        lines.append(f"• {user_link(admin['user_id'], admin['name'])}")
+    if len(lines) == 2:
+        lines.append("It has no other admins.")
+    await reply(message, "\n".join(lines))
+
+
+@router.message(cmd("fedsubs"))
+async def cmd_fedsubs(message: Message, command: CommandObject) -> None:
+    fed = await _resolve_fed(message, command.args or "", message.from_user)
+    if fed is None:
+        return
+    subs = await federations.subs_of(fed["fed_id"])
+    if not subs:
+        await reply(message, f"{_fed_name(fed)} is not subscribed to any federation.")
+        return
+    lines = [f"<b>{esc(fed['name'])} is subscribed to</b>"]
+    for sub_id in subs:
+        other = await federations.get(sub_id)
+        lines.append(f"• <b>{esc(other['name']) if other else 'Unknown'}</b>\n  <code>{sub_id}</code>")
+    await reply(message, "\n".join(lines))
+
+
+@router.message(cmd("chatfed"))
+async def cmd_chatfed(message: Message) -> None:
+    if message.chat.type not in GROUP_TYPES:
+        await reply(message, "This command only works in groups.")
+        return
+    fed = await federations.chat_fed(message.chat.id)
+    if fed is None:
+        await reply(message, "This chat is not in a federation.")
+        return
+    await reply(
+        message,
+        "\n".join([
+            "<b>Chat Federation</b>",
+            _item("Name", f"<code>{esc(fed['name'])}</code>"),
+            _item("ID", f"<code>{fed['fed_id']}</code>"),
+            _item("Owner", _owner_link(fed)),
+        ]),
+    )
+
+
+@router.message(cmd("joinfed"))
+async def cmd_joinfed(message: Message, command: CommandObject) -> None:
+    try:
+        await moderation.require_chat_owner(message)
+    except ModerationError as exc:
+        await moderation.deny(message, exc)
+        return
+    argument = (command.args or "").strip()
+    if not _FED_ID.match(argument):
+        await reply(message, "Use /joinfed &lt;FedID&gt;.")
+        return
+    current = await federations.chat_fed(message.chat.id)
+    if current is not None:
+        await reply(message, f"This chat is already in {_fed_name(current)}. Leave it first with /leavefed.")
+        return
+    fed = await federations.get(argument.lower())
+    if fed is None:
+        await reply(message, "I can't find a federation with that ID.")
+        return
+    await federations.join(message.chat.id, fed["fed_id"])
+    await reply(message, f"This chat joined the federation {_fed_name(fed)}. People it bans are removed from here.")
+    await _event(message.bot, fed, f"<b>Chat joined</b>\n{_item('Federation', _fed_name(fed))}\n{_item('Chat', esc(message.chat.title or str(message.chat.id)))}\n{_item('Chat ID', f'<code>{message.chat.id}</code>')}")
+
+
+@router.message(cmd("leavefed"))
+async def cmd_leavefed(message: Message) -> None:
+    try:
+        await moderation.require_chat_owner(message)
+    except ModerationError as exc:
+        await moderation.deny(message, exc)
+        return
+    fed = await federations.chat_fed(message.chat.id)
+    if fed is None:
+        await reply(message, "This chat is not in a federation.")
+        return
+    await federations.leave(message.chat.id)
+    await reply(message, f"This chat left the federation {_fed_name(fed)}. Nobody is unbanned.")
+    await _event(message.bot, fed, f"<b>Chat left</b>\n{_item('Federation', _fed_name(fed))}\n{_item('Chat', esc(message.chat.title or str(message.chat.id)))}\n{_item('Chat ID', f'<code>{message.chat.id}</code>')}")
+
+
+@router.message(cmd("quietfed"))
+async def cmd_quietfed(message: Message, command: CommandObject, role=None) -> None:
+    if message.chat.type not in GROUP_TYPES:
+        await reply(message, "This command only works in groups.")
+        return
+    argument = (command.args or "").strip().lower()
+    if argument and argument not in _ON_OFF:
+        await reply(message, "Use /quietfed on or /quietfed off.")
+        return
+    right = RIGHT if argument else "can_manage_chat"
+    if await moderation.begin_chat_command(message, role, allow_staff=False, right=right) is None:
+        return
+    if await federations.chat_fed(message.chat.id) is None:
+        await reply(message, "This chat is not in a federation.")
+        return
+    if not argument:
+        quiet = await federations.is_quiet(message.chat.id)
+        await reply(message, f"Quiet mode is <b>{'on' if quiet else 'off'}</b>: I {'do not announce' if quiet else 'announce'} removals of federation-banned users here.")
+        return
+    await federations.set_quiet(message.chat.id, _ON_OFF[argument])
+    await reply(message, f"Quiet mode is now <b>{'on' if _ON_OFF[argument] else 'off'}</b>.")
+
+
+def _ban_line(row: dict[str, Any]) -> str:
+    text = f"• <b>{esc(row['name'])}</b>\n  <code>{row['fed_id']}</code>"
+    if row["reason"]:
+        text += f"\n  Reason: <code>{esc(row['reason'])}</code>"
+    return text
+
+
+@router.message(cmd("fedstat"))
+async def cmd_fedstat(message: Message, command: CommandObject) -> None:
+    words = (command.args or "").split()
+    fed_id = words.pop().lower() if words and _FED_ID.match(words[-1]) else None
+    me = message.from_user
+    if words or (replied_message(message) is not None and fed_id is None):
+        command = CommandObject(prefix=command.prefix, command=command.command, mention=command.mention, args=" ".join(words) or None)
+        target = await _target(message, command)
+        if target is None:
+            return
+        user_id, name = target.user_id, target.name
+        mine = False
+    else:
+        if me is None:
+            return
+        user_id, name, mine = me.id, me.full_name, True
+    who = "You are" if mine else f"{user_link(user_id, name)} is"
+    if fed_id:
+        fed = await federations.get(fed_id)
+        if fed is None:
+            await reply(message, "I can't find a federation with that ID.")
+            return
+        ban = await federations.get_ban(fed_id, user_id)
+        if ban is None:
+            await reply(message, f"{who} not banned in {_fed_name(fed)}.")
+            return
+        lines = [f"{who} banned in {_fed_name(fed)}.", _item("Reason", f"<code>{esc(ban['reason'] or 'none')}</code>"), _item("Banned by", esc(ban["banned_by_name"] or "unknown")), _item("Date", f"<code>{_stamp(ban)}</code>")]
+        await reply(message, "\n".join(lines))
+        return
+    found = await federations.banned_in(user_id)
+    if not found:
+        await reply(message, f"{who} not banned in any federation.")
+        return
+    await reply(message, f"{who} banned in {len(found)} federation{'s' if len(found) != 1 else ''}:\n" + "\n".join(_ban_line(r) for r in found[:30]))
+
+
+# --- Enforcement ------------------------------------------------------------------------------
+
+def _first_recently(chat_id: int, user_id: int) -> bool:
+    """True the first time a user is dealt with in a chat within a short while (updates arrive in parallel)."""
+    now = time.monotonic()
+    key = (chat_id, user_id)
+    last = _recent.get(key)
+    if last is not None and now - last < RECENT_SECONDS:
+        return False
+    if len(_recent) > 10_000:
+        for old in [k for k, t in _recent.items() if now - t >= RECENT_SECONDS]:
+            del _recent[old]
+    _recent[key] = now
+    return True
+
+
+async def _ban_in(bot: Bot, chat_id: int, user_id: int) -> bool:
+    """Ban in one chat. False when Telegram refuses (usually: the bot is not an admin there)."""
+    for attempt in (1, 2):
+        try:
+            await bot.ban_chat_member(chat_id, user_id)
+        except TelegramRetryAfter as exc:
+            if attempt == 2:
+                return False
+            await asyncio.sleep(exc.retry_after)
+            continue
+        except TelegramAPIError as exc:
+            log.debug("Could not fedban %s in %s: %s", user_id, chat_id, exc)
+            return False
+        await federations.record_applied(chat_id, user_id)
+        return True
+    return False
+
+
+async def _spared(bot: Bot, chat_id: int, user_id: int) -> bool:
+    """Whether federation bans leave this person alone in this chat."""
+    return (
+        immunity.is_immune(user_id)
+        or user_id == bot.id
+        or await roles.get_role(user_id) is not None
+        or await approvals.is_approved(chat_id, user_id)
+        or await moderation.is_chat_admin(bot, chat_id, user_id)
+    )
+
+
+async def _propagate(bot: Bot, fed_id: str, user_id: int) -> None:
+    """Remove a newly banned user from every chat the ban reaches."""
+    try:
+        for chat_id in await federations.chats_of(await federations.reaches(fed_id)):
+            if await federations.effective_ban(chat_id, user_id) is None:
+                continue  # lifted, or never applied to this chat, while this was running
+            if not await _spared(bot, chat_id, user_id):
+                await _ban_in(bot, chat_id, user_id)
+            await asyncio.sleep(0.05)
+    except Exception:
+        log.exception("Spreading a federation ban failed")
+
+
+async def _lift(bot: Bot, fed_id: str, user_id: int) -> None:
+    """Unban where the bot banned because of this federation, unless another federation still bans them there."""
+    try:
+        reach = set(await federations.chats_of(await federations.reaches(fed_id)))
+        for chat_id in await federations.applied_in(user_id):
+            if chat_id not in reach or await federations.effective_ban(chat_id, user_id) is not None:
+                continue
+            with suppress(TelegramAPIError):
+                await bot.unban_chat_member(chat_id, user_id, only_if_banned=True)
+            await federations.forget_applied(chat_id, user_id)
+            await asyncio.sleep(0.05)
+    except Exception:
+        log.exception("Lifting a federation ban failed")
+
+
+async def _banned(bot: Bot, chat_id: int, user) -> dict[str, Any] | bool:
+    found = await federations.effective_ban(chat_id, user.id)
+    if found is None or await _spared(bot, chat_id, user.id):
+        return False
+    return {"fed_ban": found}
+
+
+async def _enforce(bot: Bot, chat_id: int, user, found: tuple[dict[str, Any], dict[str, Any]], thread_id: int | None) -> None:
+    fed, ban = found
+    if not _first_recently(chat_id, user.id):
+        return
+    if not await _ban_in(bot, chat_id, user.id):
+        _recent.pop((chat_id, user.id), None)  # try again with their next message
+        return
+    if await federations.is_quiet(chat_id):
+        return
+    lines = [
+        f"<b>Alert!</b> This user is banned in the federation <code>{esc(fed['name'])}</code>.",
+        "<code>I banned them here!</code>",
+        _item("User", user_ref(user.id, user.full_name)),
+    ]
+    if ban["reason"]:
+        lines.append(_item("Reason", f"<code>{esc(ban['reason'])}</code>"))
+    with suppress(TelegramAPIError):
+        await bot.send_message(chat_id, "\n".join(lines), message_thread_id=thread_id, link_preview_options=LinkPreviewOptions(is_disabled=True))
+
+
+async def _banned_in_message(message: Message, bot: Bot) -> dict[str, Any] | bool:
+    user = message.from_user
+    if user is None or message.chat.type not in GROUP_TYPES or message.sender_chat is not None:
+        return False
+    return await _banned(bot, message.chat.id, user)
+
+
+@router.message(_banned_in_message)
+@router.edited_message(_banned_in_message)
+async def enforce_on_message(message: Message, bot: Bot, fed_ban: tuple) -> None:
+    with suppress(TelegramAPIError):
+        await message.delete()
+    thread = message.message_thread_id if message.is_topic_message else None
+    await _enforce(bot, message.chat.id, message.from_user, fed_ban, thread)
+
+
+def _joined(event: ChatMemberUpdated) -> bool:
+    def status(member) -> str:
+        value = getattr(member.status, "value", member.status)
+        if value == "restricted" and not getattr(member, "is_member", True):
+            return "left"
+        return value
+
+    return status(event.old_chat_member) in ("left", "kicked") and status(event.new_chat_member) in ("member", "restricted")
+
+
+async def _banned_joining(event: ChatMemberUpdated, bot: Bot) -> dict[str, Any] | bool:
+    user = event.new_chat_member.user
+    if event.chat.type not in GROUP_TYPES or user.id == bot.id or not _joined(event):
+        return False
+    return await _banned(bot, event.chat.id, user)
+
+
+@router.chat_member(_banned_joining)
+async def enforce_on_join(event: ChatMemberUpdated, bot: Bot, fed_ban: tuple) -> None:
+    await _enforce(bot, event.chat.id, event.new_chat_member.user, fed_ban, None)
+
+
+# --- /info ------------------------------------------------------------------------------------
+
+async def _info_banned(bot: Bot, user_id: int, chat_id: int | None) -> list[tuple[str, bool]]:
+    if chat_id is None or await federations.chat_fed_id(chat_id) is None:
+        return []
+    return [("FedBanned", await federations.effective_ban(chat_id, user_id) is not None)]
+
+
+async def _info_admin(bot: Bot, user_id: int, chat_id: int | None) -> list[tuple[str, bool]]:
+    if chat_id is None:
+        return []
+    fed = await federations.chat_fed(chat_id)
+    if fed is None:
+        return []
+    return [("FedAdmin", await federations.is_admin(fed, user_id))]
+
+
+info_hooks.register("federations", _info_banned)
+info_hooks.register("federations", _info_admin, always=True)

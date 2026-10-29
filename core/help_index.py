@@ -44,12 +44,57 @@ def entries(module: ModuleType, role: Role | None) -> list[tuple[str, str]]:
     return visible
 
 
+class Section(str):
+    """
+    Marks a command of a module's HELP with the section it belongs to. A module whose
+    commands have sections gets a help page with one button per section instead of one
+    long list. Use it like the "who may use it" label:
+
+        HELP = [("/newfed <name>", "Create a federation.", Section("Owner commands"), "federation owner")]
+    """
+
+
+def sections(module: ModuleType) -> list[str]:
+    """The sections of a module in the order they first appear."""
+    found: list[str] = []
+    for entry in getattr(module, "HELP", ()):
+        name = next((item for item in entry[2:] if isinstance(item, Section)), None)
+        if name is not None and name not in found:
+            found.append(str(name))
+    return found
+
+
+def visible_sections(module: ModuleType, role: Role | None) -> list[tuple[int, str]]:
+    """(number, name) of the sections that have a command this role may see. The number is stable."""
+    names = sections(module)
+    shown = {entry_section for entry_section in (_section(e) for e in _visible(module, role)) if entry_section}
+    return [(i, name) for i, name in enumerate(names) if name in shown]
+
+
+def _section(entry: tuple) -> str | None:
+    name = next((item for item in entry[2:] if isinstance(item, Section)), None)
+    return str(name) if name is not None else None
+
+
+def _visible(module: ModuleType, role: Role | None) -> list[tuple]:
+    out = []
+    for entry in getattr(module, "HELP", ()):
+        minimum = next((item for item in entry[2:] if isinstance(item, Role)), None)
+        if minimum is None or (role is not None and role >= minimum):
+            out.append(entry)
+    return out
+
+
 ADMINS = "chat admins"
 CHAT_OWNER = "chat owner"
 
 
-def detailed(module: ModuleType, role: Role | None) -> list[tuple[str, str, str | None]]:
-    """Like entries(), with who may use each command: (usage, description, label or None)."""
+def detailed(module: ModuleType, role: Role | None, section: str | None = None) -> list[tuple[str, str, str | None]]:
+    """
+    Like entries(), with who may use each command: (usage, description, label or None).
+    With a section, only the commands of that section; without, only those that have none
+    (all of them, for a module that has no sections).
+    """
     visible: list[tuple[str, str, str | None]] = []
     default_label = getattr(module, "HELP_WHO", None)
     for entry in getattr(module, "HELP", ()):
@@ -57,7 +102,9 @@ def detailed(module: ModuleType, role: Role | None) -> list[tuple[str, str, str 
         minimum = next((item for item in rest if isinstance(item, Role)), None)
         if minimum is not None and (role is None or role < minimum):
             continue
-        label = next((item for item in rest if isinstance(item, str)), None)
+        if _section(entry) != section:
+            continue
+        label = next((item for item in rest if isinstance(item, str) and not isinstance(item, Section)), None)
         if label is None and minimum is not None:
             label = f"{minimum.name.title()} and up"
         visible.append((usage, description, label or default_label))

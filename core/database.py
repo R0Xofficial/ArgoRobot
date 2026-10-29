@@ -130,6 +130,53 @@ CREATE TABLE IF NOT EXISTS greetings (
     last_welcome_id       BIGINT
 );
 
+-- Federations: groups of chats that share one ban list (see core/federations.py).
+CREATE TABLE IF NOT EXISTS federations (
+    fed_id         TEXT PRIMARY KEY,
+    name           TEXT NOT NULL,
+    owner_id       BIGINT NOT NULL UNIQUE,
+    owner_name     TEXT,
+    notify         BOOLEAN NOT NULL DEFAULT TRUE,
+    require_reason BOOLEAN NOT NULL DEFAULT FALSE,
+    log_chat_id    BIGINT,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS fed_admins (
+    fed_id  TEXT NOT NULL,
+    user_id BIGINT NOT NULL,
+    name    TEXT,
+    PRIMARY KEY (fed_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS fed_chats (
+    chat_id BIGINT PRIMARY KEY,
+    fed_id  TEXT NOT NULL,
+    quiet   BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE INDEX IF NOT EXISTS fed_chats_fed ON fed_chats (fed_id);
+CREATE TABLE IF NOT EXISTS fed_bans (
+    fed_id         TEXT NOT NULL,
+    user_id        BIGINT NOT NULL,
+    name           TEXT,
+    reason         TEXT,
+    banned_by      BIGINT,
+    banned_by_name TEXT,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (fed_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS fed_bans_user ON fed_bans (user_id);
+CREATE TABLE IF NOT EXISTS fed_subs (
+    fed_id TEXT NOT NULL,
+    sub_id TEXT NOT NULL,
+    PRIMARY KEY (fed_id, sub_id)
+);
+-- Where the bot itself banned someone because of a federation ban, so that lifting the
+-- ban undoes only that.
+CREATE TABLE IF NOT EXISTS fed_applied (
+    chat_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    PRIMARY KEY (chat_id, user_id)
+);
+
 -- Locks: kinds of messages a chat does not allow (see core/locks.py).
 CREATE TABLE IF NOT EXISTS locks (
     chat_id BIGINT NOT NULL,
