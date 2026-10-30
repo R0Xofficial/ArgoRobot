@@ -69,9 +69,8 @@ def register(name: str, module: ModuleType, router: Router) -> None:
     info = ModuleInfo(name=name.lower(), module=module, router=router)
     _modules[info.name] = info
 
-    if info.protected:
-        return
-
+    # Protected modules can't be turned off bot-wide (their flag stays on), but a chat may still
+    # turn one off for itself, so they get the gate as well.
     gate = _make_gate(info)
     for event_name, observer in router.observers.items():
         if event_name == "error":

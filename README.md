@@ -175,9 +175,9 @@ Members are ignored; admins can still use the command. Aliases are switched off 
 /disablemodule all           /enablemodule all
 ```
 
-`/disablemodule all` turns off every module except `gbans`, for a chat that only wants global bans. `/disabled` shows all three kinds of switches.
+`/disablemodule all` turns off every module (this page excepted). A chat that only wants global bans sends it and then `/enablemodule gbans`. `/disabled` shows all three kinds of switches.
 
-`/help`, `/start`, `/connect` and the commands of this page can never be switched off.
+Everything can be switched off completely except the commands of this page (so a chat can always undo what it did), even `/help` and `/connect`. Turning `connection` off ends the connections to that chat.
 
 Bot-wide, the owner and developers can turn whole modules on and off for every chat with `/module` and list them with `/modules`.
 

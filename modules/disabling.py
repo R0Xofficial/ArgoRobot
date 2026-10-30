@@ -1,10 +1,13 @@
 """Switching commands off"""
 
+from contextlib import suppress
+
 from aiogram import Router
+from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
 from aiogram.types import Message
 
-from core import disabled, moderation, registry
+from core import connection, disabled, moderation, registry
 from core.filters import cmd
 from core.helpers import reply
 from core.moderation import GROUP_TYPES, ModerationError
@@ -16,9 +19,9 @@ Chats can switch off what they don't need, in three ways.
 
 /disable switches off single commands for members. /restrictmodule does the same for every command of a module. Admins can still use what is switched off for members, so nobody is locked out of their own tools. Aliases go with the command.
 
-/disablemodule turns a whole module off in the chat completely: its commands stop for everybody, admins included, and so does everything it does by itself (filters, locks, flood control, welcome messages ...). A chat that only wants global bans can send /disablemodule all: everything except gbans is off. /enablemodule brings modules back. These two are for the chat's owner.
+/disablemodule turns a whole module off in the chat completely: its commands stop for everybody, admins included, and so does everything it does by itself (filters, locks, flood control, welcome messages ...). Everything can go except this page: even /help and /connect. Turning connections off ends the ones that exist. /disablemodule all turns off everything but this page; a chat that only wants global bans sends it and then /enablemodule gbans. /enablemodule brings modules back. These two are for the chat's owner.
 
-A few things can never be switched off: the commands on this page, /help, /start and /connect.
+Only the commands on this page can never be switched off, so a chat can always undo what it did.
 """
 
 HELP = [
@@ -26,12 +29,10 @@ HELP = [
     ("/enable <command>", "Switch a command back on. Needs the right to change chat info.", "admins"),
     ("/restrictmodule <module>", "Switch off every command of a module for members, for example /restrictmodule fun. Admins can still use them. Use it without a name to see the modules. Needs the right to change chat info.", "admins"),
     ("/unrestrictmodule <module>", "Switch a module's commands back on for members. Needs the right to change chat info.", "admins"),
-    ("/disablemodule <module|all>", "Turn a module off in this chat completely: its commands and its automatic actions stop, for everybody, admins included. all turns off every module except gbans. Use it without a name to see the modules.", "chat owner"),
+    ("/disablemodule <module|all>", "Turn a module off in this chat completely: its commands and its automatic actions stop, for everybody, admins included. all turns off every module (this page excepted). Use it without a name to see the modules.", "chat owner"),
     ("/enablemodule <module|all>", "Turn a module back on in this chat. all turns every module back on.", "chat owner"),
     ("/disabled", "Show what is switched off in this chat.", "everyone"),
 ]
-
-PROTECTED = True  # a chat can never lock itself out of the switches
 
 router = Router(name="disabling")
 
@@ -57,7 +58,7 @@ def _word(command: CommandObject) -> str:
 
 def _switchable() -> list[str]:
     """Modules a chat may turn off."""
-    return sorted(m.name for m in registry.all_modules() if not m.protected and m.name not in disabled.ALWAYS_ON)
+    return sorted(m.name for m in registry.all_modules() if m.name not in disabled.ALWAYS_ON)
 
 
 async def _switch_command(message: Message, command: CommandObject, role: Role | None, *, off: bool) -> None:
@@ -104,7 +105,7 @@ async def cmd_enable(message: Message, command: CommandObject, role: Role | None
 
 def _modules() -> list[str]:
     """Modules with at least one command that can be switched off for members."""
-    return sorted(m.name for m in registry.all_modules() if not m.protected and disabled.commands_of(m.name))
+    return sorted(m.name for m in registry.all_modules() if disabled.commands_of(m.name))
 
 
 async def _switch_members(message: Message, command: CommandObject, role: Role | None, *, off: bool) -> None:
@@ -137,6 +138,19 @@ async def cmd_unrestrictmodule(message: Message, command: CommandObject, role: R
     await _switch_members(message, command, role, off=False)
 
 
+async def _end_connections(message: Message) -> str:
+    """Connections to a chat that turned them off end; the people on them are told. Returns a sentence for the answer."""
+    people = await connection.drop_chat(message.chat.id)
+    title = esc(message.chat.title or str(message.chat.id))
+    for user_id in people:
+        with suppress(TelegramAPIError):
+            await message.bot.send_message(
+                chat_id=user_id,
+                text=f"Your connection to <b>{title}</b> has ended: connections were switched off there.",
+            )
+    return f"\n{len(people)} connection{'s' if len(people) != 1 else ''} to this chat ended." if people else ""
+
+
 async def _switch_module(message: Message, command: CommandObject, *, off: bool) -> None:
     name = "disablemodule" if off else "enablemodule"
     if message.chat.type not in GROUP_TYPES:
@@ -157,15 +171,14 @@ async def _switch_module(message: Message, command: CommandObject, *, off: bool)
     change = disabled.add if off else disabled.remove
 
     if word == "all":
-        targets = [m for m in names if not (off and m in disabled.KEEP_BY_ALL)]
-        changed = [m for m in targets if await change(chat_id, disabled.off_key(m))]
-        kept = ", ".join(f"<code>{m}</code>" for m in names if m in disabled.KEEP_BY_ALL and m in names)
+        changed = [m for m in names if await change(chat_id, disabled.off_key(m))]
         if not off:
             await reply(message, "Every module is on again." if changed else "Every module was already on.")
         elif changed:
-            await reply(message, f"{len(changed)} modules are now off in this chat." + (f" Still running: {kept}." if kept else "") + "\nBring one back with /enablemodule &lt;module&gt;.")
+            ended = await _end_connections(message) if "connection" in changed else ""
+            await reply(message, f"{len(changed)} modules are now off in this chat.\nBring one back with /enablemodule &lt;module&gt;, for example /enablemodule gbans." + ended)
         else:
-            await reply(message, "Everything is already off here." + (f" Still running: {kept}." if kept else ""))
+            await reply(message, "Everything is already off here.")
         return
 
     if word not in names:
@@ -176,7 +189,8 @@ async def _switch_module(message: Message, command: CommandObject, *, off: bool)
         return
     changed = await change(chat_id, disabled.off_key(word))
     if off:
-        await reply(message, f"<b>{word}</b> is now off in this chat: its commands and automatic actions stop." if changed else f"<b>{word}</b> is already off here.")
+        ended = await _end_connections(message) if changed and word == "connection" else ""
+        await reply(message, (f"<b>{word}</b> is now off in this chat: its commands and automatic actions stop." + ended) if changed else f"<b>{word}</b> is already off here.")
     else:
         await reply(message, f"<b>{word}</b> is on again in this chat." if changed else f"<b>{word}</b> wasn't turned off here.")
 

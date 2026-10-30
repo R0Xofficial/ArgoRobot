@@ -28,16 +28,15 @@ log = logging.getLogger(__name__)
 GROUP_TYPES = ("group", "supergroup")
 ANONYMOUS_ADMIN = 1087968824  # the user Telegram shows for anonymous admins
 
-# Never switched off: they are how people get out of trouble.
+# Never switched off: the switches themselves, so a chat can always undo what it did.
 PROTECTED = frozenset({
     "disable", "enable", "disabled", "restrictmodule", "unrestrictmodule", "disablemodule", "enablemodule",
-    "help", "start", "connect", "disconnect", "connection",
 })
 
-# Modules a chat can never turn off, besides the protected ones: /help and /start live there.
-ALWAYS_ON = frozenset({"misc"})
-# What "/disablemodule all" leaves running: the chats that only want global bans keep them.
-KEEP_BY_ALL = frozenset({"gbans"})
+# The only module a chat can't turn off for itself: it holds the switches. Everything else
+# can go, /help and /connect included. (Turning connections off ends the existing ones, see
+# modules/disabling.py.)
+ALWAYS_ON = frozenset({"disabling"})
 
 # every name a command answers to -> (its first name, the module it belongs to)
 COMMANDS: dict[str, tuple[str, str]] = {}

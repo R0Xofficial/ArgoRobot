@@ -7,6 +7,7 @@ Order matters: aiogram's own user-context middleware runs first and puts
 
 import asyncio
 import logging
+from contextlib import suppress
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
@@ -15,6 +16,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.types import Update
 
 from config import settings
+from core.text import esc
 from core import chatsettings, chats, connection, registry, roles, users
 
 log = logging.getLogger("usage")
@@ -187,4 +189,17 @@ class ConnectionMiddleware(BaseMiddleware):
         name = connection.command_name(message.text, settings.COMMAND_PREFIXES, username)
         if name is None or not connection.is_remote(name):
             return None
-        return await connection.get(message.from_user.id)
+        record = await connection.get(message.from_user.id)
+        if record is None:
+            return None
+        why = await connection.switched_off(record["chat_id"])
+        if why:
+            # Connections were turned off while this one was open: it ends by itself.
+            await connection.clear(message.from_user.id)
+            with suppress(TelegramAPIError):
+                await bot.send_message(
+                    chat_id=message.chat.id,
+                    text=f"{why} Your connection to {esc(record['title'] or str(record['chat_id']))} has ended.",
+                )
+            return None
+        return record

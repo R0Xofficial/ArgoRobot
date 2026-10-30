@@ -78,12 +78,26 @@ async def clear(user_id: int) -> bool:
     return True
 
 
-async def drop_chat(chat_id: int) -> None:
-    """Nobody stays connected to a chat I have left."""
+async def drop_chat(chat_id: int) -> list[int]:
+    """Nobody stays connected to a chat I have left or that turned connections off. Returns who was."""
+    rows = await database.fetch_all("SELECT user_id FROM connections WHERE chat_id = $1", chat_id)
     await database.execute("DELETE FROM connections WHERE chat_id = $1", chat_id)
     for user_id, record in list(_cache.items()):
         if record is not None and record["chat_id"] == chat_id:
             _cache[user_id] = None
+    return [row["user_id"] for row in rows]
+
+
+async def switched_off(chat_id: int | None = None) -> str | None:
+    """Why connections can't be used (turned off for the whole bot, or in that group), else None."""
+    from core import registry
+
+    info = registry.get("connection")
+    if info is not None and not info.enabled:
+        return "Connections are switched off."
+    if chat_id is not None and await disabled.module_off(chat_id, "connection"):
+        return "Connections are switched off in that group."
+    return None
 
 
 def forget_chat(old_id: int, new_id: int) -> None:
@@ -107,6 +121,9 @@ async def connect(bot, user_id: int, reference: int | str) -> dict[str, Any]:
         raise ConnectError("I can't find that chat. Check the ID or username, and make sure I am in the group.") from None
     if getattr(chat, "type", None) not in GROUP_TYPES:
         raise ConnectError("You can only connect to a group.")
+    why = await switched_off(chat.id)
+    if why:
+        raise ConnectError(why)
     if await moderation.member_status(bot, chat.id, bot.id) in (None, "left", "kicked"):
         raise ConnectError("I am not in that group.")
     status = await moderation.member_status(bot, chat.id, user_id)
