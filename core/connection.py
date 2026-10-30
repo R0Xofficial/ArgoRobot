@@ -88,6 +88,14 @@ async def drop_chat(chat_id: int) -> list[int]:
     return [row["user_id"] for row in rows]
 
 
+async def drop_all() -> list[dict]:
+    """End every connection (the module was turned off for the whole bot). Returns the ones that were open."""
+    rows = await database.fetch_all("SELECT user_id, chat_id, title FROM connections")
+    await database.execute("DELETE FROM connections")
+    _cache.clear()
+    return [dict(row) for row in rows]
+
+
 async def switched_off(chat_id: int | None = None) -> str | None:
     """Why connections can't be used (turned off for the whole bot, or in that group), else None."""
     from core import registry

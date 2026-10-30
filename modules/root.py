@@ -121,7 +121,10 @@ async def cmd_module(message: Message, command: CommandObject) -> None:
         return
 
     past = "enabled" if action == "enable" else "disabled"
-    await reply(message, f"Module <code>{esc(name.lower())}</code> {past}.")
+    ended = ""
+    if action == "disable" and name.lower() == "connection":
+        ended = await _end_all_connections(message)
+    await reply(message, f"Module <code>{esc(name.lower())}</code> {past}.{ended}")
 
 
 @router.message(cmd("cleanchats"), HasRole(Role.DEVELOPER))
@@ -404,3 +407,25 @@ async def _info_flags(bot, user_id: int, chat_id: int | None) -> list[tuple[str,
 
 
 info_hooks.register("root", _info_flags)
+
+
+async def _end_all_connections(message: Message) -> str:
+    """Connections can't outlive the module: end them all and tell the people on them."""
+    from contextlib import suppress
+
+    from aiogram.exceptions import TelegramAPIError
+
+    from core import connection
+
+    try:
+        open_ones = await connection.drop_all()
+    except Exception:
+        return "\nEnding the open connections failed; they end by themselves on the next command."
+    for item in open_ones:
+        with suppress(TelegramAPIError):
+            await message.bot.send_message(
+                chat_id=item["user_id"],
+                text=f"Your connection to <b>{esc(item['title'] or str(item['chat_id']))}</b> has ended: connections were switched off.",
+            )
+    n = len(open_ones)
+    return f"\n{n} connection{'s' if n != 1 else ''} ended." if n else ""
