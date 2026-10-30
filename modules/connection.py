@@ -25,6 +25,8 @@ HELP = [
     ("/connection", "Show which group this private chat is connected to.", "admins"),
 ]
 
+PROTECTED = True  # a chat can never lock itself out of these
+
 router = Router(name="connection")
 
 

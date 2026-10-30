@@ -17,6 +17,7 @@ from types import ModuleType
 from aiogram import Router
 
 from core import database
+from core import disabled
 from core.disabled import CommandGuard
 
 log = logging.getLogger(__name__)
@@ -46,10 +47,20 @@ class ModuleInfo:
 _modules: dict[str, ModuleInfo] = {}
 
 
+def _group_of(event) -> int | None:
+    """Id of the group an event happened in (messages, member changes, reactions, button presses)."""
+    chat = getattr(event, "chat", None) or getattr(getattr(event, "message", None), "chat", None)
+    return chat.id if getattr(chat, "type", None) in disabled.GROUP_TYPES else None
+
+
 def _make_gate(info: ModuleInfo):
     # Must be a coroutine function: aiogram runs sync filters in a thread.
-    async def gate(*_args, **_kwargs) -> bool:
-        return info.enabled
+    async def gate(*args, **_kwargs) -> bool:
+        if not info.enabled:
+            return False
+        chat_id = _group_of(args[0]) if args else None
+        # A chat can turn a module off for itself (/restrictmodule, core/disabled.py).
+        return chat_id is None or not await disabled.module_off(chat_id, info.name)
 
     return gate
 

@@ -7,23 +7,31 @@ from aiogram.types import Message
 from core import disabled, moderation, registry
 from core.filters import cmd
 from core.helpers import reply
-from core.moderation import GROUP_TYPES
+from core.moderation import GROUP_TYPES, ModerationError
 from core.roles import Role
 from core.text import esc
 
 ABOUT = """
-Chats can switch off commands they don't want members to use, one command or a whole module at a time.
+Chats can switch off what they don't need, in three ways.
 
-Admins can still use a switched-off command, so nobody is locked out of their own tools. Members who use one are ignored. Aliases are switched off together with the command. A few commands can never be switched off: the ones on this page, /help, /start and /connect.
+/disable switches off single commands for members. /restrictmodule does the same for every command of a module. Admins can still use what is switched off for members, so nobody is locked out of their own tools. Aliases go with the command.
+
+/disablemodule turns a whole module off in the chat completely: its commands stop for everybody, admins included, and so does everything it does by itself (filters, locks, flood control, welcome messages ...). A chat that only wants global bans can send /disablemodule all: everything except gbans is off. /enablemodule brings modules back. These two are for the chat's owner.
+
+A few things can never be switched off: the commands on this page, /help, /start and /connect.
 """
 
 HELP = [
-    ("/disable <command>", "Switch a command off for members of this chat, for example /disable slap. Needs the right to change chat info.", "admins"),
+    ("/disable <command>", "Switch a command off for members of this chat, for example /disable slap. Admins can still use it. Needs the right to change chat info.", "admins"),
     ("/enable <command>", "Switch a command back on. Needs the right to change chat info.", "admins"),
-    ("/disablemodule <module>", "Switch off every command of a module, for example /disablemodule fun. Use it without a name to see the modules. Needs the right to change chat info.", "admins"),
-    ("/enablemodule <module>", "Switch a module's commands back on. Needs the right to change chat info.", "admins"),
+    ("/restrictmodule <module>", "Switch off every command of a module for members, for example /restrictmodule fun. Admins can still use them. Use it without a name to see the modules. Needs the right to change chat info.", "admins"),
+    ("/unrestrictmodule <module>", "Switch a module's commands back on for members. Needs the right to change chat info.", "admins"),
+    ("/disablemodule <module|all>", "Turn a module off in this chat completely: its commands and its automatic actions stop, for everybody, admins included. all turns off every module except gbans. Use it without a name to see the modules.", "chat owner"),
+    ("/enablemodule <module|all>", "Turn a module back on in this chat. all turns every module back on.", "chat owner"),
     ("/disabled", "Show what is switched off in this chat.", "everyone"),
 ]
+
+PROTECTED = True  # a chat can never lock itself out of the switches
 
 router = Router(name="disabling")
 
@@ -47,13 +55,9 @@ def _word(command: CommandObject) -> str:
     return words[0].lstrip("/!").lower() if words else ""
 
 
-def _modules() -> list[str]:
-    """Modules with at least one command that can be switched off."""
-    return sorted(m.name for m in registry.all_modules() if not m.protected and disabled.commands_of(m.name))
-
-
-def _module_of(word: str) -> str | None:
-    return word if word in _modules() else None
+def _switchable() -> list[str]:
+    """Modules a chat may turn off."""
+    return sorted(m.name for m in registry.all_modules() if not m.protected and m.name not in disabled.ALWAYS_ON)
 
 
 async def _switch_command(message: Message, command: CommandObject, role: Role | None, *, off: bool) -> None:
@@ -84,8 +88,6 @@ async def _switch_command(message: Message, command: CommandObject, role: Role |
     else:
         if changed:
             await reply(message, f"{_slash(primary)} is switched on again.{extra}")
-        elif disabled.module_key(entry[1]) in await disabled.get(chat_id):
-            await reply(message, f"{_slash(primary)} isn't switched off by itself: the whole module <b>{esc(entry[1])}</b> is. Use /enablemodule {esc(entry[1])}.")
         else:
             await reply(message, f"{_slash(primary)} isn't switched off.")
 
@@ -100,8 +102,13 @@ async def cmd_enable(message: Message, command: CommandObject, role: Role | None
     await _switch_command(message, command, role, off=False)
 
 
-async def _switch_module(message: Message, command: CommandObject, role: Role | None, *, off: bool) -> None:
-    name = "disablemodule" if off else "enablemodule"
+def _modules() -> list[str]:
+    """Modules with at least one command that can be switched off for members."""
+    return sorted(m.name for m in registry.all_modules() if not m.protected and disabled.commands_of(m.name))
+
+
+async def _switch_members(message: Message, command: CommandObject, role: Role | None, *, off: bool) -> None:
+    name = "restrictmodule" if off else "unrestrictmodule"
     if not await _begin(message, role):
         return
     word = _word(command)
@@ -109,27 +116,79 @@ async def _switch_module(message: Message, command: CommandObject, role: Role | 
     if not word:
         await reply(message, f"Use /{name} &lt;module&gt;.\nModules: {listing}")
         return
-    module = _module_of(word)
-    if module is None:
+    if word not in _modules():
         await reply(message, f"I don't have a module called <code>{esc(word)}</code>.\nModules: {listing}")
         return
-    changed = await (disabled.add if off else disabled.remove)(message.chat.id, disabled.module_key(module))
+    changed = await (disabled.add if off else disabled.remove)(message.chat.id, disabled.module_key(word))
     if off:
-        text = "now switched off for members. Admins can still use them." if changed else "already switched off."
-        await reply(message, f"The commands of <b>{module}</b> are {text}")
+        text = "now switched off for members. Admins can still use them." if changed else "already switched off for members."
     else:
-        text = "switched on again." if changed else "not switched off as a module."
-        await reply(message, f"The commands of <b>{module}</b> are {text}")
+        text = "switched on again for members." if changed else "not switched off for members."
+    await reply(message, f"The commands of <b>{word}</b> are {text}")
+
+
+@router.message(cmd("restrictmodule"))
+async def cmd_restrictmodule(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    await _switch_members(message, command, role, off=True)
+
+
+@router.message(cmd("unrestrictmodule"))
+async def cmd_unrestrictmodule(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    await _switch_members(message, command, role, off=False)
+
+
+async def _switch_module(message: Message, command: CommandObject, *, off: bool) -> None:
+    name = "disablemodule" if off else "enablemodule"
+    if message.chat.type not in GROUP_TYPES:
+        await reply(message, "This command only works in groups.")
+        return
+    try:
+        await moderation.require_chat_owner(message)
+    except ModerationError as exc:
+        await moderation.deny(message, exc)
+        return
+    word = _word(command)
+    names = _switchable()
+    listing = ", ".join(f"<code>{m}</code>" for m in names)
+    if not word:
+        await reply(message, f"Use /{name} &lt;module&gt; or /{name} all.\nModules: {listing}")
+        return
+    chat_id = message.chat.id
+    change = disabled.add if off else disabled.remove
+
+    if word == "all":
+        targets = [m for m in names if not (off and m in disabled.KEEP_BY_ALL)]
+        changed = [m for m in targets if await change(chat_id, disabled.off_key(m))]
+        kept = ", ".join(f"<code>{m}</code>" for m in names if m in disabled.KEEP_BY_ALL and m in names)
+        if not off:
+            await reply(message, "Every module is on again." if changed else "Every module was already on.")
+        elif changed:
+            await reply(message, f"{len(changed)} modules are now off in this chat." + (f" Still running: {kept}." if kept else "") + "\nBring one back with /enablemodule &lt;module&gt;.")
+        else:
+            await reply(message, "Everything is already off here." + (f" Still running: {kept}." if kept else ""))
+        return
+
+    if word not in names:
+        if registry.get(word) is not None:
+            await reply(message, f"<b>{esc(word)}</b> is part of my core and can't be switched off.")
+        else:
+            await reply(message, f"I don't have a module called <code>{esc(word)}</code>.\nModules: {listing}")
+        return
+    changed = await change(chat_id, disabled.off_key(word))
+    if off:
+        await reply(message, f"<b>{word}</b> is now off in this chat: its commands and automatic actions stop." if changed else f"<b>{word}</b> is already off here.")
+    else:
+        await reply(message, f"<b>{word}</b> is on again in this chat." if changed else f"<b>{word}</b> wasn't turned off here.")
 
 
 @router.message(cmd("disablemodule"))
-async def cmd_disablemodule(message: Message, command: CommandObject, role: Role | None = None) -> None:
-    await _switch_module(message, command, role, off=True)
+async def cmd_disablemodule(message: Message, command: CommandObject) -> None:
+    await _switch_module(message, command, off=True)
 
 
 @router.message(cmd("enablemodule"))
-async def cmd_enablemodule(message: Message, command: CommandObject, role: Role | None = None) -> None:
-    await _switch_module(message, command, role, off=False)
+async def cmd_enablemodule(message: Message, command: CommandObject) -> None:
+    await _switch_module(message, command, off=False)
 
 
 @router.message(cmd("disabled"))
@@ -138,14 +197,17 @@ async def cmd_disabled(message: Message) -> None:
         await reply(message, "This command only works in groups.")
         return
     found = await disabled.get(message.chat.id)
-    modules = sorted(k.split(":", 1)[1] for k in found if k.startswith("module:"))
-    commands = sorted(k for k in found if not k.startswith("module:"))
-    if not modules and not commands:
+    off = sorted(k.split(":", 1)[1] for k in found if k.startswith("off:"))
+    members = sorted(k.split(":", 1)[1] for k in found if k.startswith("module:"))
+    commands = sorted(k for k in found if ":" not in k)
+    if not off and not members and not commands:
         await reply(message, "Nothing is switched off in this chat.")
         return
-    lines = ["Switched off for members (admins can still use them):"]
+    lines = []
     if commands:
-        lines.append("Commands: " + ", ".join(_slash(c) for c in commands))
-    if modules:
-        lines.append("Modules: " + ", ".join(f"<code>{m}</code>" for m in modules))
+        lines.append("Commands switched off for members (admins can still use them): " + ", ".join(_slash(c) for c in commands))
+    if members:
+        lines.append("Modules switched off for members (admins can still use them): " + ", ".join(f"<code>{m}</code>" for m in members))
+    if off:
+        lines.append("Modules turned off for everybody: " + ", ".join(f"<code>{m}</code>" for m in off))
     await reply(message, "\n".join(lines))

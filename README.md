@@ -156,19 +156,30 @@ A federation is a ban list shared by many chats.
 
 Your rights in the group are checked on every command, exactly as if you had sent it there. Commands that need a reply to a message, delete your command, or show a saved message in the chat must still be sent in the group.
 
-## 9. Switching commands off
+## 9. Switching commands and modules off
 
-Chat admins can switch off commands they do not want members to use:
+**For members only.** Chat admins can switch off commands they do not want members to use:
 
 ```
 /disable slap            /enable slap
-/disablemodule fun       /enablemodule fun
+/restrictmodule fun       /unrestrictmodule fun
 /disabled                (shows what is off)
 ```
 
-Members are ignored; admins can still use the command. Aliases are switched off together with the command. `/help`, `/start` and the commands of this page can never be switched off.
+Members are ignored; admins can still use the command. Aliases are switched off together with the command.
 
-Bot-wide, the owner and developers can turn whole modules on and off with `/module` and list them with `/modules`.
+**Completely.** The chat's owner can turn a module off in the chat for everybody, admins included. Its commands stop and so does everything it does by itself (filters, locks, flood control, welcome messages ...):
+
+```
+/disablemodule fun           /enablemodule fun
+/disablemodule all           /enablemodule all
+```
+
+`/disablemodule all` turns off every module except `gbans`, for a chat that only wants global bans. `/disabled` shows all three kinds of switches.
+
+`/help`, `/start`, `/connect` and the commands of this page can never be switched off.
+
+Bot-wide, the owner and developers can turn whole modules on and off for every chat with `/module` and list them with `/modules`.
 
 ## 10. Logs
 
