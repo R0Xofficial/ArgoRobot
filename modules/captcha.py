@@ -271,7 +271,8 @@ async def cmd_captcharules(message: Message, command: CommandObject, role: Role 
     if not argument:
         if await _begin(message, role, change=False):
             config = await captchas.settings(message.chat.id)
-            await reply(message, f"Accepting the rules is <b>{_on_off(config['rules'])}</b>.\nUse /captcharules on or /captcharules off.")
+            note = "\n⚠️ This chat has no rules yet, so nothing is shown. Set them with /setrules." if config["rules"] and await captchas.rules_missing(message.chat.id) else ""
+            await reply(message, f"Accepting the rules is <b>{_on_off(config['rules'])}</b>.\nUse /captcharules on or /captcharules off.{note}")
         return
     enabled = parse_switch(argument)
     if enabled is None:
@@ -280,10 +281,10 @@ async def cmd_captcharules(message: Message, command: CommandObject, role: Role 
     if not await _begin(message, role, change=True):
         return
     await captchas.update(message.chat.id, rules=enabled)
-    await reply(
-        message,
-        "Newcomers must <b>accept the rules</b> after the captcha." if enabled else "Newcomers no longer have to accept the rules.",
-    )
+    text = "Newcomers must <b>accept the rules</b> after the captcha." if enabled else "Newcomers no longer have to accept the rules."
+    if enabled and await captchas.rules_missing(message.chat.id):
+        text += "\n⚠️ This chat has no rules yet, so there is nothing to accept and this step is skipped. Set them with /setrules."
+    await reply(message, text)
 
 
 def _duration(text: str) -> timedelta | None:
