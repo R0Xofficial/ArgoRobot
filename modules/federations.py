@@ -804,16 +804,25 @@ async def cmd_fedinfo(message: Message, command: CommandObject) -> None:
     if fed is None:
         return
     fed_id = fed["fed_id"]
+    subs = await federations.subs_of(fed_id)
     lines = [
-        "<b>Federation Info</b>",
-        _item("Name", f"<code>{esc(fed['name'])}</code>"),
-        _item("ID", f"<code>{fed_id}</code>"),
+        "<b>Fed Info</b>",
+        _item("FedID", f"<code>{fed_id}</code>"),
+        _item("Name", esc(fed["name"])),
         _item("Owner", f"{_owner_link(fed)} [<code>{fed['owner_id']}</code>]"),
         _item("Admins", f"<code>{len(await federations.admins(fed_id))}</code>"),
-        _item("Chats", f"<code>{await federations.chat_count(fed_id)}</code>"),
         _item("Banned users", f"<code>{await federations.ban_count(fed_id)}</code>"),
-        _item("Subscribed to", f"<code>{len(await federations.subs_of(fed_id))}</code>"),
+        _item("Connected chats", f"<code>{await federations.chat_count(fed_id)}</code>"),
+        _item("Subscribers", f"<code>{len(await federations.subscribers_of(fed_id))}</code>"),
+        "",
     ]
+    if subs:
+        lines.append("<b>Subscribed to:</b>")
+        for sub_id in subs:
+            other = await federations.get(sub_id)
+            lines.append(f"• {esc(other['name']) if other else 'Unknown'} (<code>{sub_id}</code>)")
+    else:
+        lines.append("Not subscribed to any federation.")
     await reply(message, "\n".join(lines))
 
 
