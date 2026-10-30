@@ -26,22 +26,22 @@ Some chats get a lot of users joining just to spam. They may be trolls, or part 
 
 To slow them down, turn captchas on. Everybody who joins is muted and has to pass a test to prove they're a real person before they can speak.
 
-Captchas ride on the welcome message, so <b>they only work while welcome messages are on</b> (/welcome). With welcomes off nobody is muted.
+Captchas ride on the welcome message, so they only work while welcome messages are on (/welcome). With welcomes off nobody is muted.
 
-Test types (/captchamode): <b>button</b> (press a button), <b>math</b> (pick the answer to a small sum), <b>text</b> (the code is written in the message; press the scrambled characters in the order of the code) and <b>text2</b> (the same, but the code is a picture).
+Test types (/captchamode): button (press a button), math (pick the answer to a small sum), text (the code is written in the message; press the scrambled characters in the order of the code) and text2 (the same, but the code is a picture).
 
-How it looks: the newcomer's welcome carries a verify button. In <b>button</b> mode one press unmutes them; the other modes (and button mode with /captcharules) open a private chat with me where they solve the test.
+How it looks: the newcomer's welcome carries a verify button. In button mode one press unmutes them; the other modes (and button mode with /captcharules) open a private chat with me where they solve the test.
 
 If the chat uses join requests, the captcha is sent privately and the request is approved once it is solved.
 
 Time: /captchamutetime unmutes people who haven't solved it after a while (by default they stay muted until they do). /captchakick removes people who run out of time (/captchakicktime). When both are set, the kick comes first.
 
 Examples:
-• Turn captchas on: <code>/captcha on</code>
-• Use the math test: <code>/captchamode math</code>
-• Make people accept the rules too: <code>/captcharules on</code>
-• Unmute after a day even if unsolved: <code>/captchamutetime 1d</code>
-• Stay muted until solved: <code>/captchamutetime off</code>
+• Turn captchas on: /captcha on
+• Use the math test: /captchamode math
+• Make people accept the rules too: /captcharules on
+• Unmute after a day even if unsolved: /captchamutetime 1d
+• Stay muted until solved: /captchamutetime off
 
 I need the right to restrict users (and, for join requests, to invite users).
 """
