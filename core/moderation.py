@@ -68,7 +68,7 @@ class Actor:
 
     @property
     def link(self) -> str:
-        return "Anonymous admin" if self.anonymous else user_ref(self.id, self.name)
+        return "Anonymous admin" if self.anonymous else user_link(self.id, self.name)
 
 
 def actor_of(message: Message) -> Actor:
@@ -322,12 +322,22 @@ def who(target: Target) -> str:
     return user_link(target.user_id, target.name)
 
 
+STAFF_MARK = " (Bot Staff)"
+
+
 def attribution(actor: Actor) -> str:
     """Who did it, shown under every moderation message. Staff are marked as such."""
-    text = f"\nBy: {actor.link}"
-    if actor.staff:
-        text += "\nThis action was taken by a member of the bot's staff."
-    return text
+    return f"\nBy: {actor.link}{STAFF_MARK if actor.staff else ''}"
+
+
+def by(actor: Actor) -> str:
+    """" by Name": who did it, written into the sentence ("King was banned by Jey"). No ids."""
+    return f" by {actor.link}{STAFF_MARK if actor.staff else ''}"
+
+
+def staff_note(actor: Actor) -> str:
+    """Nothing any more: staff are marked next to their name (kept so call sites stay simple)."""
+    return ""
 
 
 def reason_line(reason: str) -> str:
