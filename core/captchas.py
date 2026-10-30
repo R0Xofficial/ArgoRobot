@@ -676,6 +676,11 @@ async def _after_test(bot: Bot, row: dict[str, Any], config: dict[str, Any], use
     await _finish(bot, row, user)
 
 
+async def rules_missing(chat_id: int) -> bool:
+    """Whether the chat has no rules to accept, so /captcharules would have nothing to show."""
+    return not _rules_exist(await rulestore.get(chat_id))
+
+
 def _rules_exist(rules: dict[str, Any] | None) -> bool:
     return bool(rules and rules.get("content"))
 
