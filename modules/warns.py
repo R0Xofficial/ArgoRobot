@@ -7,17 +7,17 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from core import database, moderation
+from core import blacklist, database, moderation
 from core.filters import cmd
 from core.helpers import edit, reply
 from core.moderation import ModerationError, perform
 from core.roles import Role
-from core.text import esc, truncate, user_link
+from core.text import esc, parse_switch, truncate, user_link
 
 # Usable by chat admins (with the right to ban users) and by the bot's Owner,
 # Developers and Sudo users. See core/moderation.py.
 ABOUT = """
-Warns are strikes. Each one is saved with its reason, and a user who reaches the chat's warn limit (3 by default) is banned; the count then starts again from zero.
+Warns are strikes. Each one is saved with its reason, and a user who reaches the chat's warn limit (3 by default) is banned, or kicked if /strongwarn is off; the count then starts again from zero.
 
 These commands are for chat admins with the right to ban users. My staff (Sudo and up) can use them too, unless the chat owner turned that off with /staffhelp.
 
@@ -26,17 +26,25 @@ Name the target by replying to their message, or with a @username or a numeric I
 I won't act against chat admins, my own staff or protected accounts, and I need the right to restrict users myself.
 
 Every warn has an ID. A fresh warning comes with a button to undo it, and /warns lists a user's warns with buttons to remove each one.
+
+Warn filters give a warn to whoever writes a word or phrase: /addwarn spam "free money" and the reason. They are blacklist triggers with the warn action, so they follow the blacklist rules (wildcards, whether the message is deleted).
 """
 
 HELP_WHO = "admins"
 
 HELP = [
-    ("/warn <user> [reason]", "Give a user a warn. Reaching the limit bans them."),
+    ("/warn <user> [reason]", "Give a user a warn. Reaching the limit bans them (or kicks them, see /strongwarn)."),
+    ("/dwarn <reply> [reason]", "Reply to a message: warn its author and delete that message."),
+    ("/unwarn <user>", "Remove the latest warn of a user."),
     ("/warns <user>", "List a user's warns with their reasons and who gave them, with a button to remove each."),
     ("/rmwarn <id>", "Remove one warn by its ID."),
-    ("/resetwarns <user>", "Remove every warn of a user."),
+    ("/resetwarns <user>", "Remove every warn of a user. Alias: /resetwarn."),
     ("/warnlimit", "Show how many warns get a user banned in this chat."),
     ("/setwarnlimit <1-10>", "Set the warn limit of this chat. Default: 3."),
+    ("/strongwarn [on|off]", "On (default): reaching the limit bans. Off: it only kicks, and the user can come back. Without an answer it shows the setting."),
+    ("/addwarn <word or \"phrase\"> [reason]", "Warn everyone who writes that word or phrase. The reason can also come from a message you reply to."),
+    ("/nowarn <word or \"phrase\">", "Remove a warn filter. Alias: /stopwarn."),
+    ("/warnlist", "List the warn filters of this chat."),
 ]
 
 router = Router(name="warns")
@@ -62,6 +70,30 @@ async def set_limit(chat_id: int, limit: int) -> None:
         chat_id,
         limit,
     )
+
+
+async def get_strong(chat_id: int) -> bool:
+    row = await database.fetch_one("SELECT strong FROM warn_settings WHERE chat_id = $1", chat_id)
+    return row["strong"] if row else True
+
+
+async def set_strong(chat_id: int, strong: bool) -> None:
+    await database.execute(
+        "INSERT INTO warn_settings (chat_id, warn_limit, strong) VALUES ($1, $2, $3) "
+        "ON CONFLICT (chat_id) DO UPDATE SET strong = EXCLUDED.strong",
+        chat_id,
+        DEFAULT_LIMIT,
+        strong,
+    )
+
+
+async def limit_action(bot, chat_id: int, user_id: int) -> str:
+    """What reaching the warn limit does: ban (strong warns, the default) or kick. Returns "banned" or "kicked"."""
+    await perform(bot.ban_chat_member(chat_id, user_id))
+    if await get_strong(chat_id):
+        return "banned"
+    await perform(bot.unban_chat_member(chat_id, user_id, only_if_banned=True))
+    return "kicked"
 
 
 async def add_warn(chat_id: int, target, reason: str, actor: moderation.Actor) -> int:
@@ -134,41 +166,52 @@ def _warns_view(who: str, warns: list[dict], limit: int) -> tuple[str, InlineKey
 
 # --- /warn --------------------------------------------------------------------
 
-@router.message(cmd("warn"))
+@router.message(cmd("warn", "dwarn"))
 async def cmd_warn(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    deleting = command.command.lower() == "dwarn"
     started = await moderation.begin(message, command, role)
     if started is None:
         return
     target, actor = started
 
+    replied = await moderation.require_reply(message) if deleting else None
+    if deleting and replied is None:
+        return
+
     chat_id = message.chat.id
     reason = target.extra.strip()
     warn_id = await add_warn(chat_id, target, reason, actor)
+    if deleting:
+        # Best effort: the message may already be gone.
+        with suppress(TelegramAPIError):
+            await message.bot.delete_message(chat_id, replied.message_id)
     count = len(await list_warns(chat_id, target.user_id))
     limit = await get_limit(chat_id)
     who = moderation.who(target)
+    await moderation.log_action(message, "WARNED", actor, target, reason, ("Warns", f"<code>{count}/{limit}</code>"))
     text = f"{who} was warned ({count}/{limit}){moderation.by(actor)}{moderation.reason_line(reason)}{moderation.staff_note(actor)}"
 
     if count < limit:
         await reply(message, text, reply_markup=_undo_keyboard(warn_id))
         return
 
-    # The limit is reached: ban, and start them from zero if they ever come back.
+    # The limit is reached: ban (or kick), and start them from zero if they ever come back.
     try:
-        await perform(message.bot.ban_chat_member(chat_id, target.user_id))
+        done = await limit_action(message.bot, chat_id, target.user_id)
     except ModerationError as exc:
         # The warns stay, so the situation is not lost; the button still works.
         await reply(
             message,
-            f"{text}\nThe limit is reached, but I couldn't ban them: {esc(exc)}",
+            f"{text}\nThe limit is reached, but I couldn't remove them: {esc(exc)}",
             reply_markup=_undo_keyboard(warn_id),
         )
         return
 
     await clear_warns(chat_id, target.user_id)
+    await moderation.log_action(message, "WARNLIMIT", actor, target, reason, ("Result", done))
     await reply(
         message,
-        f"{who} reached the warn limit ({count}/{limit}) and was banned{moderation.by(actor)}"
+        f"{who} reached the warn limit ({count}/{limit}) and was {done}{moderation.by(actor)}"
         f"{moderation.reason_line(reason)}{moderation.staff_note(actor)}",
     )
 
@@ -283,7 +326,7 @@ async def cmd_rmwarn(message: Message, command: CommandObject, role: Role | None
     )
 
 
-@router.message(cmd("resetwarns"))
+@router.message(cmd("resetwarns", "resetwarn"))
 async def cmd_resetwarns(message: Message, command: CommandObject, role: Role | None = None) -> None:
     started = await moderation.begin(message, command, role, punitive=False)
     if started is None:
@@ -295,7 +338,32 @@ async def cmd_resetwarns(message: Message, command: CommandObject, role: Role | 
     if removed == 0:
         await reply(message, f"{who} has no warns.")
     else:
+        await moderation.log_action(message, "WARNSRESET", actor, target, "", ("Removed", f"<code>{removed}</code>"))
         await reply(message, f"All warns of {who} were removed ({removed}){moderation.by(actor)}{moderation.staff_note(actor)}")
+
+
+# --- /unwarn ------------------------------------------------------------------
+
+@router.message(cmd("unwarn"))
+async def cmd_unwarn(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    started = await moderation.begin(message, command, role, punitive=False)
+    if started is None:
+        return
+    target, actor = started
+
+    warns = await list_warns(message.chat.id, target.user_id)
+    who = moderation.who(target)
+    if not warns:
+        await reply(message, f"{who} has no warns.")
+        return
+    await delete_warn(message.chat.id, warns[-1]["id"])
+    limit = await get_limit(message.chat.id)
+    await moderation.log_action(message, "UNWARNED", actor, target, "", ("Warns", f"<code>{len(warns) - 1}/{limit}</code>"))
+    await reply(
+        message,
+        f"The latest warn of {who} was removed{moderation.by(actor)} ({len(warns) - 1}/{limit} left)"
+        f"{moderation.staff_note(actor)}",
+    )
 
 
 # --- Limit --------------------------------------------------------------------
@@ -321,3 +389,119 @@ async def cmd_setwarnlimit(message: Message, command: CommandObject, role: Role 
 
     await set_limit(message.chat.id, int(argument))
     await reply(message, f"The warn limit in this chat is now <b>{int(argument)}</b>.")
+
+
+@router.message(cmd("strongwarn"))
+async def cmd_strongwarn(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    if await moderation.begin_chat_command(message, role, allow_staff=False) is None:
+        return
+
+    argument = (command.args or "").strip()
+    chat_id = message.chat.id
+    if argument:
+        wanted = parse_switch(argument)
+        if wanted is None:
+            await reply(message, "Use /strongwarn on or /strongwarn off.")
+            return
+        if await get_strong(chat_id) == wanted:
+            await reply(message, f"Strong warns are already <b>{'on' if wanted else 'off'}</b>.")
+            return
+        await set_strong(chat_id, wanted)
+    strong = await get_strong(chat_id)
+    await reply(
+        message,
+        f"Strong warns are <b>{'on' if strong else 'off'}</b>: a user who reaches the warn limit is "
+        + ("banned." if strong else "kicked, and can come back."),
+    )
+
+
+# --- Warn filters -----------------------------------------------------------------
+#
+# A warn filter is a blacklist trigger whose action is "warn" (see core/blacklist.py): the
+# blacklist already matches every message, warns the sender and counts toward the limit.
+
+_QUOTES = "\"'“”‘’"
+
+
+def _split_keyword(text: str) -> tuple[str, str]:
+    """'spam why' -> ('spam', 'why'); '"free money" why' -> ('free money', 'why')."""
+    text = text.strip()
+    if text and text[0] in _QUOTES:
+        end = next((i for i in range(1, len(text)) if text[i] in _QUOTES), None)
+        if end is not None:
+            return text[1:end].strip(), text[end + 1 :].strip()
+        return text[1:].strip(), ""
+    keyword, _, rest = text.partition(" ")
+    return keyword, rest.strip()
+
+
+async def _warn_triggers(chat_id: int):
+    return [t for t in await blacklist.triggers(chat_id) if t.action == "warn"]
+
+
+@router.message(cmd("addwarn"))
+async def cmd_addwarn(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    actor = await moderation.begin_chat_command(message, role, allow_staff=False)
+    if actor is None:
+        return
+
+    keyword, reason = _split_keyword(command.args or "")
+    replied = moderation.replied_message(message)
+    if not reason and replied is not None:
+        reason = " ".join((replied.text or replied.caption or "").split())
+    if not keyword:
+        await reply(message, "Give a word or a phrase in quotes, then a reason: /addwarn spam \"No advertising here\"")
+        return
+    try:
+        pattern = blacklist.check(keyword)
+        outcome = await blacklist.add(message.chat.id, pattern, "warn", 0, truncate(reason, 200) or None, actor.id)
+    except blacklist.TriggerError as exc:
+        await reply(message, esc(exc))
+        return
+    if outcome is None:
+        await reply(message, f"The blacklist is full ({blacklist.MAX_TRIGGERS} triggers).")
+        return
+    await reply(
+        message,
+        f"Anyone who writes <code>{esc(pattern)}</code> gets a warn. The filter was {'added' if outcome else 'updated'}{moderation.by(actor)}",
+    )
+
+
+@router.message(cmd("nowarn", "stopwarn"))
+async def cmd_nowarn(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    actor = await moderation.begin_chat_command(message, role, allow_staff=False)
+    if actor is None:
+        return
+
+    keyword, _ = _split_keyword(command.args or "")
+    if not keyword:
+        await reply(message, "Give the word or phrase of the filter: /nowarn spam")
+        return
+    try:
+        pattern = blacklist.check(keyword)
+    except blacklist.TriggerError as exc:
+        await reply(message, esc(exc))
+        return
+    if not any(t.pattern == pattern for t in await _warn_triggers(message.chat.id)) or not await blacklist.remove(message.chat.id, pattern):
+        await reply(message, "There is no warn filter like that in this chat. /warnlist shows them.")
+        return
+    await reply(message, f"The warn filter <code>{esc(pattern)}</code> was removed{moderation.by(actor)}")
+
+
+@router.message(cmd("warnlist"))
+async def cmd_warnlist(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    if await moderation.begin_chat_command(message, role, allow_staff=False) is None:
+        return
+    found = await _warn_triggers(message.chat.id)
+    if not found:
+        await reply(message, "There are no warn filters in this chat. Add one with /addwarn.")
+        return
+    lines = ["<b>Warn filters</b>"]
+    for trigger in found[:80]:
+        line = f"• <code>{esc(trigger.pattern)}</code>"
+        if trigger.reason:
+            line += f" - {esc(truncate(trigger.reason, 80))}"
+        lines.append(line)
+    if len(found) > 80:
+        lines.append(f"…and {len(found) - 80} more.")
+    await reply(message, "\n".join(lines))

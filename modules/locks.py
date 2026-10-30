@@ -150,6 +150,7 @@ async def _change(message: Message, command: CommandObject, role: Role | None, *
     else:
         await locks.unlock(message.chat.id, items)
     names = ", ".join(f"<code>{item}</code>" for item in items)
+    await moderation.log_action(message, "LOCKED" if lock else "UNLOCKED", moderation.actor_of(message), None, "", ("Items", names))
     await reply(message, f"{'Locked' if lock else 'Unlocked'} {names}.")
 
 

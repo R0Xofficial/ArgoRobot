@@ -280,6 +280,12 @@ async def chats_of_user(user_id: int) -> list[dict[str, Any]]:
     )
 
 
+async def users_in(chat_id: int) -> list[int]:
+    """Ids of the people the bot has seen in a chat, oldest sighting first."""
+    rows = await database.fetch_all("SELECT user_id FROM user_chats WHERE chat_id = $1 ORDER BY first_seen", chat_id)
+    return [row["user_id"] for row in rows]
+
+
 # --- Cleanup ------------------------------------------------------------------
 
 @dataclass

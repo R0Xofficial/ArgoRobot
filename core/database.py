@@ -69,6 +69,14 @@ CREATE TABLE IF NOT EXISTS warn_settings (
     chat_id    BIGINT PRIMARY KEY,
     warn_limit SMALLINT NOT NULL
 );
+ALTER TABLE warn_settings ADD COLUMN IF NOT EXISTS strong BOOLEAN NOT NULL DEFAULT TRUE;  -- ban at the limit (TRUE) or kick (FALSE)
+
+-- Where a chat's moderation actions are logged (see core/chatlog.py).
+CREATE TABLE IF NOT EXISTS chat_logs (
+    chat_id     BIGINT PRIMARY KEY,
+    log_chat_id BIGINT NOT NULL,
+    set_by      BIGINT
+);
 
 -- Settings the owner of a chat controls (see core/chatsettings.py).
 CREATE TABLE IF NOT EXISTS chat_settings (

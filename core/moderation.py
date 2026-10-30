@@ -16,6 +16,7 @@ Calls to Telegram go through `perform()`, which turns the usual refusals
 people. Unexpected errors are left to the normal error reporting.
 """
 
+import logging
 import re
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -26,11 +27,13 @@ from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramFor
 from aiogram.filters import CommandObject
 from aiogram.types import Message
 
-from core import chatsettings, immunity, roles
+from core import chatlog, chatsettings, immunity, roles
 from core.helpers import reply
 from core.roles import Role
 from core.targets import Target, TargetError, replied_message, resolve_target
 from core.text import esc, truncate, user_link, user_ref
+
+log = logging.getLogger(__name__)
 
 GROUP_TYPES = ("group", "supergroup")
 
@@ -338,6 +341,40 @@ def by(actor: Actor) -> str:
 def staff_note(actor: Actor) -> str:
     """Nothing any more: staff are marked next to their name (kept so call sites stay simple)."""
     return ""
+
+
+def admin_ref(actor: Actor) -> str:
+    """Who did it, for a log entry: a link, marked when it is the bot's staff."""
+    return f"{actor.link}{STAFF_MARK if actor.staff else ''}"
+
+
+def _user_ref(target: Target) -> str:
+    if target.is_chat:
+        return who(target)
+    return f"{user_link(target.user_id, target.name)} [<code>{target.user_id}</code>]"
+
+
+async def log_action(
+    message: Message,
+    tag: str,
+    actor: Actor,
+    target: Target | None = None,
+    reason: str = "",
+    *details: tuple[str, str],
+) -> None:
+    """Copy a moderation action to the chat's log (/setlog), if it has one. Never raises."""
+    try:
+        await chatlog.record(
+            message.bot,
+            message.chat,
+            tag,
+            admin_ref(actor),
+            _user_ref(target) if target is not None else None,
+            reason,
+            details,
+        )
+    except Exception:
+        log.exception("Could not log %s", tag)
 
 
 def reason_line(reason: str) -> str:

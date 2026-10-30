@@ -440,9 +440,9 @@ async def _warn(bot: Bot, message: Message, reason: str) -> str:
     limit = await warns.get_limit(chat_id)
     if count < limit:
         return f"warned ({count}/{limit})"
-    await perform(bot.ban_chat_member(chat_id, user.id))
+    done = await warns.limit_action(bot, chat_id, user.id)
     await warns.clear_warns(chat_id, user.id)
-    return f"banned after reaching the warn limit ({count}/{limit})"
+    return f"{done} after reaching the warn limit ({count}/{limit})"
 
 
 @router.message(_blacklisted)

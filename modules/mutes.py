@@ -1,5 +1,6 @@
 """Mute commands for chat admins"""
 
+from contextlib import suppress
 from datetime import datetime, timezone
 
 from aiogram import Router
@@ -34,6 +35,9 @@ HELP = [
     ("/mute <user> [reason]", "Stop a user from writing until someone unmutes them."),
     ("/tmute <user> <time> [reason]", "Mute a user for a limited time. They can write again when it ends."),
     ("/unmute <user>", "Give a muted user back the right to write."),
+    ("/smute <user> [reason]", "Silent mute: mutes, deletes your command and says nothing."),
+    ("/stmute <user> <time> [reason]", "Silent timed mute. Alias: /stempmute."),
+    ("/sunmute <user>", "Silent unmute."),
 ]
 
 router = Router(name="mutes")
@@ -50,8 +54,15 @@ async def _default_permissions(bot, chat_id: int) -> ChatPermissions:
     return permissions or ChatPermissions(can_send_messages=True)
 
 
-@router.message(cmd("mute"))
+async def _silently(message: Message) -> None:
+    """Delete the command: silent actions leave no trace."""
+    with suppress(TelegramAPIError):
+        await message.bot.delete_message(message.chat.id, message.message_id)
+
+
+@router.message(cmd("mute", "smute"))
 async def cmd_mute(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    silent = command.command.lower() == "smute"
     started = await moderation.begin(message, command, role)
     if started is None:
         return
@@ -63,6 +74,10 @@ async def cmd_mute(message: Message, command: CommandObject, role: Role | None =
         await reply(message, esc(exc))
         return
 
+    await moderation.log_action(message, "MUTED", actor, target, target.extra, *((("Silent", "yes"),) if silent else ()))
+    if silent:
+        await _silently(message)
+        return
     await reply(
         message,
         f"{moderation.who(target)} was muted{moderation.by(actor)}"
@@ -70,8 +85,9 @@ async def cmd_mute(message: Message, command: CommandObject, role: Role | None =
     )
 
 
-@router.message(cmd("tmute"))
+@router.message(cmd("tmute", "stmute", "stempmute"))
 async def cmd_tmute(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    silent = command.command.lower() in ("stmute", "stempmute")
     started = await moderation.begin(message, command, role)
     if started is None:
         return
@@ -89,6 +105,10 @@ async def cmd_tmute(message: Message, command: CommandObject, role: Role | None 
         await reply(message, esc(exc))
         return
 
+    await moderation.log_action(message, "TMUTED", actor, target, reason, ("Duration", moderation.format_duration(duration)), *((("Silent", "yes"),) if silent else ()))
+    if silent:
+        await _silently(message)
+        return
     await reply(
         message,
         f"{moderation.who(target)} was muted for {moderation.format_duration(duration)}{moderation.by(actor)}"
@@ -96,8 +116,9 @@ async def cmd_tmute(message: Message, command: CommandObject, role: Role | None 
     )
 
 
-@router.message(cmd("unmute"))
+@router.message(cmd("unmute", "sunmute"))
 async def cmd_unmute(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    silent = command.command.lower() == "sunmute"
     started = await moderation.begin(message, command, role, punitive=False)
     if started is None:
         return
@@ -121,4 +142,8 @@ async def cmd_unmute(message: Message, command: CommandObject, role: Role | None
         await reply(message, esc(exc))
         return
 
+    await moderation.log_action(message, "UNMUTED", actor, target, "", *((("Silent", "yes"),) if silent else ()))
+    if silent:
+        await _silently(message)
+        return
     await reply(message, f"{moderation.who(target)} was unmuted{moderation.by(actor)}{moderation.staff_note(actor)}")

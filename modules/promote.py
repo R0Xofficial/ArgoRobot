@@ -201,6 +201,9 @@ async def cmd_promote(message: Message, command: CommandObject) -> None:
             title_line = f"\nTitle not set: {reason}"
 
     kind = "to admin with every permission I can give" if full else "to admin"
+    await moderation.log_action(
+        message, "PROMOTED", actor, target, "", ("Rights", esc(_rights_text(rights))), *((("Title", esc(title)),) if title else ())
+    )
     await reply(
         message,
         f"{user_link(target.user_id, target.name)} was promoted {kind}{moderation.by(actor)}\n"
@@ -244,6 +247,7 @@ async def cmd_demote(message: Message, command: CommandObject) -> None:
         await reply(message, _promotion_problem(exc))
         return
 
+    await moderation.log_action(message, "DEMOTED", actor, target)
     await reply(
         message,
         f"{user_link(target.user_id, target.name)} was demoted{moderation.by(actor)}" + moderation.staff_note(actor),
