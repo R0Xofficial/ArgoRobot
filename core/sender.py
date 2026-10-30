@@ -3,11 +3,12 @@ Saved messages: reading one from a command and sending it later.
 
 Used by the modules that keep a message written by a chat admin and send it when
 something happens (filters answer keywords, greetings welcome new members). The
-message is kept as text in the dialect of core/markup.py plus an optional media file,
+message is kept as text in the HTML of core/markup.py plus an optional media file,
 and is turned into a real Telegram message only when it is sent.
 """
 
 import logging
+import re
 from contextlib import suppress
 from typing import Any
 
@@ -62,10 +63,32 @@ def media_of(message: Message | None) -> tuple[str, str] | None:
 
 
 def text_of(message: Message) -> str:
-    """The text (or caption) of a message, written back in the markup dialect."""
+    """The text (or caption) of a message, written in the HTML of core/markup.py."""
     if message.text:
         return markup.from_entities(message.text, message.entities)
     return markup.from_entities(message.caption or "", message.caption_entities)
+
+
+def args_of(message: Message, command) -> str:
+    """
+    What was typed after a command, in the HTML of core/markup.py. Text formatted with the
+    app's menu (bold, links...) becomes tags; tags typed by hand are left as they are.
+    """
+    args = (command.args or "").strip()
+    text = getattr(message, "text", None) or getattr(message, "caption", None) or ""
+    entities = getattr(message, "entities", None) if getattr(message, "text", None) else getattr(message, "caption_entities", None)
+    if not args or not entities or not any(getattr(e.type, "value", e.type) in _FORMATTING for e in entities):
+        return args
+    match = re.match(r"\S+\s*", text)
+    if match is None:
+        return args
+    skip = len(text[: match.end()].encode("utf-16-le")) // 2
+    return markup.from_entities(text[match.end():], entities, literal=False, skip=skip).strip() or args
+
+
+_FORMATTING = frozenset((
+    "bold", "italic", "underline", "strikethrough", "spoiler", "code", "pre", "text_link", "blockquote", "expandable_blockquote",
+))
 
 
 def validate(text: str, has_media: bool) -> None:

@@ -1,7 +1,7 @@
 """
 The rules of a chat (modules/rules.py).
 
-One row per chat: text in the Markdown of core/markup.py, optionally with media, kept as
+One row per chat: text in the HTML of core/markup.py, optionally with media, kept as
 the admin wrote it and turned into a message only when it is sent (core/sender.py).
 """
 

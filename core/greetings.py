@@ -17,7 +17,7 @@ DEFAULTS: dict[str, Any] = {
     "welcome_content": None,
     "welcome_media_type": None,
     "welcome_media_file_id": None,
-    "goodbye_on": False,
+    "goodbye_on": True,
     "goodbye_content": None,
     "goodbye_media_type": None,
     "goodbye_media_file_id": None,

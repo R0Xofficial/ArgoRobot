@@ -2,7 +2,7 @@
 Filters: saved replies to keywords (the commands and the replying are in modules/filters.py).
 
 A chat has any number of filters. Each one is a trigger and a saved message (text in the
-Markdown of core/markup.py, optionally with a photo, GIF, sticker ...). A trigger is:
+HTML of core/markup.py, optionally with a photo, GIF, sticker ...). A trigger is:
 
     word                  the word anywhere in a message, as a whole word
     "a long sentence"     a phrase, in double quotes

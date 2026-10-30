@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS greetings (
     welcome_content       TEXT,
     welcome_media_type    TEXT,
     welcome_media_file_id TEXT,
-    goodbye_on            BOOLEAN NOT NULL DEFAULT FALSE,
+    goodbye_on            BOOLEAN NOT NULL DEFAULT TRUE,
     goodbye_content       TEXT,
     goodbye_media_type    TEXT,
     goodbye_media_file_id TEXT,
@@ -129,6 +129,7 @@ CREATE TABLE IF NOT EXISTS greetings (
     clean_service         BOOLEAN NOT NULL DEFAULT FALSE,
     last_welcome_id       BIGINT
 );
+ALTER TABLE greetings ALTER COLUMN goodbye_on SET DEFAULT TRUE;
 
 -- Federations: groups of chats that share one ban list (see core/federations.py).
 CREATE TABLE IF NOT EXISTS federations (

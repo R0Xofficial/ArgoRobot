@@ -68,3 +68,12 @@ def duration_text(seconds: int) -> str:
         if count:
             parts.append(f"{count} {name}{'' if count == 1 else 's'}")
     return " ".join(parts)
+
+
+# Every on/off setting of the bot understands the same words.
+SWITCH = {"on": True, "yes": True, "off": False, "no": False}
+
+
+def parse_switch(value: str | None) -> bool | None:
+    """True for on/yes, False for off/no, None for anything else. Case does not matter."""
+    return SWITCH.get((value or "").strip().lower())

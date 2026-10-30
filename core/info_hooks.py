@@ -1,20 +1,22 @@
 """
 Extra flags for /info.
 
-/info (modules/misc.py) shows what the bot knows about everyone: id, name, standing
-in the chat, role in the bot, and a list of yes/no flags. Modules add their own flags
-(GBanned, Whitelisted, Approved ...) by registering a provider:
+/info (modules/misc.py) shows what the bot knows about everyone: a "User Info" section
+(id, name, standing in the chat) and a section about what the bot has on them (role in the
+bot and a list of yes/no flags). Modules add their own flags (Globally Banned,
+Whitelisted ...) by registering a provider. The "Approved" flag is special: /info writes
+it into the person's Status ("Member (Approved)") instead of listing it.
 
     from core import info_hooks
 
     async def _info_flags(bot, user_id, chat_id):
-        return [("GBanned", await is_gbanned(user_id))]
+        return [("Globally Banned", await is_gbanned(user_id))]
 
     info_hooks.register("gbans", _info_flags)
 
 A provider returns (name, value) pairs, always, so that /info can say "No" as well
 as "Yes". `chat_id` is the chat /info was used in (None in private chats); a flag that
-belongs to a chat, like Approved, is simply left out when there is none. /info decides
+belongs to a chat, like Approved or FedBanned, is simply left out when there is none. /info decides
 whether to show flags at all (people with a role show none) and in which order
 (misc.FLAG_ORDER). A provider is skipped while its module is disabled, and one that
 fails never breaks /info.

@@ -85,6 +85,27 @@ def _visible(module: ModuleType, role: Role | None) -> list[tuple]:
     return out
 
 
+def pages(module: ModuleType) -> list[tuple[int, str]]:
+    """
+    (number, label) of the extra pages of a module: reference text that is too long for the
+    module's page and gets a button of its own. A module declares them with
+
+        HELP_PAGES = [("Lock types", function)]
+
+    where the function takes no arguments and returns the HTML of the page: a string, or a
+    list of strings when it needs more than one message (the page then has Previous/Next).
+    """
+    return [(number, label) for number, (label, _) in enumerate(getattr(module, "HELP_PAGES", ()))]
+
+
+def page_texts(module: ModuleType, number: int) -> list[str] | None:
+    found = getattr(module, "HELP_PAGES", ())
+    if not 0 <= number < len(found):
+        return None
+    content = found[number][1]()
+    return [content] if isinstance(content, str) else list(content)
+
+
 ADMINS = "chat admins"
 CHAT_OWNER = "chat owner"
 

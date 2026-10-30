@@ -1,18 +1,18 @@
 """
-Formatted messages written by users: Markdown, fillings, buttons and random content.
+Formatted messages written by users: HTML, fillings, buttons and random content.
 
-Used by modules that save a message and send it later (filters, and welcomes or notes
-when they come). The text is kept exactly as the person wrote it and turned into a
-message only when it is sent.
+Used by modules that save a message and send it later (filters, notes, rules, welcomes).
+The text is kept as the person wrote it and turned into a message only when it is sent.
 
-Markdown
-    *bold*  _italic_  __underline__  ~strike~  ||spoiler||  `code`  ```pre```
-    [text](https://link)
-    A backslash makes a character literal: \\* \\_ \\[ ...
-    Markers only work at the edge of words, so snake_case_names are left alone.
+Formatting
+    Telegram's own HTML, which is also what the formatting menu of the Telegram app produces:
+    <b>bold</b>  <i>italic</i>  <u>underline</u>  <s>strike</s>  <tg-spoiler>spoiler</tg-spoiler>
+    <code>code</code>  <pre>pre</pre>  <blockquote>quote</blockquote>  <a href="https://link">text</a>
+    Anything else that looks like a tag, and every stray < > &, is shown as the text it is.
 
 Fillings (replaced by facts about whoever triggered the message)
     {first} {last} {fullname} {username} {mention} {id} {chatname} {count}
+    A backslash in front of the brace makes it literal: \\{first}
 
 Options (removed from the text, they change how it is sent)
     {preview} link previews on   {protect} no forwarding or saving
@@ -28,6 +28,7 @@ Random content
 Nothing here talks to Telegram; it only builds text and data.
 """
 
+import html as html_lib
 import random
 import re
 from dataclasses import dataclass, field
@@ -36,7 +37,6 @@ from urllib.parse import urlparse
 
 from core.text import esc, esc_attr
 
-ESCAPABLE = frozenset("\\*_~|`[]()%{}")
 MAX_BUTTONS = 20
 MAX_BUTTONS_PER_ROW = 8
 MAX_VARIANTS = 20
@@ -50,23 +50,17 @@ class MarkupError(ValueError):
     """The text can't be turned into a message; the message says why."""
 
 
-# --- Escaping -----------------------------------------------------------------------
+# --- Safe HTML ------------------------------------------------------------------------
 
-def escape(text: str) -> str:
-    """Make `text` literal, so none of it is read as formatting."""
-    return re.sub(r"([\\*_~|`\[\]()%{}])", r"\\\1", text)
-
-
-def unescape(text: str) -> str:
-    return re.sub(r"\\(.)", lambda m: m.group(1) if m.group(1) in ESCAPABLE else m.group(0), text)
-
-
-# --- Markdown to HTML -----------------------------------------------------------------
-
-_MARKERS = (("||", "tg-spoiler"), ("__", "u"), ("*", "b"), ("_", "i"), ("~", "s"))
-_LINK = re.compile(r"\[((?:\\.|[^\]\\])+)\]\(((?:\\.|[^)\\\s])+)\)")
-_SAFE_SCHEMES = ("http", "https", "tg")
 _HOST = re.compile(r"^(?:[\w.~-]+@)?[\w.-]+\.[A-Za-z\w-]{2,}(?::\d{1,5})?$")
+_TAGS = {
+    "b": "b", "strong": "b", "i": "i", "em": "i", "u": "u", "ins": "u", "s": "s", "strike": "s", "del": "s",
+    "tg-spoiler": "tg-spoiler", "code": "code", "pre": "pre", "a": "a", "blockquote": "blockquote",
+}
+_TAG = re.compile(r"<(/?)([A-Za-z][\w-]*)((?:\s[^<>]*)?)>")
+_BARE_AMP = re.compile(r"&(?!(?:amp|lt|gt|quot|#\d{1,7}|#[xX][0-9a-fA-F]{1,6});)")
+_HREF = re.compile(r"""href\s*=\s*(?:"([^"]*)"|'([^']*)')""", re.IGNORECASE)
+_CLASS = re.compile(r"""class\s*=\s*(?:"([^"]*)"|'([^']*)')""", re.IGNORECASE)
 
 
 def _web_url_ok(parsed) -> bool:
@@ -74,163 +68,136 @@ def _web_url_ok(parsed) -> bool:
 
 
 def _safe_url(url: str) -> str | None:
-    url = unescape(url)
+    url = html_lib.unescape(url).strip()
     parsed = urlparse(url)
     if _web_url_ok(parsed) or (parsed.scheme.lower() == "tg" and (parsed.netloc or parsed.path)):
         return url
     return None
 
 
-def to_html(text: str) -> str:
-    """Telegram HTML for a text written in the Markdown above."""
-    tokens: list[list[Any]] = []  # [kind, value, ...]
-    buffer: list[str] = []
+def _text(segment: str) -> str:
+    return _BARE_AMP.sub("&amp;", segment).replace("<", "&lt;").replace(">", "&gt;")
 
-    def flush() -> None:
-        if buffer:
-            tokens.append(["text", "".join(buffer)])
-            buffer.clear()
 
-    i, n = 0, len(text)
-    while i < n:
-        c = text[i]
-        if c == "\\" and i + 1 < n and text[i + 1] in ESCAPABLE:
-            buffer.append(text[i + 1])
-            i += 2
-            continue
-        if text.startswith("```", i):
-            end = text.find("```", i + 3)
-            if end > i + 3:
-                flush()
-                tokens.append(["html", f"<pre>{esc(text[i + 3:end].strip(chr(10)))}</pre>"])
-                i = end + 3
-                continue
-        if c == "`":
-            end = text.find("`", i + 1)
-            if end > i + 1 and "\n" not in text[i:end]:
-                flush()
-                tokens.append(["html", f"<code>{esc(text[i + 1:end])}</code>"])
-                i = end + 1
-                continue
-        if c == "[":
-            match = _LINK.match(text, i)
-            url = _safe_url(match.group(2)) if match else None
-            if match and url:
-                flush()
-                tokens.append(["html", f'<a href="{esc_attr(url)}">{to_html(match.group(1))}</a>'])
-                i = match.end()
-                continue
-        for marker, tag in _MARKERS:
-            if text.startswith(marker, i):
-                before = text[i - 1] if i else ""
-                after = text[i + len(marker)] if i + len(marker) < n else ""
-                can_close = bool(before) and not before.isspace() and not after.isalnum()
-                can_open = bool(after) and not after.isspace() and not before.isalnum()
-                flush()
-                tokens.append(["marker", marker, tag, can_open, can_close])
-                i += len(marker)
-                break
-        else:
-            buffer.append(c)
-            i += 1
-    flush()
+def _attr(regex: re.Pattern, attrs: str) -> str | None:
+    found = regex.search(attrs)
+    return (found.group(1) if found.group(1) is not None else found.group(2)) if found else None
 
-    # Pair openers with closers; whatever is left over is plain text.
-    stack: list[int] = []
-    state = {}  # token index -> "open" / "close"
-    for index, token in enumerate(tokens):
-        if token[0] != "marker":
-            continue
-        _, marker, _tag, can_open, can_close = token
-        position = next((k for k in range(len(stack) - 1, -1, -1) if tokens[stack[k]][1] == marker), None)
-        if can_close and position is not None:
-            opener = stack[position]
-            if index - opener > 1 and any(t[0] != "marker" or state.get(k) for k, t in enumerate(tokens[opener + 1:index], opener + 1)):
-                del stack[position:]  # markers opened inside and never closed stay plain
-                state[opener], state[index] = "open", "close"
-                continue
-        if can_open:
-            stack.append(index)
 
+def to_html(source: str) -> str:
+    """
+    Telegram HTML for a text written in the HTML above: the tags Telegram knows are kept
+    (and closed in the right order), everything else is shown as the text it is.
+    """
     out: list[str] = []
-    for index, token in enumerate(tokens):
-        kind = token[0]
-        if kind == "text":
-            out.append(esc(token[1]))
-        elif kind == "html":
-            out.append(token[1])
-        elif state.get(index) == "open":
-            out.append(f"<{token[2]}>")
-        elif state.get(index) == "close":
-            out.append(f"</{token[2]}>")
+    stack: list[tuple[str, str]] = []  # (tag, what to write when it closes)
+    position = 0
+    for match in _TAG.finditer(source):
+        out.append(_text(source[position:match.start()]))
+        position = match.end()
+        closing, name, attrs = match.group(1) == "/", match.group(2).lower(), match.group(3)
+        tag = _TAGS.get(name)
+        if name == "span" and (closing and any(entry[0] == "tg-spoiler" for entry in stack) or (_attr(_CLASS, attrs) or "") == "tg-spoiler"):
+            tag = "tg-spoiler"
+        if tag is None:
+            out.append(_text(match.group(0)))
+            continue
+        if closing:
+            kinds = [entry[0] for entry in stack]
+            if tag not in kinds:
+                continue
+            depth = len(kinds) - 1 - kinds[::-1].index(tag)
+            for _, text in reversed(stack[depth:]):
+                out.append(text)
+            del stack[depth:]
+            continue
+        if tag == "a":
+            url = _safe_url(_attr(_HREF, attrs) or "")
+            if url is None:
+                stack.append(("a", ""))  # the link is dropped, its text stays
+                continue
+            out.append(f'<a href="{esc_attr(url)}">')
+            stack.append(("a", "</a>"))
+        elif tag == "code":
+            language = _attr(_CLASS, attrs) or ""
+            out.append(f'<code class="{language}">' if re.fullmatch(r"language-[\w+#.-]{1,30}", language) else "<code>")
+            stack.append(("code", "</code>"))
+        elif tag == "blockquote":
+            out.append("<blockquote expandable>" if re.search(r"\bexpandable\b", attrs, re.IGNORECASE) else "<blockquote>")
+            stack.append(("blockquote", "</blockquote>"))
         else:
-            out.append(esc(token[1]))
+            out.append(f"<{tag}>")
+            stack.append((tag, f"</{tag}>"))
+    out.append(_text(source[position:]))
+    for _, text in reversed(stack):
+        out.append(text)
     return "".join(out)
 
 
-# --- Message entities to Markdown --------------------------------------------------------
+# --- Message entities to HTML ------------------------------------------------------------
 
-_ENTITY_MARKS = {
-    "bold": "*",
-    "italic": "_",
-    "underline": "__",
-    "strikethrough": "~",
-    "spoiler": "||",
+_ENTITY_TAGS = {
+    "bold": "b", "italic": "i", "underline": "u", "strikethrough": "s", "spoiler": "tg-spoiler",
+    "code": "code", "pre": "pre", "blockquote": "blockquote", "expandable_blockquote": "blockquote",
 }
 
 
-def from_entities(text: str, entities: list[Any] | None) -> str:
-    """The Markdown for a message Telegram already formatted (a replied-to message)."""
+def from_entities(text: str, entities: list[Any] | None, *, literal: bool = True, skip: int = 0) -> str:
+    """
+    The HTML for a message Telegram already formatted.
+
+    literal: write the plain text as it is, so that what it shows stays what it shows (a
+    replied-to message). Without it the text is left as typed, so tags written by hand
+    still work next to the formatting made with the app's menu (a command's arguments).
+    skip: UTF-16 units to leave out at the start (the command itself).
+    """
     if not text:
         return ""
     units = [len(ch.encode("utf-16-le")) // 2 for ch in text]
-    starts = {}
+    starts: dict[int, int] = {}
     position = 0
     for index, size in enumerate(units):
         starts[position] = index
         position += size
     starts[position] = len(text)
 
-    def char_index(offset: int) -> int | None:
-        return starts.get(offset)
-
-    opens: dict[int, list[tuple[int, str]]] = {}
-    closes: dict[int, list[tuple[int, str]]] = {}
-    raw = [False] * len(text)  # inside code: nothing is escaped
-    spans = []
+    spans = []  # (start, end, open, close)
     for entity in entities or []:
         kind = getattr(entity.type, "value", entity.type)
-        start = char_index(entity.offset)
-        end = char_index(entity.offset + entity.length)
-        if start is None or end is None or end <= start:
+        start, end = starts.get(entity.offset - skip), starts.get(entity.offset + entity.length - skip)
+        if entity.offset < skip or start is None or end is None or end <= start:
             continue
-        if kind in ("code", "pre"):
-            body = text[start:end]
-            if "`" in body:
-                continue
-            for k in range(start, end):
-                raw[k] = True
-            mark = "`" if kind == "code" else "```"
-            spans.append((start, end, mark, mark))
-        elif kind in _ENTITY_MARKS:
-            spans.append((start, end, _ENTITY_MARKS[kind], _ENTITY_MARKS[kind]))
-        elif kind == "text_link" and getattr(entity, "url", None):
-            spans.append((start, end, "[", f"]({escape(entity.url)})"))
-    # Outer spans first, so that they open first and close last.
-    spans.sort(key=lambda s: (s[0], -s[1]))
-    for start, end, open_mark, close_mark in spans:
-        if open_mark in ("`", "```") or not any(raw[start:end]):
-            opens.setdefault(start, []).append((end, open_mark))
-            closes.setdefault(end, []).append((start, close_mark))
+        if kind == "text_link" and getattr(entity, "url", None):
+            spans.append((start, end, f'<a href="{esc_attr(entity.url)}">', "</a>"))
+        elif kind == "pre":
+            language = getattr(entity, "language", None)
+            if language and re.fullmatch(r"[\w+#.-]{1,30}", language):
+                spans.append((start, end, f'<pre><code class="language-{language}">', "</code></pre>"))
+            else:
+                spans.append((start, end, "<pre>", "</pre>"))
+        elif kind in _ENTITY_TAGS:
+            tag = _ENTITY_TAGS[kind]
+            opening = "<blockquote expandable>" if kind == "expandable_blockquote" else f"<{tag}>"
+            spans.append((start, end, opening, f"</{tag}>"))
+
     out: list[str] = []
-    for index, ch in enumerate(text + "\0"):
-        for _start, mark in sorted(closes.get(index, []), key=lambda c: -c[0]):
-            out.append(mark)
-        if index == len(text):
-            break
-        for _end, mark in opens.get(index, []):
-            out.append(mark)
-        out.append(ch if raw[index] else escape(ch))
+    stack: list[tuple[int, int, str, str]] = []
+    for index, char in enumerate(text + "\0"):
+        ending = [span for span in stack if span[1] == index]
+        if ending:
+            low = min(stack.index(span) for span in ending)
+            above = stack[low:]
+            out.extend(span[3] for span in reversed(above))
+            stack = stack[:low]
+            for span in above:  # spans that go on are closed and opened again around it
+                if span[1] != index:
+                    out.append(span[2])
+                    stack.append(span)
+        for span in sorted((s for s in spans if s[0] == index), key=lambda s: -s[1]):
+            out.append(span[2])
+            stack.append(span)
+        if index < len(text):
+            out.append(esc(char) if literal else char)
     return "".join(out)
 
 
@@ -256,17 +223,17 @@ class Parsed:
 
 _OPTION = re.compile(r"(?<!\\)\{(" + "|".join(OPTIONS) + r")\}")
 _FILLING = re.compile(r"(?<!\\)\{(" + "|".join(FILLINGS) + r")\}")
-_BUTTON = re.compile(r"\[((?:\\.|[^\]\\])+)\]\(buttonurl://((?:\\.|[^)\\\s])+)\)", re.IGNORECASE)
+_BUTTON = re.compile(r"\[([^\]]+)\]\(buttonurl://([^)\s]+)\)", re.IGNORECASE)
 
 
 def _button_url(raw: str) -> str:
-    url = unescape(raw)
+    url = html_lib.unescape(raw)
     if not re.match(r"^[a-z][a-z0-9+.-]*://", url, re.IGNORECASE):
         url = "https://" + url
     parsed = urlparse(url)
     scheme = parsed.scheme.lower()
     if not (_web_url_ok(parsed) or (scheme == "tg" and (parsed.netloc or parsed.path))):
-        raise MarkupError(f"The button link \"{unescape(raw)}\" isn't valid. Use a link like https://example.com.")
+        raise MarkupError(f"The button link \"{html_lib.unescape(raw)}\" isn't valid. Use a link like https://example.com.")
     return url
 
 
@@ -286,8 +253,9 @@ def parse(source: str, values: dict[str, str] | None = None) -> Parsed:
         user_id = (values or {}).get("id", "1")
         if name == "mention" or (name == "username" and not value):
             # Someone without a @username is mentioned by name instead.
-            return f"[{escape(value or (values or {}).get('fullname') or 'x')}](tg://user?id={user_id})"
-        return escape(value)
+            name = value or (values or {}).get("fullname") or "x"
+            return f'<a href="tg://user?id={esc_attr(user_id)}">{esc(name)}</a>'
+        return esc(value)
 
     text = _FILLING.sub(fill, text)
 
@@ -296,7 +264,7 @@ def parse(source: str, values: dict[str, str] | None = None) -> Parsed:
 
     def take_button(match: re.Match) -> str:
         nonlocal count
-        label = unescape(match.group(1)).strip()
+        label = html_lib.unescape(re.sub(r"<[^>]*>", "", match.group(1))).strip()
         url_raw = match.group(2)
         same = url_raw.lower().endswith(":same")
         if same:
@@ -318,6 +286,7 @@ def parse(source: str, values: dict[str, str] | None = None) -> Parsed:
     text = _BUTTON.sub(take_button, text)
     if "buttonurl://" in text.lower():
         raise MarkupError("A button is written like [Text](buttonurl://example.com).")
+    text = re.sub(r"\\(\{(?:%s)\})" % "|".join(FILLINGS + OPTIONS), r"\1", text)  # \{first} is the text {first}
     return Parsed(to_html(text.strip()), rows, options)
 
 

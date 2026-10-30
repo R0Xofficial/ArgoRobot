@@ -2,7 +2,7 @@
 Notes: messages saved under a name that anyone in the chat can ask for (the commands
 are in modules/notes.py).
 
-A note is text in the Markdown of core/markup.py, optionally with a photo, video, GIF,
+A note is text in the HTML of core/markup.py, optionally with a photo, video, GIF,
 sticker, document, audio or voice message, kept as the person wrote it and turned into a
 message only when it is sent (core/sender.py). Names are one word, case-insensitive.
 """
