@@ -110,6 +110,7 @@ RECENT_SECONDS = 30
 MAX_LIST_CHARS = 3500  # a longer /fedstat list is sent as a file
 RIGHT = "can_change_info"
 CB_DELETE, CB_TRANSFER, CB_PROMOTE, CB_REASON = "fd:", "fx:", "fp:", "fr:"
+REASON_TTL = 300.0  # seconds an "Update reason?" question stays valid
 _pending_reasons: dict[tuple[int, int], tuple] = {}  # (chat, message) of a "Update Reason?" question -> what was asked
 
 _exported: dict[int, float] = {}
@@ -801,9 +802,12 @@ async def cmd_fban(message: Message, command: CommandObject) -> None:
             + f"\n\nWould you like to update this reason?\n\nNew reason:\n{esc(reason)}",
             reply_markup=keyboard,
         )
+        now = time.monotonic()
+        for key in [k for k, v in _pending_reasons.items() if now - v[4] > REASON_TTL]:
+            del _pending_reasons[key]
         if len(_pending_reasons) > 500:
             _pending_reasons.clear()
-        _pending_reasons[(message.chat.id, sent.message_id)] = (target.name, reason, user.id, user.full_name)
+        _pending_reasons[(message.chat.id, sent.message_id)] = (target.name, reason, user.id, user.full_name, now)
         return
     await federations.ban(fed["fed_id"], target.user_id, target.name, reason, user.id, user.full_name)
     text = _ban_text("New FedBan", fed, user, target.user_id, target.name, reason)
@@ -829,10 +833,10 @@ async def cb_fedreason_update(callback: CallbackQuery) -> None:
     if answer != "y":
         await edit(message, "The reason was not changed.", reply_markup=None)
         return
-    if pending is None:
+    if pending is None or time.monotonic() - pending[4] > REASON_TTL:
         await edit(message, "This request has expired. Send /fban again.", reply_markup=None)
         return
-    name, reason, by_id, by_name = pending
+    name, reason, by_id, by_name, _ = pending
     await federations.ban(fed_id, int(user_id), name, reason, by_id, by_name)
     text = _ban_text("FedBan Reason Update", fed, SimpleNamespace(id=by_id, full_name=by_name), int(user_id), name, reason)
     await edit(message, text, reply_markup=None)
