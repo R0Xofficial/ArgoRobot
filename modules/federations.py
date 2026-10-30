@@ -670,7 +670,7 @@ async def _protected(bot: Bot, fed: dict[str, Any], target) -> str | None:
 def _ban_text(title: str, fed: dict[str, Any], admin, target_id: int, target_name: str | None, reason: str | None) -> str:
     lines = [
         f"<b>{title}</b>",
-        _item("Federation", f"<code>{esc(fed['name'])}</code>"),
+        _item("Federation", esc(fed['name'])),
         _item("FedAdmin", user_link(admin.id, admin.full_name)),
         _item("User", user_link(target_id, target_name)),
         _item("User ID", f"<code>{target_id}</code>"),
