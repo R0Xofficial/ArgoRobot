@@ -46,8 +46,8 @@ HELP = [
     ("/gban <user> <reason>", "Ban a user in every chat. Support users send a request instead.", Role.SUPPORT),
     ("/dgban <reason>", "Reply to a message: delete it and ban its author globally.", Role.SUPPORT),
     ("/ungban <user> <reason>", "Lift a global ban. Support users send a request instead.", Role.SUPPORT),
-    ("/gstat [user]", "Show whether you are globally banned, and why. Support users can look up anyone."),
-    ("/gbans [on|off]", "Choose whether this chat removes globally banned users. On by default; any admin can look, only the chat owner can change it.", "chat owner"),
+    ("/gstat [user]", "Show whether you are globally banned, and why. Support users can look up anyone. Alias: /gbanstat."),
+    ("/gbans [on|off]", "Choose whether this chat removes globally banned users. On by default; any admin can look, only the chat owner can change it. Alias: /enforcegban.", "chat owner"),
     ("/importbans", "Reply to a JSON file to import global bans from it.", Role.OWNER),
 ]
 

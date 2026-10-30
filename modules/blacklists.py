@@ -32,11 +32,11 @@ The commands that change the blacklist are for chat admins with the right to cha
 
 HELP = [
     ("/blacklists", "List the blacklisted triggers of this chat and the default action."),
-    ("/addblacklist <reply/triggers>", "Add one or more triggers, one per line, or reply to a message to blacklist its text. /blacklist works too.", "admins"),
-    ("/unblacklist <triggers>", "Remove triggers, one per line, or reply to a message or sticker.", "admins"),
-    ("/blacklistmode", "Show the default action and whether blacklisted messages are deleted.", "admins"),
-    ("/setblacklistmode &lt;off|del|warn|ban|kick|mute|tban|tmute&gt;", "Set the default action. tban and tmute need a duration. off turns the default off, leaving only triggers with their own action.", "admins"),
-    ("/blocklistdelete <on|off>", "Delete blacklisted messages, whatever the action. Default: on. With off, only the action delete removes a message.", "admins"),
+    ("/addblacklist <reply/triggers>", "Add one or more triggers, one per line, or reply to a message to blacklist its text. Alias: /blacklist.", "admins"),
+    ("/unblacklist <triggers>", "Remove triggers, one per line, or reply to a message or sticker. Alias: /rmblacklist.", "admins"),
+    ("/blacklistmode", "Show the default action and whether blacklisted messages are deleted. Alias: /blocklistmode.", "admins"),
+    ("/setblacklistmode <off|del|warn|ban|kick|mute|tban|tmute>", "Set the default action. tban and tmute need a duration. off turns the default off, leaving only triggers with their own action. Alias: /setblocklistmode.", "admins"),
+    ("/blocklistdelete <on|off>", "Delete blacklisted messages, whatever the action. Default: on. With off, only the action delete removes a message. Alias: /blacklistdelete.", "admins"),
     ("/unblacklistall", "Remove every trigger at once. Asks for confirmation.", "chat owner"),
 ]
 

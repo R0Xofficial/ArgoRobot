@@ -23,7 +23,7 @@ These are for chat admins with the right to delete messages, and I need that rig
 """
 
 HELP = [
-    ("/del", "Delete the message you reply to, and your command with it. /delete does the same.", "admins"),
+    ("/del", "Delete the message you reply to, and your command with it. Alias: /delete.", "admins"),
     ("/purge", "Delete every message from the one you reply to down to your command. I confirm when it is done.", "admins"),
     ("/spurge", "Like /purge, but silent: nothing is said afterwards.", "admins"),
 ]

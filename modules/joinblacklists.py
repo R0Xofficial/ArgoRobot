@@ -31,7 +31,7 @@ The commands that change the lists are for chat admins with the right to change 
 """
 
 HELP = [
-    ("/joinBlacklists", "List the join blacklists of this chat."),
+    ("/joinBlacklists", "List the join blacklists of this chat. Alias: /joinblacklist."),
     ("/blacklistname <trigger>", "Block people whose name matches the trigger.", "admins"),
     ("/blacklistusername <trigger>", "Block people whose @username matches the trigger.", "admins"),
     ("/blacklistbio <trigger>", "Block people whose bio matches the trigger.", "admins"),

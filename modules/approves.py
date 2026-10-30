@@ -32,7 +32,7 @@ HELP = [
     ("/approve <user>", "Approve a trusted user in this chat. Locks, blacklists, antiflood, global and federation bans stop applying to them."),
     ("/unapprove <user>", "Take a user's approval away."),
     ("/approval [user]", "Check whether a user (you, if you name nobody) is approved, and by whom."),
-    ("/approved", "List everyone approved in this chat."),
+    ("/approved", "List everyone approved in this chat. Aliases: /approvals, /approvedlist."),
     ("/disapproveall", "Take away the approval of every user in this chat. Cannot be undone.", "chat owner"),
 ]
 
