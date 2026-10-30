@@ -12,19 +12,19 @@ from aiogram.types import LinkPreviewOptions, Message
 from core import lookup, web
 from core.filters import cmd
 from core.helpers import reply
-from core.targets import replied_message
+from core.targets import TargetError, replied_message, resolve_target
 from core.text import esc, user_link
 
 ABOUT = """
 Nothing here moderates anything. These are for when the chat needs a break.
 
-/pat, /slap, /hug and /roast are aimed at whoever you reply to, or at a name you type after the command. Without either, you are the target.
+/pat, /slap, /hug and /roast are aimed at whoever you reply to, or at a user you mention after the command: @username, a mention or an id. Without either, you are the target.
 
 /ud shows what Urban Dictionary says, and that can be crude.
 """
 
 HELP = [
-    ("/pat [user]", "Pat someone: reply to them or type a name."),
+    ("/pat [user]", "Pat someone: reply to them or give @username, a mention or an id."),
     ("/slap [user]", "Slap someone with something unreasonable."),
     ("/hug [user]", "Hug someone."),
     ("/roast [user]", "Roast someone, gently and without touching anything personal."),
@@ -68,22 +68,22 @@ def _actor(message: Message) -> str:
     return user_link(user.id, user.full_name) if user else "<b>Someone</b>"
 
 
-def _target(message: Message, command: CommandObject) -> tuple[str, bool]:
+async def _target(message: Message, command: CommandObject) -> tuple[str, bool]:
     """
-    (who it is aimed at, whether that is the bot itself): the person replied to, else
-    the name typed after the command, else the sender.
+    (who it is aimed at, whether that is the bot itself): a real user, given as a
+    mention, @username, id or by replying; the sender when nothing is given.
+    Raises TargetError when what was typed is not a known user.
     """
     replied = replied_message(message)
-    if replied is not None:
-        if getattr(replied, "sender_chat", None) is not None:
-            return f"<b>{esc(replied.sender_chat.title or 'someone')}</b>", False
-        if replied.from_user is not None:
-            person = replied.from_user
-            return user_link(person.id, person.full_name), person.id == message.bot.id
-    name = " ".join((command.args or "").split())[:MAX_NAME]
-    if name:
-        return f"<b>{esc(name)}</b>", name.lstrip("@").lower() in {"argo", "argorobot"}
-    return _actor(message), False
+    if replied is None and not (command.args or "").strip():
+        return _actor(message), False
+    if replied is not None and getattr(replied, "sender_chat", None) is not None and replied.from_user is None:
+        return f"<b>{esc(replied.sender_chat.title or 'someone')}</b>", False
+    target = await resolve_target(message, command, allow_bots=True, allow_chats=True)
+    if target.is_chat:
+        return f"<b>{esc(target.title or target.name or 'someone')}</b>", False
+    name = target.name or target.first_name or (f"@{target.username}" if target.username else str(target.user_id))
+    return user_link(target.user_id, name), target.user_id == message.bot.id
 
 
 # --- Pat, slap, hug, roast ---------------------------------------------------------------
@@ -128,7 +128,11 @@ BOT_REPLIES = [
 
 
 async def _action(message: Message, command: CommandObject, templates: list[str]) -> None:
-    target, is_bot = _target(message, command)
+    try:
+        target, is_bot = await _target(message, command)
+    except TargetError as exc:
+        await reply(message, esc(exc))
+        return
     if is_bot:
         await reply(message, random.choice(BOT_REPLIES))
         return
