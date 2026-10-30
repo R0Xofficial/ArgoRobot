@@ -92,12 +92,12 @@ async def cmd_modules(message: Message) -> None:
     lines = ["<b>Modules</b>"]
     for info in modules:
         status = "enabled" if info.enabled else "disabled"
-        line = f"<code>{esc(info.name)}</code> - {status}"
+        line = f"<code>{esc(info.name)}</code> - <b>{status}</b>"
         if info.protected:
-            line += " [protected]"
-        if info.description:
-            line += f" ({esc(info.description)})"
+            line += " <i>(protected)</i>"
         lines.append(line)
+        if info.description:
+            lines.append(f"<i>Description: {esc(info.description)}</i>")
 
     await reply(message, "\n".join(lines))
 
