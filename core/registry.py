@@ -17,6 +17,7 @@ from types import ModuleType
 from aiogram import Router
 
 from core import database
+from core.disabled import CommandGuard
 
 log = logging.getLogger(__name__)
 
@@ -65,6 +66,9 @@ def register(name: str, module: ModuleType, router: Router) -> None:
         if event_name == "error":
             continue
         observer.filter(gate)
+
+    # Chats can switch commands off (core/disabled.py); the guard runs once a handler matched.
+    router.message.middleware(CommandGuard(info.name))
 
 
 async def load_state() -> None:

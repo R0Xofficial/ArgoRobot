@@ -36,7 +36,7 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
 )
 
-from core import blacklist, chatsettings, database, filterstore, flood, federations, joinblacklist, locks, logs
+from core import blacklist, chatsettings, connection, database, disabled, filterstore, flood, federations, joinblacklist, locks, logs
 from core.errors import report_exception
 from core.text import esc
 from core.users import CACHE_LIMIT, IGNORED_IDS, REFRESH_SECONDS
@@ -201,6 +201,7 @@ async def remove_chat(chat_id: int) -> None:
     """Forget a chat and everything recorded about who was in it."""
     _forget(chat_id)
     await database.execute(DELETE_CHAT, chat_id)
+    await connection.drop_chat(chat_id)
 
 
 async def migrate_chat(old_id: int, new_id: int) -> None:
@@ -223,9 +224,11 @@ async def migrate_chat(old_id: int, new_id: int) -> None:
         new_id,
     )
     # Settings, warns and approvals follow the chat to its new id.
-    for table in ("chat_settings", "warn_settings", "warns", "approvals", "gban_bans", "flood_settings", "blacklist", "blacklist_settings", "filters", "greetings", "join_blacklist", "notes", "rules", "locks", "lock_settings", "lock_allowlist", "fed_chats", "fed_applied"):
+    for table in ("chat_settings", "warn_settings", "warns", "approvals", "gban_bans", "flood_settings", "blacklist", "blacklist_settings", "filters", "greetings", "join_blacklist", "notes", "rules", "locks", "lock_settings", "lock_allowlist", "fed_chats", "fed_applied", "disabled_commands", "connections"):
         await database.execute(f"UPDATE {table} SET chat_id = $2 WHERE chat_id = $1", old_id, new_id)
     chatsettings.forget(old_id)
+    disabled.forget(old_id)
+    connection.forget_chat(old_id, new_id)
     flood.forget(old_id)
     blacklist.forget(old_id)
     filterstore.forget(old_id)

@@ -218,6 +218,14 @@ async def cmd_start(message: Message, command: CommandObject, role: Role | None 
     if payload == "help":
         await reply(message, _help_home_text(role), reply_markup=_help_home_keyboard(role))
         return
+    if payload.startswith("connect_"):
+        # t.me/<bot>?start=connect_<chat id>: the button /connect sends in a group
+        from modules.connection import connect_and_tell
+
+        chat_id = payload[len("connect_"):]
+        if chat_id.lstrip("-").isdigit():
+            await connect_and_tell(message, int(chat_id))
+            return
     if payload.startswith("help_"):
         info = registry.get(payload[len("help_"):])
         if info is not None and info.enabled and help_index.entries(info.module, role):

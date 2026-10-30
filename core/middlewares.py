@@ -15,7 +15,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.types import Update
 
 from config import settings
-from core import chatsettings, chats, registry, roles, users
+from core import chatsettings, chats, connection, registry, roles, users
 
 log = logging.getLogger("usage")
 
@@ -150,3 +150,41 @@ class CleanCommandsMiddleware(BaseMiddleware):
         if addressed and bot is not None and addressed.lower() != ((await bot.me()).username or "").lower():
             return False
         return await chatsettings.clean_commands(message.chat.id)
+
+
+class ConnectionMiddleware(BaseMiddleware):
+    """
+    Runs a connected admin's group commands, sent in a private chat, for the group
+    (see core/connection.py). Everything else passes through untouched.
+    """
+
+    async def __call__(
+        self,
+        handler: Callable[[Update, dict[str, Any]], Awaitable[Any]],
+        event: Update,
+        data: dict[str, Any],
+    ) -> Any:
+        message = event.message
+        try:
+            record = await self._record(message, data.get("bot"))
+        except Exception:
+            log.debug("Looking up a connection failed", exc_info=True)
+            record = None
+        if record is None:
+            return await handler(event, data)
+
+        token = connection.origin.set(message.chat.id)
+        try:
+            return await handler(event.model_copy(update={"message": connection.rewrite(message, record)}), data)
+        finally:
+            connection.origin.reset(token)
+
+    @staticmethod
+    async def _record(message, bot) -> dict[str, Any] | None:
+        if message is None or message.chat.type != "private" or message.from_user is None or not message.text:
+            return None
+        username = (await bot.me()).username if bot is not None else None
+        name = connection.command_name(message.text, settings.COMMAND_PREFIXES, username)
+        if name is None or not connection.is_remote(name):
+            return None
+        return await connection.get(message.from_user.id)

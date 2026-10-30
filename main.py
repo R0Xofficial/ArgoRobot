@@ -32,7 +32,7 @@ import modules
 from config import settings
 from core import chats, database, logs, registry, users
 from core.errors import setup_error_handling
-from core.middlewares import CleanCommandsMiddleware, LoggingMiddleware, RolesMiddleware, UsersMiddleware
+from core.middlewares import CleanCommandsMiddleware, ConnectionMiddleware, LoggingMiddleware, RolesMiddleware, UsersMiddleware
 from core.text import esc
 
 log = logging.getLogger("main")
@@ -148,6 +148,7 @@ async def main() -> None:
     dp.update.outer_middleware(RolesMiddleware())
     dp.update.outer_middleware(UsersMiddleware())
     dp.update.outer_middleware(CleanCommandsMiddleware())
+    dp.update.outer_middleware(ConnectionMiddleware())
     setup_error_handling(dp, bot)
 
     # Feature modules: auto-discovered, toggleable.

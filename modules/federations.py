@@ -73,7 +73,7 @@ HELP = [
     ("/leavefed", "Take this chat out of its federation.", "chat owner", S_USER),
     ("/chatfed", "Show the federation this chat is in.", S_USER),
     ("/quietfed <on|off>", "Choose whether I announce removals of fedbanned users here.", "admins", S_USER),
-    ("/fedstat [user] [FedID]", "The federations you or another user are banned in. Add a FedID to see the reason and details of that ban.", S_USER),
+    ("/fedstat [user] [FedID]", "The federations you or another user are banned in. Add a FedID to see the reason and details of that ban. Alias: /fbanstat.", S_USER),
 ]
 
 HELP_NOTES = [
@@ -181,6 +181,16 @@ async def _event(bot: Bot, fed: dict[str, Any], text: str) -> None:
     if fed["notify"] and not (sent and fed["log_chat_id"] == fed["owner_id"]):
         with suppress(TelegramAPIError):
             await bot.send_message(fed["owner_id"], text, link_preview_options=LinkPreviewOptions(is_disabled=True))
+
+
+async def _admin_event(bot: Bot, fed: dict[str, Any], promoted: bool, user_id: int, who: str) -> None:
+    """Tell the federation's log that someone became or stopped being one of its admins."""
+    title, label = ("New Fed Promotion", "Promoted FedAdmin") if promoted else ("New Fed Demotion", "Demoted FedAdmin")
+    await _event(
+        bot,
+        fed,
+        f"<b>{title}</b>\n{_item('Fed', _fed_name(fed))}\n{_item(label, who)}\n{_item('User ID', f'<code>{user_id}</code>')}",
+    )
 
 
 async def _resolve_fed(message: Message, argument: str, user) -> dict[str, Any] | None:
@@ -431,7 +441,7 @@ async def cb_fedpromote(callback: CallbackQuery) -> None:
         return
     who = user_link(callback.from_user.id, callback.from_user.full_name)
     await edit(message, f"{who} is now an admin of the federation {_fed_name(fed)}.", reply_markup=None)
-    await _event(callback.bot, fed, f"<b>New FedAdmin</b>\n{_item('Federation', _fed_name(fed))}\n{_item('User', who)}")
+    await _admin_event(callback.bot, fed, True, callback.from_user.id, who)
 
 
 @router.message(cmd("feddemote", "fdemote"))
@@ -448,7 +458,7 @@ async def cmd_feddemote(message: Message, command: CommandObject) -> None:
         return
     who = user_link(target.user_id, target.name)
     await reply(message, f"{who} is no longer an admin of {_fed_name(fed)}.")
-    await _event(message.bot, fed, f"<b>Un-FedAdmin</b>\n{_item('Federation', _fed_name(fed))}\n{_item('User', who)}")
+    await _admin_event(message.bot, fed, False, target.user_id, who)
 
 
 @router.message(cmd("feddemoteme"))
@@ -471,7 +481,7 @@ async def cmd_feddemoteme(message: Message, command: CommandObject) -> None:
         await reply(message, "You are not an admin of that federation.")
         return
     await reply(message, f"You are no longer an admin of {_fed_name(fed)}.")
-    await _event(message.bot, fed, f"<b>Un-FedAdmin</b>\n{_item('Federation', _fed_name(fed))}\n{_item('User', user_link(user.id, user.full_name))}")
+    await _admin_event(message.bot, fed, False, user.id, user_link(user.id, user.full_name))
 
 
 async def _toggle(message: Message, command: CommandObject, field: str, name: str) -> None:
@@ -950,7 +960,7 @@ def _ban_line(row: dict[str, Any]) -> str:
     return f"• <b>{esc(row['name'])}</b>\n  <code>{row['fed_id']}</code>"
 
 
-@router.message(cmd("fedstat"))
+@router.message(cmd("fedstat", "fbanstat"))
 async def cmd_fedstat(message: Message, command: CommandObject) -> None:
     words = (command.args or "").split()
     fed_id = words.pop().lower() if words and _FED_ID.match(words[-1]) else None
@@ -1076,6 +1086,7 @@ async def _enforce(bot: Bot, chat_id: int, user, found: tuple[dict[str, Any], di
         return
     if not await _ban_in(bot, chat_id, user.id):
         _recent.pop((chat_id, user.id), None)  # try again with their next message
+        await _leave_if_powerless(bot, chat_id)
         return
     if await federations.is_quiet(chat_id):
         return
@@ -1138,6 +1149,61 @@ async def _banned_reacting(reaction: MessageReactionUpdated, bot: Bot) -> dict[s
 @router.message_reaction(_banned_reacting)
 async def enforce_on_reaction(reaction: MessageReactionUpdated, bot: Bot, fed_ban: tuple) -> None:
     await _enforce(bot, reaction.chat.id, reaction.user, fed_ban, None)
+
+
+# --- Leaving the federation when I can no longer ban ----------------------------------------------
+
+def _can_ban(member: Any) -> bool:
+    """Whether this membership lets the bot remove people: the owner, or an admin with that right."""
+    status = getattr(member, "status", None)
+    if status == "creator":
+        return True
+    return status == "administrator" and bool(getattr(member, "can_restrict_members", False))
+
+
+async def _leave_federation(bot: Bot, chat_id: int, title: str | None) -> bool:
+    """Take the chat out of its federation because I can't act for it. False when it was in none."""
+    fed = await federations.chat_fed(chat_id)
+    if fed is None:
+        return False
+    await federations.leave(chat_id)
+    with suppress(TelegramAPIError):
+        await bot.send_message(
+            chat_id,
+            f"I can't remove people from this chat any more (I need to be an admin who can ban users), "
+            f"so it left the federation {_fed_name(fed)}. Nobody is unbanned.\n"
+            "Give me that right again and use /joinfed to join back.",
+        )
+    await _event(
+        bot,
+        fed,
+        f"<b>Un-FedChat</b>\n{_item('Federation', _fed_name(fed))}\n{_item('Chat', esc(title or str(chat_id)))}\n"
+        f"{_item('Chat ID', f'<code>{chat_id}</code>')}\n{_item('Reason', 'I lost the right to ban users there')}",
+    )
+    return True
+
+
+async def _leave_if_powerless(bot: Bot, chat_id: int) -> None:
+    """A ban just failed: if that is because I lost my rights here, the chat leaves its federation."""
+    try:
+        member = await moderation.get_member(bot, chat_id, bot.id)
+        if member is None or _can_ban(member):
+            return  # can't tell, or the failure was something else (flood limit, an admin, ...)
+        await _leave_federation(bot, chat_id, None)
+    except Exception:
+        log.exception("Checking my rights in %s failed", chat_id)
+
+
+@router.my_chat_member()
+async def on_my_rights_changed(event: ChatMemberUpdated, bot: Bot) -> None:
+    if event.chat.type not in GROUP_TYPES or event.new_chat_member.user.id != bot.id:
+        return
+    if _can_ban(event.new_chat_member):
+        return
+    try:
+        await _leave_federation(bot, event.chat.id, event.chat.title)
+    except Exception:
+        log.exception("Leaving the federation of %s failed", event.chat.id)
 
 
 # --- /info ------------------------------------------------------------------------------------

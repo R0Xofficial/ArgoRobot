@@ -111,10 +111,10 @@ def _log_text(
         f"<b>Initiated From:</b> {origin}",
         "",
         f"<b>User:</b> {target}",
-        f"<b>Reason:</b> {esc(reason)}",
+        f"<b>Reason:</b> <code>{esc(reason)}</code>",
     ]
     if old_reason:
-        lines.append(f"<b>Old Reason:</b> {esc(old_reason)}")
+        lines.append(f"<b>Old Reason:</b> <code>{esc(old_reason)}</code>")
     if timestamp:
         lines.append(f"<b>Timestamp:</b> {logs.timestamp()}")
     lines.append(f"<b>Admin:</b> {admin}")
@@ -129,7 +129,7 @@ def _tag_for(old: dict | None) -> str:
 
 def _done_text(old: dict | None) -> str:
     if old:
-        return f"Done! Gban reason updated.\n<b>Old Reason:</b> {esc(old['reason'])}"
+        return f"Done! Gban reason updated.\n<b>Old Reason:</b> <code>{esc(old['reason'])}</code>"
     return "Done! Gbanned."
 
 
@@ -225,7 +225,7 @@ async def _alert(bot: Bot, chat_id: int, ban: dict, thread_id: int | None) -> No
         "<b>Alert!</b> Detected globally banned user.",
         "<code>I banned them here!</code>",
         f"<b>User:</b> {user_ref(ban['user_id'], ban['name'])}",
-        f"<b>Reason:</b> {esc(ban['reason'])}",
+        f"<b>Reason:</b> <code>{esc(ban['reason'])}</code>",
     ]
     if settings.APPEAL_CHAT_USERNAME:
         lines.append(f"<b>Appeal Chat:</b> {esc(settings.APPEAL_CHAT_USERNAME)}")
@@ -648,7 +648,7 @@ async def cmd_gstat(message: Message, command: CommandObject, role: Role | None 
         lines.append(f"• <b>Status:</b> <code>{roles.label(target_role)}</code>")
     elif ban:
         lines.append("• <b>Status:</b> <code>Banned</code>")
-        lines.append(f"• <b>Reason:</b> {esc(ban['reason'])}")
+        lines.append(f"• <b>Reason:</b> <code>{esc(ban['reason'])}</code>")
         lines.append(f"• <b>Timestamp:</b> {logs.timestamp(ban['created_at'])}")
         if await whitelist.is_whitelisted(target_id):
             lines.append("• <b>Whitelisted:</b> <code>Yes</code> (not removed from chats)")

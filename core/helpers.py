@@ -19,6 +19,7 @@ from typing import Any
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message, ReplyParameters
 
+from core import connection
 from core.text import strip_tags
 
 log = logging.getLogger(__name__)
@@ -58,6 +59,10 @@ async def reply(
         "message_thread_id": message.message_thread_id if message.is_topic_message else None,
         **kwargs,
     }
+    private = connection.origin.get()
+    if private is not None:
+        # A command run for a connected group (core/connection.py) is answered where it was sent.
+        params["chat_id"], params["message_thread_id"], quote = private, None, False
     if quote:
         # allow_sending_without_reply makes Telegram deliver the answer even
         # if the original message has been deleted in the meantime.

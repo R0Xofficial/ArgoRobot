@@ -78,6 +78,22 @@ CREATE TABLE IF NOT EXISTS chat_logs (
     set_by      BIGINT
 );
 
+-- Commands (and whole modules, as "module:<name>") a chat switched off (see core/disabled.py).
+CREATE TABLE IF NOT EXISTS disabled_commands (
+    chat_id BIGINT NOT NULL,
+    command TEXT   NOT NULL,
+    PRIMARY KEY (chat_id, command)
+);
+
+-- The group an admin manages from a private chat with the bot (see core/connection.py).
+CREATE TABLE IF NOT EXISTS connections (
+    user_id      BIGINT PRIMARY KEY,
+    chat_id      BIGINT NOT NULL,
+    title        TEXT,
+    chat_type    TEXT NOT NULL,
+    connected_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Settings the owner of a chat controls (see core/chatsettings.py).
 CREATE TABLE IF NOT EXISTS chat_settings (
     chat_id    BIGINT PRIMARY KEY,
