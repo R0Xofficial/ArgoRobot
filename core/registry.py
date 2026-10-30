@@ -102,7 +102,7 @@ async def set_enabled(name: str, enabled: bool) -> bool:
         return False
 
     if info.protected and not enabled:
-        raise ProtectedModuleError(f"Module '{info.name}' is protected and cannot be disabled.")
+        raise ProtectedModuleError(f"Module '{info.name}' is protected and can't be disabled.")
 
     info.enabled = enabled
     await database.execute(

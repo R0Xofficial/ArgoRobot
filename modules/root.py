@@ -115,7 +115,7 @@ async def cmd_module(message: Message, command: CommandObject) -> None:
     try:
         found = await registry.set_enabled(name, action == "enable")
     except registry.ProtectedModuleError:
-        await reply(message, f"Module <code>{esc(name.lower())}</code> is protected and cannot be disabled.")
+        await reply(message, f"Module <code>{esc(name.lower())}</code> is protected and can't be disabled.")
         return
 
     if not found:

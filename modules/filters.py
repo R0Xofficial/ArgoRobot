@@ -223,7 +223,7 @@ async def cmd_stopall(message: Message) -> None:
             ]
         ]
     )
-    await reply(message, f"Remove all <b>{count}</b> filters of this chat? This cannot be undone.", reply_markup=keyboard)
+    await reply(message, f"Remove all <b>{count}</b> filters of this chat? This can't be undone.", reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith(CB_CLEAR))

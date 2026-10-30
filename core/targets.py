@@ -119,7 +119,7 @@ def _from_user(user, allow_bots: bool = False) -> Target:
     username = getattr(user, "username", None)
     kind = _user_kind(getattr(user, "is_bot", False), username)
     if kind == "bot" and not allow_bots:
-        raise TargetError("Bots cannot hold roles.")
+        raise TargetError("Bots can't hold roles.")
     return Target(
         user.id,
         user.full_name,
@@ -133,7 +133,7 @@ def _from_user(user, allow_bots: bool = False) -> Target:
 def _from_row(row: dict, allow_bots: bool) -> Target:
     kind = _user_kind(row["is_bot"], row["username"])
     if kind == "bot" and not allow_bots:
-        raise TargetError("Bots cannot hold roles.")
+        raise TargetError("Bots can't hold roles.")
     return Target(
         row["user_id"],
         row["name"],

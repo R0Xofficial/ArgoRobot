@@ -230,7 +230,7 @@ async def cmd_clearall(message: Message) -> None:
             ]
         ]
     )
-    await reply(message, f"Delete all <b>{count}</b> notes of this chat? This cannot be undone.", reply_markup=keyboard)
+    await reply(message, f"Delete all <b>{count}</b> notes of this chat? This can't be undone.", reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith(CB_CLEAR))

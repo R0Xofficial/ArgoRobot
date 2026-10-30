@@ -346,7 +346,7 @@ async def cmd_delfed(message: Message) -> None:
     )
     await reply(
         message,
-        f"Delete the federation {_fed_name(fed)}? Its chats, admins, bans and subscriptions are forgotten. People it banned stay banned in their chats. This cannot be undone.",
+        f"Delete the federation {_fed_name(fed)}? Its chats, admins, bans and subscriptions are forgotten. People it banned stay banned in their chats. This can't be undone.",
         reply_markup=keyboard,
     )
 

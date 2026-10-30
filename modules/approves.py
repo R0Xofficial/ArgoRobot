@@ -174,7 +174,7 @@ async def cmd_disapproveall(message: Message, command: CommandObject, role: Role
     )
     await reply(
         message,
-        f"Unapprove all <b>{count}</b> approved users of this chat? This cannot be undone.",
+        f"Unapprove all <b>{count}</b> approved users of this chat? This can't be undone.",
         reply_markup=keyboard,
     )
 

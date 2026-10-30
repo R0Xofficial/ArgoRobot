@@ -303,7 +303,7 @@ async def cmd_rmallowlistall(message: Message) -> None:
             ]
         ]
     )
-    await reply(message, f"Remove all <b>{count}</b> items from the allowlist? This cannot be undone.", reply_markup=keyboard)
+    await reply(message, f"Remove all <b>{count}</b> items from the allowlist? This can't be undone.", reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith(CB_CLEAR))

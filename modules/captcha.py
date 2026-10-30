@@ -30,7 +30,7 @@ Captchas ride on the welcome message, so they only work while welcome messages a
 
 Test types (/captchamode): button (press a button), math (pick the answer to a small sum), text (the code is written in the message; press the scrambled characters in the order of the code) and text2 (the same, but the code is a picture).
 
-How it looks: the newcomer's welcome carries a verify button. In button mode one press unmutes them; the other modes (and button mode with /captcharules) open a private chat with me where they solve the test.
+How it looks: the newcomer's welcome carries a verify button, the same for everybody. In button mode one press unmutes them; the other modes (and button mode with /captcharules) open a private chat with me where they solve the test. Somebody who is already verified only gets a small pop-up saying so.
 
 If the chat uses join requests, the captcha is sent privately and the request is approved once it is solved.
 

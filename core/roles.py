@@ -82,9 +82,9 @@ async def set_role(
     added_by_name: str | None = None,
 ) -> None:
     if role is Role.OWNER:
-        raise ValueError("The OWNER role is set in the configuration and cannot be assigned.")
+        raise ValueError("The OWNER role is set in the configuration and can't be assigned.")
     if user_id == settings.OWNER_ID:
-        raise ValueError("The owner's role cannot be changed.")
+        raise ValueError("The owner's role can't be changed.")
 
     await database.execute(
         "INSERT INTO roles (user_id, role, added_by, name, added_by_name) "
@@ -103,7 +103,7 @@ async def set_role(
 
 async def remove_role(user_id: int) -> None:
     if user_id == settings.OWNER_ID:
-        raise ValueError("The owner cannot be demoted.")
+        raise ValueError("The owner can't be demoted.")
 
     await database.execute("DELETE FROM roles WHERE user_id = $1", user_id)
     await _load()

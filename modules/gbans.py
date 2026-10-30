@@ -621,7 +621,7 @@ async def cmd_gstat(message: Message, command: CommandObject, role: Role | None 
     bot = message.bot
     viewer = message.from_user
     if viewer is None or viewer.id in users.IGNORED_IDS:
-        await reply(message, "I can't tell who you are.")
+        await reply(message, "I can't tell who you are. Send this as yourself, not anonymously.")
         return
 
     if role is not None and (command.args or replied_message(message)):

@@ -59,7 +59,6 @@ ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # nothing that looks like somethi
 REQUEST_LIFETIME = timedelta(hours=24)  # a join request that is not kicked is forgotten after this
 RECENT_SECONDS = 300  # someone who just passed is not tested again for this long
 SWEEP_EVERY = 20
-WELCOME_GRACE = 30  # seconds a welcome message has to carry the button before a captcha message is sent instead
 WELCOME_LIMIT = 5  # people greeted for one "joined" message (modules/greetings.py sets the real value)
 MAX_RULES_HTML = 2500
 
@@ -597,13 +596,12 @@ async def hold_request(bot: Bot, chat, user: User, user_chat_id: int) -> bool:
 # --- The welcome message's button -----------------------------------------------------------------
 
 async def welcome_button(bot: Bot, chat_id: int) -> InlineKeyboardButton:
-    """The button under welcome messages. It is the same for everybody: whoever presses it is looked up."""
+    """
+    The button under welcome messages. It is the same for everybody and always a callback button: whoever
+    presses it is looked up, so a person who is already verified is only told so, in a pop-up.
+    """
     config = await settings(chat_id)
-    text = config["button_text"] or DEFAULT_BUTTON
-    if config["mode"] == "button" and not (config["rules"] and _rules_exist(await rulestore.get(chat_id))):
-        return InlineKeyboardButton(text=text, callback_data=f"{WELCOME_PREFIX}:{chat_id}")
-    username = (await bot.me()).username
-    return InlineKeyboardButton(text=text, url=f"https://t.me/{username}?start=cap_{chat_id}")
+    return InlineKeyboardButton(text=config["button_text"] or DEFAULT_BUTTON, callback_data=f"{WELCOME_PREFIX}:{chat_id}")
 
 
 async def welcome_for(bot: Bot, chat_id: int, user_id: int) -> tuple[bool, InlineKeyboardButton | None]:
@@ -628,7 +626,7 @@ async def welcome_pressed(bot: Bot, chat_id: int, user: User) -> tuple[str | Non
     if row is None or row["kind"] != "join":
         return "You're already verified.", True, None
     config = await settings(chat_id)
-    simple = row["mode"] == "button" and row["attached"] and not (config["rules"] and _rules_exist(await rulestore.get(chat_id)))
+    simple = row["mode"] == "button" and not (config["rules"] and _rules_exist(await rulestore.get(chat_id)))
     if simple:
         return await press(bot, row, 0, user), False, None
     username = (await bot.me()).username
@@ -753,12 +751,6 @@ async def accept_rules(bot: Bot, row: dict[str, Any], user: User) -> str | None:
 async def _handle(bot: Bot, row: dict[str, Any], now: datetime) -> None:
     if await active(row["chat_id"]) is None:
         await _let_go(bot, row)  # captchas were turned off while the person waited
-    elif (row["attached"] and not row["welcomed"] and row["message_id"] is None and row["message_chat_id"] == row["chat_id"]
-          and (now - row["created_at"]).total_seconds() > WELCOME_GRACE):
-        # The welcome message never carried the button (it failed, or was never sent): send a captcha of our own.
-        await database.execute("UPDATE captcha_pending SET attached = FALSE WHERE id = $1", row["id"])
-        row["attached"] = False
-        await _present(bot, row, await settings(row["chat_id"]))
     elif row["kick_at"] is not None and row["kick_at"] <= now:
         await kick(bot, row)
     elif row["unmute_at"] is not None and row["unmute_at"] <= now:

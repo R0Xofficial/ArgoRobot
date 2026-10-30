@@ -116,6 +116,8 @@ Support  <  Sudo  <  Developer  <  Owner
 
 Roles are managed with `/addsudo`, `/rmsudo`, `/addsupport`, `/rmsupport`, `/adddev` and `/rmdev`. `/staff` shows who holds what. Staff can never change a chat's settings: those belong to the chat's own admins and owner.
 
+**Staff in chats.** Somebody with a role is always welcomed when they join a chat and seen off when they leave, with a message of their role (Support, Sudo, Developer, Owner), whatever the chat's `/welcome` and `/goodbye` settings are. They are not welcome-muted and never get a captcha. The texts are in `core/staffgreet.py`; edit them there.
+
 Chat admins use the moderation commands of their chat. Each command checks the exact admin right it needs.
 
 ## 6. How bans reach people
@@ -152,7 +154,7 @@ Chats that get spammed by joining accounts can make newcomers prove they are peo
 | `text` | A code is written in the message; its characters sit scrambled on buttons and must be pressed in the order of the code. |
 | `text2` | The same, but the code is a picture. |
 
-With welcome messages on, the newcomer's welcome carries a verify button: in `button` mode one press unmutes them, the other modes (and `button` with `/captcharules`) lead to a private chat with the bot, where the test is solved. Captchas need welcome messages: with `/welcome` off nobody is muted. If the chat uses join requests, the captcha is sent to the person privately and their request is approved once they pass; when time runs out the request is dismissed. Waiting people survive a restart of the bot. Admins, approved users, bots and the bot's staff are never tested. Turning captchas (or the module) off lets everybody who was waiting in. The bot needs the right to restrict users.
+With welcome messages on, the newcomer's welcome carries one verify button that is the same for everybody (`/setcaptchatext` changes its label). In `button` mode one press unmutes the person at once. The other modes, and `button` with `/captcharules`, open the private chat with the bot, where the test is solved. Someone who is already verified only gets a small pop-up saying so. If a welcome ever fails to carry the button, the button under any other welcome works for every waiting newcomer. Captchas need welcome messages: with `/welcome` off nobody is muted. If the chat uses join requests, the captcha is sent to the person privately and their request is approved once they pass; when time runs out the request is dismissed. Waiting people survive a restart of the bot. Admins, approved users, bots and the bot's staff are never tested. Turning captchas (or the module) off lets everybody who was waiting in. The bot needs the right to restrict users.
 
 ## 8. Federations
 
@@ -167,7 +169,17 @@ A federation is a ban list shared by many chats.
 
 **Subscriptions.** `/subfed` makes your federation inherit the bans of another one, `/unsubfed` undoes it. `/fedsubs` shows both directions.
 
-**Log events.** A chat joined or left, an admin or owner changed, someone subscribed, a new ban: each goes to the federation's log chat with its own title: New FedChat, Un-FedChat, FedSubscribed, New FedSubscriber, New Fed Promotion, New Fed Demotion, New FedOwner, New FedBans and so on.
+**Log events.** Every change goes to the federation's log chat (`/setfedlog`; the owner gets them privately without one). Each event has a title and the same readable lines: the federation as `FedName: Name | @tag`, people as a mention with their `[id]`, and `By` for who did it.
+
+```
+New FedSubscribed          New FedChat               New Fed Promotion
+FedName: Knox | @Knox      FedName: Knox | @Knox     FedName: Knox | @Knox
+SubbedFed: ALT-F4 (@Alt)   Chat: Group (link)        Promoted FedAdmin: Ann
+SubbedFedID: 5475ba3a-...  Chat ID: -100123...       User ID: 123
+By: Ann [123]              By: Ann [123]             By: Owner [1]
+```
+
+The titles are New FedChat, Un-FedChat, New FedSubscribed, New FedSubscriber, Un-FedSubscribed, Un-FedSubscriber, New Fed Promotion, New Fed Demotion, New FedOwner (with the previous and the new owner), New FedBans, New FedBan, FedBan Reason Update and FedBan Revoked.
 
 **Lost rights.** When the bot loses the right to ban users in a chat, that chat leaves its federation by itself and says so. Give the right back and use `/joinfed` to join again.
 
