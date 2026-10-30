@@ -1,7 +1,7 @@
 services:
   argo:
     build: .
-    container_name: argo
+    container_name: argorobot
     restart: unless-stopped
     init: true
     stop_grace_period: 15s
