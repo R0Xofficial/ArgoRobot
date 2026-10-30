@@ -66,7 +66,7 @@ HELP = [
     ("/unfban <user>", "Lift a federation ban.", S_ADMIN, FED_ADMINS),
     ("/feddemoteme <FedID>", "Give up your admin rights in a federation.", S_ADMIN, FED_ADMINS),
     ("/myfeds", "List the federations you own or administer. Private chat only.", S_ADMIN, FED_ADMINS),
-    ("/fedinfo [FedID]", "Show a federation: owner, admins, chats, bans.", S_USER),
+    ("/fedinfo [FedID]", "Show a federation: owner, admins, chats, bans. Without an ID it shows the one you own.", S_USER),
     ("/fedadmins [FedID]", "List the owner and admins of a federation.", S_USER),
     ("/fedsubs [FedID]", "List the federations a federation is subscribed to.", S_USER),
     ("/joinfed <FedID>", "Join this chat to a federation. A chat is in one federation at a time.", "chat owner", S_USER),
@@ -800,7 +800,13 @@ async def cmd_myfeds(message: Message) -> None:
 
 @router.message(cmd("fedinfo"))
 async def cmd_fedinfo(message: Message, command: CommandObject) -> None:
-    fed = await _resolve_fed(message, command.args or "", message.from_user)
+    if (command.args or "").strip():
+        fed = await _resolve_fed(message, command.args, message.from_user)
+    else:
+        # Without an ID: the federation this person owns, whatever chat it is sent in.
+        fed = await federations.owned_by(message.from_user.id)
+        if fed is None:
+            await reply(message, "You don't own a federation. Give the ID of the one you mean.")
     if fed is None:
         return
     fed_id = fed["fed_id"]
