@@ -135,7 +135,10 @@ async def main() -> None:
 
     bot = Bot(
         token=settings.BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        default=DefaultBotProperties(
+            parse_mode=ParseMode.HTML,
+            link_preview_is_disabled=True,  # no link previews anywhere
+        ),
     )
     dp = Dispatcher()
 
