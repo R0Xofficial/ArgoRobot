@@ -148,6 +148,7 @@ async def cmd_stats(message: Message) -> None:
     groups = by_type.get("group", 0) + by_type.get("supergroup", 0)
     staff = await database.fetch_one("SELECT count(*) AS total FROM roles")
     approved = await database.fetch_one("SELECT count(*) AS total FROM approvals")
+    feds = await database.fetch_one("SELECT count(*) AS total FROM federations")
 
     lines = [
         "<b>Bot Statistics:</b>",
@@ -156,6 +157,7 @@ async def cmd_stats(message: Message) -> None:
         f"• <b>Chats:</b> <code>{sum(by_type.values())}</code> "
         f"(groups: <code>{groups}</code>, channels: <code>{by_type.get('channel', 0)}</code>)",
         f"• <b>Global Bans:</b> <code>{await gbans.count()}</code>",
+        f"• <b>Federations:</b> <code>{feds['total']}</code>",
         f"• <b>Whitelisted:</b> <code>{len(await whitelist.list_all())}</code>",
         f"• <b>Approved Users:</b> <code>{approved['total']}</code>",
         f"• <b>Staff:</b> <code>{staff['total'] + 1}</code> (including the owner)",

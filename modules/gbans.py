@@ -28,7 +28,7 @@ from core.helpers import edit, reply
 from core.moderation import GROUP_TYPES, ModerationError
 from core.roles import Role
 from core.targets import Target, TargetError, display_name, replied_message, resolve_target, sender_as_target
-from core.text import esc, user_ref
+from core.text import esc, user_ref, SWITCH as _ANSWERS
 
 log = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ HELP = [
     ("/dgban <reason>", "Reply to a message: delete it and ban its author globally.", Role.SUPPORT),
     ("/ungban <user> <reason>", "Lift a global ban. Support users send a request instead.", Role.SUPPORT),
     ("/gstat [user]", "Show whether you are globally banned, and why. Support users can look up anyone."),
-    ("/gbans [on|off|yes|no]", "Choose whether this chat removes globally banned users. On by default; any admin can look, only the chat owner can change it.", "chat owner"),
+    ("/gbans [on|off]", "Choose whether this chat removes globally banned users. On by default; any admin can look, only the chat owner can change it.", "chat owner"),
     ("/importbans", "Reply to a JSON file to import global bans from it.", Role.OWNER),
 ]
 
@@ -60,7 +60,6 @@ MAX_IMPORT_BYTES = 20 * 1024 * 1024  # what a bot can download
 
 SUDO = Role.SUDO
 
-_ANSWERS = {"on": True, "yes": True, "off": False, "no": False}
 
 NO_REASON = "Give a reason!"
 IMMUNE_MESSAGE = "I can't take action against that account."
@@ -692,7 +691,7 @@ async def cmd_gbans(message: Message, command: CommandObject, role: Role | None 
             message,
             "<b>Global Ban Enforcement</b>\n\n"
             f"Current status for this chat: <b>{'ENABLED' if enabled else 'DISABLED'}</b>\n"
-            "<b>Usage:</b> <code>/gbans &lt;yes/on/no/off&gt;</code>",
+            "<b>Usage:</b> <code>/gbans &lt;on/off&gt;</code>",
         )
         return
 
@@ -845,7 +844,7 @@ async def enforce_on_join(event: ChatMemberUpdated, bot: Bot) -> None:
 # --- /info ----------------------------------------------------------------------------------------------------
 
 async def _info_flags(bot: Bot, user_id: int, chat_id: int | None) -> list[tuple[str, bool]]:
-    return [("GBanned", await gbans.is_gbanned(user_id))]
+    return [("Globally Banned", await gbans.is_gbanned(user_id))]
 
 
 info_hooks.register("gbans", _info_flags)

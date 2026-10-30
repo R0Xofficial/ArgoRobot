@@ -42,7 +42,7 @@ HELP = [
     ("/start", "Say hello. In a group I only point you to a private chat, where I can show you what I do."),
     ("/help", "Open this panel. In a group you get a button that opens it in a private chat."),
     ("/id [user]", "Show your Telegram ID, plus the chat's ID when you use it in a group. Give a user, group or channel to see their ID instead."),
-    ("/info [user]", "Show what I know about a user, bot, group or channel: name, username, ID, and in a group their status (Owner, Admin, Member) and bot role. Everyone else gets a list of Yes/No flags: Banned, Muted, Approved, GBanned, Whitelisted, Immune and AFK. People with a role show no flags. If I have no data on someone, I say so: they have to message me first, or I have to see them in a chat I am in."),
+    ("/info [user]", "Show what I know about a user, bot, group or channel. Users get a User Info section (name, username, ID and, in a group, their status: Owner, Admin, Member, Muted or Banned, with Approved added) and an Argo Info section (bot role and Yes/No flags like Globally Banned, FedBanned, Whitelisted, Immune and AFK). People with a role show no flags. If I have no data on someone, I say so: they have to message me first, or I have to see them in a chat I am in."),
     ("/tr [language] <text>", "Translate text into a language (default: English). Give a language code like pl, de or es first, or reply to a message to translate it."),
     ("/dict <word>", "Look up an English word: how it is pronounced and what it means."),
     ("/time <place or timezone>", "Show the current time and date in a city or a timezone, like Tokyo or Europe/Warsaw."),
@@ -71,6 +71,7 @@ CB_START_LEGACY = "root:start"  # buttons on messages sent before start moved he
 CB_HELP = "help:home"
 CB_HELP_MODULE = "help:module:"
 CB_HELP_SECTION = "help:section:"
+CB_HELP_PAGE = "help:page:"
 
 NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
@@ -101,7 +102,7 @@ def _group_start_text(name: str, username: str) -> str:
 
 def _help_home_text(role: Role | None = None) -> str:
     prefixes = " ".join(f"<code>{esc(p)}</code>" for p in settings.COMMAND_PREFIXES)
-    lines = ["<b>Help</b>", "", "Pick a category to see what it does and how to use its commands.", ""]
+    lines = ["<b>Help</b>", "", "Pick a category to see what it does and how to use its commands.", "Settings that take on or off also understand yes and no.", ""]
     for info in help_index.categories(role):
         lines.append(f"• <b>{esc(_help_title(info))}</b> - {esc(info.description)}" if info.description else f"• <b>{esc(_help_title(info))}</b>")
     lines += ["", f"Commands can start with: {prefixes}"]
@@ -181,7 +182,24 @@ def _help_category_keyboard(info: registry.ModuleInfo | None = None, role: Role 
             [InlineKeyboardButton(text=name, callback_data=f"{CB_HELP_SECTION}{info.name}:{number}")]
             for number, name in help_index.visible_sections(info.module, role)
         ]
+        rows += [
+            [InlineKeyboardButton(text=label, callback_data=f"{CB_HELP_PAGE}{info.name}:{number}:0")]
+            for number, label in help_index.pages(info.module)
+        ]
     rows.append([InlineKeyboardButton(text="Back", callback_data=CB_HELP)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _help_page_keyboard(info: registry.ModuleInfo, number: int, part: int, total: int) -> InlineKeyboardMarkup:
+    rows = []
+    if total > 1:
+        move = []
+        if part > 0:
+            move.append(InlineKeyboardButton(text="Previous", callback_data=f"{CB_HELP_PAGE}{info.name}:{number}:{part - 1}"))
+        if part < total - 1:
+            move.append(InlineKeyboardButton(text="Next", callback_data=f"{CB_HELP_PAGE}{info.name}:{number}:{part + 1}"))
+        rows.append(move)
+    rows.append([InlineKeyboardButton(text="Back", callback_data=f"{CB_HELP_MODULE}{info.name}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -277,6 +295,27 @@ async def cb_help_section(callback: CallbackQuery, role: Role | None = None) -> 
             callback.message,
             _help_category_text(info, role, int(number)),
             reply_markup=_help_category_keyboard(info, role, int(number)),
+        )
+
+
+@router.callback_query(F.data.startswith(CB_HELP_PAGE))
+async def cb_help_page(callback: CallbackQuery, role: Role | None = None) -> None:
+    name, _, rest = (callback.data or "")[len(CB_HELP_PAGE):].partition(":")
+    number, _, part = rest.partition(":")
+    info = registry.get(name)
+    texts = None
+    if info is not None and info.enabled and help_index.entries(info.module, role) and number.isdigit() and part.isdigit():
+        texts = help_index.page_texts(info.module, int(number))
+    if not texts or int(part) >= len(texts):
+        await callback.answer("This page is not available.", show_alert=True)
+        return
+
+    await callback.answer()
+    if isinstance(callback.message, Message):
+        await edit(
+            callback.message,
+            texts[int(part)],
+            reply_markup=_help_page_keyboard(info, int(number), int(part), len(texts)),
         )
 
 
@@ -376,17 +415,28 @@ def _chat_status(member) -> str:
     return "Not in chat"  # left or kicked
 
 
-# The order of the yes/no flags in /info. Flags from modules this list doesn't know come last.
-FLAG_ORDER = ("Banned", "Muted", "Approved", "GBanned", "FedBanned", "Whitelisted", "Immune", "AFK", "FedAdmin")
+# The order of the yes/no flags of the bot's own section in /info. Flags from modules this list
+# doesn't know come last.
+FLAG_ORDER = ("Globally Banned", "FedBanned", "Whitelisted", "Immune", "AFK", "FedAdmin")
 
 
-def _restriction_flags(member) -> list[tuple[str, bool]]:
-    """Banned and Muted, for a person whose membership is known."""
-    if member is None or member == "gone":
-        return []
-    status = getattr(member.status, "value", member.status)
-    muted = status == "restricted" and getattr(member, "is_member", True) and not getattr(member, "can_send_messages", True)
-    return [("Banned", status == "kicked"), ("Muted", muted)]
+def _standing(member, approved: bool) -> str | None:
+    """
+    The "Status" of a person in a chat: Owner, Admin, Banned, Muted, Member (Approved) ...
+    None when Telegram won't say.
+    """
+    if member is None:
+        return None
+    text = _chat_status(member)
+    if member != "gone":
+        status = getattr(member.status, "value", member.status)
+        if status == "kicked":
+            return "Banned"
+        if status == "restricted" and getattr(member, "is_member", True) and not getattr(member, "can_send_messages", True):
+            text = "Muted"
+    if approved and text in ("Member", "Muted"):
+        text += " (Approved)"
+    return text
 
 
 def _flag_lines(flags: list[tuple[str, bool]]) -> list[str]:
@@ -428,22 +478,31 @@ async def _user_info(bot, chat, target: Target) -> list[str]:
     lines.append(_item("User link", f'<a href="tg://user?id={target.user_id}">link</a>'))
 
     in_group = chat.type in ("group", "supergroup")
+    chat_id = chat.id if in_group else None
     member = await _chat_member(bot, chat.id, target.user_id) if in_group else None
-    if member is not None:
-        lines.append(_item("Status", f"<code>{_chat_status(member)}</code>"))
-
     role = await roles.get_role(target.user_id)
-    if role is not None:
-        lines.append(_item("Bot Role", f"<code>{roles.label(role)}</code>"))
 
     # A role settles it: admins and the bot's staff have no flags to list.
     has_role = role is not None or (member not in (None, "gone") and _chat_status(member) in ("Owner", "Admin"))
+    flags: list[tuple[str, bool]] = []
+    approved = False
     if not has_role:
-        flags = _restriction_flags(member) if in_group else []
-        flags += await info_hooks.flags_for(bot, target.user_id, chat.id if in_group else None)
-        lines.extend(_flag_lines(flags))
+        found = await info_hooks.flags_for(bot, target.user_id, chat_id)
+        approved = any(name == "Approved" and value for name, value in found)  # shown in the Status
+        flags = [flag for flag in found if flag[0] != "Approved"]
     # Facts that hold for admins and staff as well.
-    lines.extend(_flag_lines(await info_hooks.flags_for(bot, target.user_id, chat.id if in_group else None, always=True)))
+    flags += await info_hooks.flags_for(bot, target.user_id, chat_id, always=True)
+
+    standing = _standing(member, approved)
+    if standing is not None:
+        lines.append(_item("Status", f"<code>{standing}</code>"))
+
+    about = []
+    if role is not None:
+        about.append(_item("Bot Role", f"<code>{roles.label(role)}</code>"))
+    about.extend(_flag_lines(flags))
+    if about:
+        lines += ["", "<b>Argo Info</b>"] + about
     return lines
 
 

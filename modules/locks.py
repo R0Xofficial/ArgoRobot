@@ -15,7 +15,7 @@ from core.filters import cmd
 from core.helpers import edit, reply
 from core.moderation import GROUP_TYPES, ModerationError, perform
 from core.roles import Role
-from core.text import esc, user_link
+from core.text import esc, user_link, SWITCH as _ON_OFF
 
 ABOUT = """
 Lock a kind of message and I delete every one of them: stickers, links, forwards, voice messages, a whole alphabet... Locks do not affect chat admins or approved users, and edited messages are checked too. /locktypes explains every kind.
@@ -73,7 +73,6 @@ FAILURE_COOLDOWN = 300.0
 WARN_COOLDOWN = 5.0  # an album or a burst of messages earns one warn
 MAX_TEXT = 3500
 
-_ON_OFF = {"on": True, "yes": True, "off": False, "no": False}
 _complained: dict[int, float] = {}
 _warned_at: dict[tuple[int, int], float] = {}
 _SERVICE = (
@@ -177,6 +176,18 @@ async def cmd_locks(message: Message, role: Role | None = None) -> None:
     await reply(message, "\n".join(lines))
 
 
+def _lock_types_pages() -> list[str]:
+    lines = ["<b>Lockable items</b>", "Items marked * can be eased with /allowlist."]
+    for group, items in locks.GROUPS.items():
+        lines += ["", f"<b>{group}</b>"]
+        for name, (text, allowable) in items.items():
+            lines.append(f"• <code>{name}</code>{'*' if allowable else ''} - {esc(text)}")
+    return _chunks(lines)
+
+
+HELP_PAGES = [("Lock types", _lock_types_pages)]
+
+
 @router.message(cmd("locktypes"))
 async def cmd_locktypes(message: Message, role: Role | None = None) -> None:
     if message.chat.type not in GROUP_TYPES:
@@ -184,12 +195,7 @@ async def cmd_locktypes(message: Message, role: Role | None = None) -> None:
         return
     if not await _admin_only(message, role, change=False):
         return
-    lines = ["<b>Lockable items</b>", "Items marked * can be eased with /allowlist."]
-    for group, items in locks.GROUPS.items():
-        lines += ["", f"<b>{group}</b>"]
-        for name, (text, allowable) in items.items():
-            lines.append(f"• <code>{name}</code>{'*' if allowable else ''} - {esc(text)}")
-    for part in _chunks(lines):
+    for part in _lock_types_pages():
         await reply(message, part)
 
 

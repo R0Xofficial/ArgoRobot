@@ -95,9 +95,14 @@ def _pack_name(user_id: int, kind: str, number: int, bot_username: str) -> str:
     return f"{_KINDS[kind][0]}{user_id}_{number}_by_{bot_username}"
 
 
+_TITLE_KIND = {"static": "sticker", "animated": "animated sticker", "video": "video sticker"}
+
+
 def _pack_title(user, kind: str, number: int) -> str:
-    base = f"{user.first_name or 'My'}'s Argo {_KINDS[kind][1].lower()}"
-    return f"{base[:50]} {number}"
+    """Like "Ann's sticker kang pack #1" (Telegram allows 64 characters)."""
+    name = (user.first_name or "My").strip() or "My"
+    tail = f"'s {_TITLE_KIND[kind]} kang pack #{number}"
+    return name[: 64 - len(tail)] + tail
 
 
 # --- /getsticker ------------------------------------------------------------------------------

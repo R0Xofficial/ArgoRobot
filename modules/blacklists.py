@@ -18,7 +18,7 @@ from core.helpers import edit, reply
 from core.moderation import GROUP_TYPES, MAX_DURATION, MIN_DURATION, ModerationError, parse_duration, perform
 from core.roles import Role
 from core.targets import replied_message
-from core.text import duration_text, esc, truncate, user_link
+from core.text import duration_text, esc, truncate, user_link, SWITCH as _ON_OFF
 
 # Messages that match a trigger are deleted, or get a custom action. Blacklists do not
 # affect group admins, or approved users.
@@ -35,7 +35,7 @@ HELP = [
     ("/addblacklist <reply/triggers>", "Add one or more triggers, one per line, or reply to a message to blacklist its text. /blacklist works too.", "admins"),
     ("/unblacklist <triggers>", "Remove triggers, one per line, or reply to a message or sticker.", "admins"),
     ("/blacklistmode", "Show the default action and whether blacklisted messages are deleted.", "admins"),
-    ("/setblacklistmode <off|del|warn|ban|kick|mute|tban|tmute>", "Set the default action. tban and tmute need a duration. off turns the default off, leaving only triggers with their own action.", "admins"),
+    ("/setblacklistmode &lt;off|del|warn|ban|kick|mute|tban|tmute&gt;", "Set the default action. tban and tmute need a duration. off turns the default off, leaving only triggers with their own action.", "admins"),
     ("/blocklistdelete <on|off>", "Delete blacklisted messages, whatever the action. Default: on. With off, only the action delete removes a message.", "admins"),
     ("/unblacklistall", "Remove every trigger at once. Asks for confirmation.", "chat owner"),
 ]
@@ -86,7 +86,6 @@ FAILURE_COOLDOWN = 300.0
 MAX_SHOWN = 80
 MAX_SHOWN_ADDED = 25
 
-_ON_OFF = {"on": True, "yes": True, "off": False, "no": False}
 _ACTION_SUFFIX = re.compile(r"\{([^{}]*)\}\s*$")
 _QUOTES = "\"'“”‘’"
 _complained: dict[int, float] = {}
@@ -311,7 +310,7 @@ async def cmd_setblacklistmode(message: Message, command: CommandObject, role: R
         return
     spec = (command.args or "").strip()
     usage = (
-        "Use /setblacklistmode <off|del|warn|ban|kick|mute|tban|tmute>.\n"
+        "Use /setblacklistmode &lt;off|del|warn|ban|kick|mute|tban|tmute&gt;.\n"
         "tban and tmute need a duration, like 30m, 2h, 3d or 1w."
     )
     if not spec:

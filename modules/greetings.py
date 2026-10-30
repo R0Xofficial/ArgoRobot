@@ -17,12 +17,12 @@ from core.markup import MarkupError
 from core.moderation import GROUP_TYPES
 from core.roles import Role
 from core.targets import replied_message
-from core.text import esc
+from core.text import esc, SWITCH as _ANSWERS
 
 log = logging.getLogger(__name__)
 
 ABOUT = """
-Greet people when they join the chat and say goodbye when they leave. Welcomes are on by default and goodbyes are off. Until you set your own, I use a default message for each.
+Greet people when they join the chat and say goodbye when they leave. Welcomes and goodbyes are both on by default. Until you set your own, I use a default message for each.
 
 A message can be written after the command or taken from a message you reply to, media included. It can be formatted, address people by name, carry buttons and vary at random, as described below. Everything that changes these settings is for chat admins with the right to change chat info.
 
@@ -49,11 +49,12 @@ HELP = [
 
 HELP_NOTES = [
     (
-        "Markdown",
+        "Formatting",
         """
-        *bold*  _italic_  __underline__  ~strike~  ||spoiler||
-        `code`  ```pre```  [text](https://link)
-        A backslash makes a character literal, like \\* or \\_. Markers only work at the edge of words, so snake_case is safe.
+        <b>bold</b>  <i>italic</i>  <u>underline</u>  <s>strike</s>  <tg-spoiler>spoiler</tg-spoiler>
+        <code>code</code>  <pre>pre</pre>  <blockquote>quote</blockquote>  <a href="https://link">text</a>
+        The formatting menu of Telegram works as well: select the text and pick Bold, Italic, Link...
+        Anything that is not one of these tags is shown as typed.
         """,
     ),
     (
@@ -104,7 +105,6 @@ LOOK_RIGHT = "can_manage_chat"  # every admin holds it: enough to look
 MAX_GREETED = 5  # people greeted for one "joined" message (someone can add many at once)
 MUTE_HOURS = 24
 
-_ANSWERS = {"on": True, "yes": True, "off": False, "no": False}
 
 # Everything except plain text.
 _NO_MEDIA = ChatPermissions(
@@ -167,8 +167,11 @@ async def _command(message: Message, command: CommandObject, role: Role | None, 
     if not await _begin(message, role, change=True):
         return
     enabled = _ANSWERS[argument]
-    await greetings.update(message.chat.id, **{f"{kind}_on": enabled})
     plural = "Welcomes" if kind == "welcome" else "Goodbyes"
+    if bool((await greetings.get(message.chat.id))[f"{kind}_on"]) == enabled:
+        await reply(message, f"{plural} are already <b>{'on' if enabled else 'off'}</b>.")
+        return
+    await greetings.update(message.chat.id, **{f"{kind}_on": enabled})
     await reply(message, f"{plural} are now <b>{'on' if enabled else 'off'}</b>.")
 
 
@@ -178,8 +181,8 @@ async def _set(message: Message, command: CommandObject, role: Role | None, kind
         return
     if not await _begin(message, role, change=True):
         return
-    # Typed text is already in the markup dialect; a replied-to message is converted into it.
-    text = (command.args or "").strip()
+    # Typed text and a replied-to message are both turned into the HTML of core/markup.py.
+    text = sender.args_of(message, command)
     replied = replied_message(message)
     media = sender.media_of(replied)
     if not text and replied is not None:
@@ -272,6 +275,9 @@ async def _switch(
     if not await _begin(message, role, change=True):
         return
     enabled = _ANSWERS[argument]
+    if bool((await greetings.get(message.chat.id))[column]) == enabled:
+        await reply(message, f"This is already <b>{'on' if enabled else 'off'}</b>.")
+        return
     await greetings.update(message.chat.id, **{column: enabled})
     await reply(message, text(enabled))
 

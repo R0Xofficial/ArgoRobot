@@ -7,7 +7,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions, Message
 
-from core import approvals, gbans, immunity, info_hooks, moderation, roles
+from core import approvals, federations, gbans, immunity, info_hooks, moderation
 from core.filters import cmd
 from core.helpers import edit, reply
 from core.roles import Role
@@ -19,9 +19,9 @@ from core.text import esc, user_ref
 # them an admin. Approval is per chat, and admins can still ban, mute or warn an
 # approved user by hand.
 ABOUT = """
-Approved users are people you trust without making them admins. In the chat where they are approved, automatic measures leave them alone: global bans, antiflood, blacklists and anything similar I learn later.
+Approved users are people you trust without making them admins. In the chat where they are approved, automatic measures leave them alone: locks, blacklists, antiflood, global bans, federation bans and anything similar I learn later.
 
-Approval is per chat and never stops an admin from banning, muting or warning someone by hand. Admins and my staff are already exempt, so they can't be approved.
+Approval is per chat and never stops an admin from banning, muting or warning someone by hand. Chat admins are already exempt, so they can't be approved. My own staff can be approved like anyone else.
 
 Name the user by replying to their message, or with a @username or a numeric ID.
 """
@@ -29,7 +29,7 @@ Name the user by replying to their message, or with a @username or a numeric ID.
 HELP_WHO = "admins"
 
 HELP = [
-    ("/approve <user>", "Approve a trusted user in this chat."),
+    ("/approve <user>", "Approve a trusted user in this chat. Locks, blacklists, antiflood, global and federation bans stop applying to them."),
     ("/unapprove <user>", "Take a user's approval away."),
     ("/approval [user]", "Check whether a user (you, if you name nobody) is approved, and by whom."),
     ("/approved", "List everyone approved in this chat."),
@@ -71,10 +71,9 @@ async def cmd_approve(message: Message, command: CommandObject, role: Role | Non
 
     if (
         target.user_id == bot.id
-        or await roles.get_role(target.user_id) is not None
         or await moderation.is_chat_admin(bot, chat_id, target.user_id)
     ):
-        await reply(message, "That user can't be approved: they are a chat admin, part of the bot's staff, or me.")
+        await reply(message, "That user can't be approved: they are a chat admin or me.")
         return
     if not await approvals.approve(chat_id, target.user_id, target.name, actor.id, actor.name):
         await reply(message, "This user is already approved!")
@@ -85,10 +84,15 @@ async def cmd_approve(message: Message, command: CommandObject, role: Role | Non
         with suppress(TelegramAPIError):
             await bot.unban_chat_member(chat_id, target.user_id, only_if_banned=True)
         await gbans.forget_ban(target.user_id, chat_id)
+    if chat_id in await federations.applied_in(target.user_id):
+        # Likewise for a ban a federation put on them in this chat.
+        with suppress(TelegramAPIError):
+            await bot.unban_chat_member(chat_id, target.user_id, only_if_banned=True)
+        await federations.forget_applied(chat_id, target.user_id)
     await reply(
         message,
         f"{who} has been <b>approved</b> in this chat. Locks, blacklists, antiflood and global and "
-        "federation bans no longer apply to them." + moderation.attribution(actor),
+        "federation bans no longer apply to them here." + moderation.attribution(actor),
     )
 
 
@@ -140,7 +144,7 @@ async def cmd_approved(message: Message, command: CommandObject, role: Role | No
         return
     lines = [
         f"<b>Approved Users in {esc(message.chat.title)}:</b>",
-        "<i>Automatic measures such as global bans don't apply to them here.</i>",
+        "<i>Automatic measures leave them alone in this chat: locks, blacklists, antiflood, global bans and federation bans. Admins can still act on them by hand.</i>",
         "",
     ]
     lines += [f"• {user_ref(row['user_id'], row['name'])}" for row in rows[:MAX_SHOWN]]

@@ -12,13 +12,13 @@ from aiogram.filters import CommandObject
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions, Message
 
 from config import settings
-from core import chatsettings, moderation, reports
+from core import approvals, chatsettings, moderation, reports
 from core.filters import cmd
 from core.helpers import reply
 from core.moderation import GROUP_TYPES
 from core.roles import Role
 from core.targets import replied_message
-from core.text import esc, truncate, user_link
+from core.text import esc, truncate, user_link, SWITCH as _ANSWERS
 
 log = logging.getLogger(__name__)
 
@@ -49,7 +49,6 @@ MAX_MENTIONED = 20      # admins pinged in the chat
 MAX_ALERTED = 30        # admins messaged in private
 NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
-_ANSWERS = {"on": True, "yes": True, "off": False, "no": False}
 _CALL = re.compile(r"(?<!\w)@admins?(?!\w)", re.IGNORECASE)
 _reported_at: dict[tuple[int, int], float] = {}
 
@@ -115,12 +114,11 @@ async def _report(message: Message, target: Message | None, reason: str, *, expl
             await reply(message, "Reporting is turned off in this chat.")
         return
     if target is None:
-        if explicit:
-            await reply(message, "Reply to the message you want to report.")
+        await reply(message, "Reply to the message you want to report.")
         return
 
     reporter = message.from_user
-    if target is not message:
+    if target is not message:  # an @admin that is no reply calls the admins for the message itself
         sender_chat = getattr(target, "sender_chat", None)
         author = target.from_user
         problem = None
@@ -132,9 +130,10 @@ async def _report(message: Message, target: Message | None, reason: str, *, expl
             problem = "You can't report yourself."
         elif author is not None and not author.is_bot and await moderation.is_chat_admin(message.bot, chat.id, author.id):
             problem = "You can't report an admin."
+        elif author is not None and await approvals.is_approved(chat.id, author.id):
+            problem = "You can't report an approved user."
         if problem:
-            if explicit:
-                await reply(message, problem)
+            await reply(message, problem)
             return
 
     now = time.monotonic()

@@ -30,7 +30,7 @@ from core.filters import cmd
 from core.helpers import edit, reply
 from core.moderation import GROUP_TYPES, ModerationError
 from core.targets import TargetError, replied_message, resolve_target
-from core.text import esc, user_link, user_ref
+from core.text import esc, user_link, user_ref, SWITCH as _ON_OFF
 
 log = logging.getLogger(__name__)
 
@@ -48,14 +48,14 @@ FED_ADMINS = "fed admins"
 S_OWNER, S_ADMIN, S_USER = Section("FedOwner Commands"), Section("FedAdmin Commands"), Section("Users Commands")
 
 HELP = [
-    ("/newfed <name>", "Create a federation. You can own one.", S_OWNER, OWNER),
-    ("/renamefed <name>", "Rename your federation.", S_OWNER, OWNER),
-    ("/delfed", "Delete your federation. Nobody is unbanned in their chats.", S_OWNER, OWNER),
-    ("/fedtransfer <user>", "Give your federation to a user, who has to accept.", S_OWNER, OWNER),
+    ("/newfed <name>", "Create a federation. You can own one. Private chat only.", S_OWNER, OWNER),
+    ("/renamefed <name>", "Rename your federation. Private chat only.", S_OWNER, OWNER),
+    ("/delfed", "Delete your federation. Nobody is unbanned in their chats. Private chat only.", S_OWNER, OWNER),
+    ("/fedtransfer <user>", "Give your federation to a user, who has to accept. Private chat only.", S_OWNER, OWNER),
     ("/fedpromote <user>", "Make a user a federation admin. They have to accept.", S_OWNER, OWNER),
     ("/feddemote <user>", "Take a federation admin's rights away.", S_OWNER, OWNER),
     ("/fednotif <on|off>", "Get a private message about every action.", S_OWNER, OWNER),
-    ("/fedreason <on|off>", "Make federation bans require a reason.", S_OWNER, OWNER),
+    ("/fedreason <on|off>", "Make federation bans require a reason. Private chat only.", S_OWNER, OWNER),
     ("/subfed <FedID>", "Inherit the bans of another federation.", S_OWNER, OWNER),
     ("/unsubfed <FedID>", "Stop inheriting its bans.", S_OWNER, OWNER),
     ("/fedexport [csv|minicsv|json|human]", "Get the ban list as a file. The default is csv.", S_OWNER, OWNER),
@@ -65,7 +65,7 @@ HELP = [
     ("/fban <user> [reason]", "Ban a user in this chat's federation, and in those subscribed to it.", S_ADMIN, FED_ADMINS),
     ("/unfban <user>", "Lift a federation ban.", S_ADMIN, FED_ADMINS),
     ("/feddemoteme <FedID>", "Give up your admin rights in a federation.", S_ADMIN, FED_ADMINS),
-    ("/myfeds", "List the federations you own or administer.", S_ADMIN, FED_ADMINS),
+    ("/myfeds", "List the federations you own or administer. Private chat only.", S_ADMIN, FED_ADMINS),
     ("/fedinfo [FedID]", "Show a federation: owner, admins, chats, bans.", S_USER),
     ("/fedadmins [FedID]", "List the owner and admins of a federation.", S_USER),
     ("/fedsubs [FedID]", "List the federations a federation is subscribed to.", S_USER),
@@ -73,7 +73,7 @@ HELP = [
     ("/leavefed", "Take this chat out of its federation.", "chat owner", S_USER),
     ("/chatfed", "Show the federation this chat is in.", S_USER),
     ("/quietfed <on|off>", "Choose whether I announce removals of fedbanned users here.", "admins", S_USER),
-    ("/fedstat [user] [FedID]", "Where you or another user are banned, or the details of one ban.", S_USER),
+    ("/fedstat [user] [FedID]", "The federations you or another user are banned in. Add a FedID to see the reason and details of that ban.", S_USER),
 ]
 
 HELP_NOTES = [
@@ -101,12 +101,12 @@ HELP_NOTES = [
 router = Router(name="federations")
 
 _FED_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
-_ON_OFF = {"on": True, "yes": True, "off": False, "no": False}
 _FORMATS = ("csv", "minicsv", "json", "human")
 MAX_IMPORT_BYTES = 5 * 1024 * 1024
 MAX_IMPORT_ROWS = 100_000
 EXPORT_COOLDOWN = 30.0
 RECENT_SECONDS = 30
+MAX_LIST_CHARS = 3500  # a longer /fedstat list is sent as a file
 RIGHT = "can_change_info"
 CB_DELETE, CB_TRANSFER, CB_PROMOTE = "fd:", "fx:", "fp:"
 
@@ -140,8 +140,18 @@ async def _person(message: Message):
     return user
 
 
-async def _own_fed(message: Message):
+async def _private(message: Message) -> bool:
+    """Owner commands are only taken in a private chat with the bot (otherwise False, after saying so)."""
+    if message.chat.type == "private":
+        return True
+    await reply(message, "This command only works in a private chat with me. Send it to me there.")
+    return False
+
+
+async def _own_fed(message: Message, *, private: bool = False):
     """(user, federation) of the person who owns one, or None after saying what is wrong."""
+    if private and not await _private(message):
+        return None
     user = await _person(message)
     if user is None:
         return None
@@ -233,6 +243,8 @@ async def _target(message: Message, command: CommandObject):
 
 @router.message(cmd("newfed"))
 async def cmd_newfed(message: Message, command: CommandObject) -> None:
+    if not await _private(message):
+        return
     user = await _person(message)
     if user is None:
         return
@@ -254,7 +266,7 @@ async def cmd_newfed(message: Message, command: CommandObject) -> None:
 
 @router.message(cmd("renamefed"))
 async def cmd_renamefed(message: Message, command: CommandObject) -> None:
-    mine = await _own_fed(message)
+    mine = await _own_fed(message, private=True)
     if mine is None:
         return
     _, fed = mine
@@ -271,7 +283,7 @@ async def cmd_renamefed(message: Message, command: CommandObject) -> None:
 
 @router.message(cmd("delfed"))
 async def cmd_delfed(message: Message) -> None:
-    mine = await _own_fed(message)
+    mine = await _own_fed(message, private=True)
     if mine is None:
         return
     user, fed = mine
@@ -309,7 +321,7 @@ async def cb_delfed(callback: CallbackQuery) -> None:
 
 @router.message(cmd("fedtransfer"))
 async def cmd_fedtransfer(message: Message, command: CommandObject) -> None:
-    mine = await _own_fed(message)
+    mine = await _own_fed(message, private=True)
     if mine is None:
         return
     user, fed = mine
@@ -462,7 +474,7 @@ async def cmd_feddemoteme(message: Message, command: CommandObject) -> None:
 
 
 async def _toggle(message: Message, command: CommandObject, field: str, name: str) -> None:
-    mine = await _own_fed(message)
+    mine = await _own_fed(message, private=field == "require_reason")
     if mine is None:
         return
     _, fed = mine
@@ -797,6 +809,8 @@ async def cmd_unfban(message: Message, command: CommandObject) -> None:
 
 @router.message(cmd("myfeds"))
 async def cmd_myfeds(message: Message) -> None:
+    if not await _private(message):
+        return
     user = await _person(message)
     if user is None:
         return
@@ -945,10 +959,7 @@ async def cmd_quietfed(message: Message, command: CommandObject, role=None) -> N
 
 
 def _ban_line(row: dict[str, Any]) -> str:
-    text = f"• <b>{esc(row['name'])}</b>\n  <code>{row['fed_id']}</code>"
-    if row["reason"]:
-        text += f"\n  Reason: <code>{esc(row['reason'])}</code>"
-    return text
+    return f"• <b>{esc(row['name'])}</b>\n  <code>{row['fed_id']}</code>"
 
 
 @router.message(cmd("fedstat"))
@@ -984,7 +995,20 @@ async def cmd_fedstat(message: Message, command: CommandObject) -> None:
     if not found:
         await reply(message, f"{who} not banned in any federation.")
         return
-    await reply(message, f"{who} banned in {len(found)} federation{'s' if len(found) != 1 else ''}:\n" + "\n".join(_ban_line(r) for r in found[:30]))
+    head = f"{who} banned in {len(found)} federation{'s' if len(found) != 1 else ''}:"
+    tail = "\n\nFor the reason, use /fedstat &lt;user&gt; &lt;FedID&gt;." if not mine else "\n\nFor the reason, use /fedstat &lt;FedID&gt;."
+    text = head + "\n" + "\n".join(_ban_line(r) for r in found) + tail
+    if len(text) <= MAX_LIST_CHARS:
+        await reply(message, text)
+        return
+    # Too long for one message: the whole list goes in a file.
+    lines = [f"{row['name']}\n  {row['fed_id']}" for row in found]
+    await message.bot.send_document(
+        message.chat.id,
+        BufferedInputFile(("\n".join(lines) + "\n").encode(), filename=f"FedBans_{user_id}.txt"),
+        caption=f"{who} banned in {len(found)} federations. The list is too long for a message, so here it is as a file.",
+        message_thread_id=message.message_thread_id if message.is_topic_message else None,
+    )
 
 
 # --- Enforcement ------------------------------------------------------------------------------

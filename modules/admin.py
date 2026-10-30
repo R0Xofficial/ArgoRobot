@@ -13,7 +13,7 @@ from core.helpers import reply
 from core.moderation import ModerationError, perform
 from core.roles import Role
 from core.targets import replied_message
-from core.text import esc, truncate, user_link
+from core.text import esc, truncate, user_link, SWITCH as _ANSWERS
 
 ABOUT = """
 Tools for looking after the chat itself.
@@ -22,15 +22,15 @@ The settings /adminerror, /anonadmin and /staffhelp belong to the chat owner: an
 """
 
 HELP = [
-    ("/link [request|count]", "Get the chat's invite link. /link request makes one where joining needs an admin's approval, /link <count> makes one that stops working after that many uses. Needs the right to invite users.", "admins"),
+    ("/link [request|count <number>]", "Get the chat's invite link. /link request makes one where joining needs an admin's approval, /link count <number> makes one that stops working after that many uses. Needs the right to invite users.", "admins"),
     ("/gtitle <new title>", "Change the chat's title (up to 128 characters). Needs the right to change chat info.", "admins"),
     ("/adminlist", "List the admins of this chat."),
     ("/pin [loud]", "Reply to a message to pin it. People are not notified unless you add loud (or notify). Needs the right to pin messages.", "admins"),
     ("/unpin", "Reply to a pinned message to unpin it. Without a reply, the most recent pinned message is unpinned. Needs the right to pin messages.", "admins"),
     ("/cleanbluetext [on|off]", "Delete commands after I have dealt with them, so only my answers stay in the chat. Off by default. I need the right to delete messages; commands meant for other bots are left alone. Needs the right to change chat info.", "admins"),
     ("/adminerror [on|off]", "Choose whether I answer people who try admin commands without being admins. On by default; off makes me ignore them silently.", "chat owner"),
-    ("/anonadmin [yes|no|on|off]", "Let anonymous admins use every command without their rights being checked, because Telegram hides who they are. Off by default and not recommended: anyone who can post anonymously gets full use of my commands.", "chat owner"),
-    ("/staffhelp [on|off|yes|no]", "Let my staff (Sudo and up) help moderate this chat, or not. On by default. They can never change the chat's settings either way.", "chat owner"),
+    ("/anonadmin [on|off]", "Let anonymous admins use every command without their rights being checked, because Telegram hides who they are. Off by default and not recommended: anyone who can post anonymously gets full use of my commands.", "chat owner"),
+    ("/staffhelp [on|off]", "Let my staff (Sudo and up) help moderate this chat, or not. On by default. They can never change the chat's settings either way.", "chat owner"),
 ]
 
 router = Router(name="admin")
@@ -41,7 +41,6 @@ MAX_TITLE = 128  # Telegram's limit for a chat title
 MAX_LINK_USES = 99999
 MAX_ADMINS_SHOWN = 80
 
-_ANSWERS = {"on": True, "yes": True, "off": False, "no": False}
 
 
 def _state(enabled: bool) -> str:
@@ -120,7 +119,7 @@ async def cmd_staffhelp(message: Message, command: CommandObject, role: Role | N
             "The chat owner can change it with /staffhelp on or /staffhelp off."
         ),
         changed_text=changed,
-        usage="Use /staffhelp on or /staffhelp off (yes and no work too).",
+        usage="Use /staffhelp on or /staffhelp off.",
     )
 
 
@@ -165,7 +164,7 @@ async def cmd_anonadmin(message: Message, command: CommandObject, role: Role | N
             if enabled
             else "Anonymous admins are no longer trusted: they have to send commands as themselves."
         ),
-        usage="Use /anonadmin on or /anonadmin off (yes and no work too).",
+        usage="Use /anonadmin on or /anonadmin off.",
     )
 
 
@@ -178,9 +177,12 @@ def _parse_link_options(argument: str) -> tuple[bool, int | None]:
         return False, None
     if argument == "request":
         return True, None
-    if argument.isdigit() and 1 <= int(argument) <= MAX_LINK_USES:
-        return False, int(argument)
-    raise ModerationError(f"Use /link, /link request, or /link &lt;count&gt; with a number from 1 to {MAX_LINK_USES}.")
+    words = argument.split()
+    if len(words) == 2 and words[0] == "count":  # /link count 5
+        words = words[1:]
+    if len(words) == 1 and words[0].isdigit() and 1 <= int(words[0]) <= MAX_LINK_USES:
+        return False, int(words[0])
+    raise ModerationError(f"Use /link, /link request, or /link count <number> with a number from 1 to {MAX_LINK_USES}.")
 
 
 @router.message(cmd("link"))

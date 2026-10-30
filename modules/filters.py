@@ -51,11 +51,12 @@ HELP_NOTES = [
         """,
     ),
     (
-        "Markdown",
+        "Formatting",
         """
-        *bold*  _italic_  __underline__  ~strike~  ||spoiler||
-        `code`  ```pre```  [text](https://link)
-        A backslash makes a character literal, like \\* or \\_. Markers only work at the edge of words, so snake_case is safe.
+        <b>bold</b>  <i>italic</i>  <u>underline</u>  <s>strike</s>  <tg-spoiler>spoiler</tg-spoiler>
+        <code>code</code>  <pre>pre</pre>  <blockquote>quote</blockquote>  <a href="https://link">text</a>
+        The formatting menu of Telegram works as well: select the text and pick Bold, Italic, Link...
+        Anything that is not one of these tags is shown as typed.
         """,
     ),
     (
@@ -99,7 +100,7 @@ HELP_NOTES = [
         /filter (bad, terrible, "not good") Stay away from negative replies
         /filter prefix:How Check google on how to ...
         /filter exact:Hi Don't just send Hi
-        /filter rules *Read the rules, {first}!* [Rules](buttonurl://example.com/rules)
+        /filter rules <b>Read the rules, {first}!</b> [Rules](buttonurl://example.com/rules)
         """,
     ),
 ]
@@ -150,11 +151,11 @@ async def cmd_filter(message: Message, command: CommandObject, role: Role | None
     if not await _admin_only(message, role):
         return
     try:
-        patterns, text = filterstore.parse_triggers(command.args or "")
+        patterns, text = filterstore.parse_triggers(sender.args_of(message, command))
     except FilterError as exc:
         await reply(
             message,
-            f"{esc(exc)}\nUse /filter <keyword> <reply or text>, /filter \"a phrase\" <text> or /filter (a, b) <text>.",
+            f"{esc(exc)}\nUse /filter &lt;keyword&gt; &lt;reply or text&gt;, /filter \"a phrase\" &lt;text&gt; or /filter (a, b) &lt;text&gt;.",
         )
         return
 
@@ -191,7 +192,7 @@ async def cmd_stop(message: Message, command: CommandObject, role: Role | None =
     try:
         patterns, _ = filterstore.parse_triggers(command.args or "")
     except FilterError as exc:
-        await reply(message, f"{esc(exc)}\nUse /stop <keyword>.")
+        await reply(message, f"{esc(exc)}\nUse /stop &lt;keyword&gt;.")
         return
     removed = [p for p in patterns if await filterstore.remove(message.chat.id, p)]
     missing = [p for p in patterns if p not in removed]

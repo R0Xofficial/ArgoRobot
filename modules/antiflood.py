@@ -15,7 +15,7 @@ from core.filters import cmd
 from core.helpers import reply
 from core.moderation import GROUP_TYPES, MAX_DURATION, MIN_DURATION, ModerationError, parse_duration, perform
 from core.roles import Role
-from core.text import duration_text, esc, user_link
+from core.text import duration_text, esc, user_link, SWITCH as _ON_OFF, parse_switch
 
 # By default the bot mutes anyone who sends more than 10 messages in a row. Bots are
 # ignored, and so are chat admins and approved users.
@@ -31,8 +31,8 @@ HELP = [
     ("/flood", "Show the current flood-control settings."),
     ("/setflood <count|off>", "Act on anyone who sends more than count messages in a row (2 to 100). off disables this rule.", "admins"),
     ("/setfloodtimer <count> <duration>", "Act on anyone who sends count messages within duration, like 10s, 2m or 1h. off disables the timer.", "admins"),
-    ("/setfloodmode <ban|kick|mute|tban|tmute> [duration]", "Choose what happens to a flooder. tban and tmute are temporary and need a duration like 30m, 2h or 3d. Default: mute.", "admins"),
-    ("/clearflood <on|off>", "Also delete the messages that triggered flood control.", "admins"),
+    ("/setfloodmode &lt;ban|kick|mute|tban|tmute&gt; [duration]", "Choose what happens to a flooder. tban and tmute are temporary and need a duration like 30m, 2h or 3d. Default: mute.", "admins"),
+    ("/clearflood <on|off>", "Delete the whole flood. Without it only the messages over the limit are deleted.", "admins"),
     ("/antichannel <on|off>", "Ban anyone who writes as a channel and make them talk as themselves. Anonymous admins and the chat's linked channel are not affected.", "admins"),
 ]
 
@@ -56,7 +56,6 @@ PRIORITY = -60
 RIGHT = "can_change_info"  # the admin right needed to change these settings
 FAILURE_COOLDOWN = 300.0  # seconds between "I can't act" complaints in the same chat
 
-_ON_OFF = {"on": True, "yes": True, "off": False, "no": False}
 _SPAN = re.compile(r"^(\d{1,6})([smh]?)$", re.IGNORECASE)
 _SPAN_UNITS = {"": 1, "s": 1, "m": 60, "h": 3600}
 _complained: dict[int, float] = {}
@@ -110,7 +109,7 @@ def _settings_text(chat_title: str, settings: dict[str, Any]) -> str:
             else "Timer: <b>off</b>"
         )
         lines.append(f"Action: <b>{esc(_mode_text(settings))}</b>")
-        lines.append(f"Delete flood messages: <b>{_state(settings['clear_flood'])}</b>")
+        lines.append(f"Delete all flood messages: <b>{_state(settings['clear_flood'])}</b>")
     lines.append(f"Anti-channel: <b>{_state(settings['antichannel'])}</b>")
     return "\n".join(lines)
 
@@ -135,8 +134,8 @@ async def cmd_setflood(message: Message, command: CommandObject, role: Role | No
     if not await _admin_only(message, role):
         return
     argument = (command.args or "").strip().lower()
-    usage = f"Use /setflood <count> ({flood.MIN_COUNT} to {flood.MAX_COUNT}) or /setflood off."
-    if argument in ("off", "no", "0"):
+    usage = f"Use /setflood &lt;count&gt; ({flood.MIN_COUNT} to {flood.MAX_COUNT}) or /setflood off."
+    if parse_switch(argument) is False or argument == "0":
         await flood.update(message.chat.id, flood_limit=0)
         await reply(message, "The limit on messages in a row is now <b>off</b>.")
         return
@@ -153,7 +152,7 @@ async def cmd_setfloodtimer(message: Message, command: CommandObject, role: Role
     if not await _admin_only(message, role):
         return
     parts = (command.args or "").lower().split()
-    if parts == ["off"]:
+    if len(parts) == 1 and parse_switch(parts[0]) is False:
         await flood.update(message.chat.id, timer_count=0, timer_seconds=0)
         await reply(message, "The timer is now <b>off</b>.")
         return
@@ -162,7 +161,7 @@ async def cmd_setfloodtimer(message: Message, command: CommandObject, role: Role
     if count is None or seconds is None:
         await reply(
             message,
-            f"Use /setfloodtimer <count> <duration>, for example /setfloodtimer 5 10s, or /setfloodtimer off.\n"
+            f"Use /setfloodtimer &lt;count&gt; &lt;duration&gt;, for example /setfloodtimer 5 10s, or /setfloodtimer off.\n"
             f"The count is {flood.MIN_COUNT} to {flood.MAX_COUNT}; the duration is like 10s, 2m or 1h (up to 24 hours).",
         )
         return
@@ -178,7 +177,7 @@ async def cmd_setfloodmode(message: Message, command: CommandObject, role: Role 
         return
     parts = (command.args or "").lower().split()
     usage = (
-        "Use /setfloodmode <ban|kick|mute|tban|tmute> [duration].\n"
+        "Use /setfloodmode &lt;ban|kick|mute|tban|tmute&gt; [duration].\n"
         "tban and tmute need a duration, like 30m, 2h, 3d or 1w."
     )
     if not parts or parts[0] not in flood.MODES or len(parts) > 2:
@@ -285,15 +284,25 @@ async def on_flood(message: Message, bot: Bot, flood_ids: list[int], flood_setti
     chat_id = message.chat.id
     user = message.from_user
     if flood_settings["clear_flood"]:
-        with suppress(TelegramAPIError):
-            await bot.delete_messages(chat_id, flood_ids)
+        doomed = list(flood_ids)  # the whole flood
+    else:
+        # Always the messages over the limit: the one that tripped it, and any beyond it.
+        limit = flood_settings["flood_limit"]
+        doomed = flood_ids[limit:] if limit and len(flood_ids) > limit else []
+        if message.message_id not in doomed:
+            doomed.append(message.message_id)
     try:
         done = await _punish(bot, chat_id, user.id, flood_settings)
     except ModerationError as exc:
+        done = None
+        failure = exc
+    with suppress(TelegramAPIError):
+        await bot.delete_messages(chat_id, doomed)
+    if done is None:
         now = time.monotonic()
         if now - _complained.get(chat_id, -FAILURE_COOLDOWN) >= FAILURE_COOLDOWN:
             _complained[chat_id] = now
-            await reply(message, f"{user_link(user.id, user.full_name)} is flooding the chat, but I can't act: {esc(exc)}")
+            await reply(message, f"{user_link(user.id, user.full_name)} is flooding the chat, but I can't act: {esc(failure)}")
         return
     await reply(message, f"Flood control: {user_link(user.id, user.full_name)} has been {done}.", quote=False)
 

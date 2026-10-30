@@ -38,11 +38,12 @@ HELP = [
 
 HELP_NOTES = [
     (
-        "Markdown",
+        "Formatting",
         """
-        *bold*  _italic_  __underline__  ~strike~  ||spoiler||
-        `code`  ```pre```  [text](https://link)
-        A backslash makes a character literal, like \\* or \\_. Markers only work at the edge of words, so snake_case is safe.
+        <b>bold</b>  <i>italic</i>  <u>underline</u>  <s>strike</s>  <tg-spoiler>spoiler</tg-spoiler>
+        <code>code</code>  <pre>pre</pre>  <blockquote>quote</blockquote>  <a href="https://link">text</a>
+        The formatting menu of Telegram works as well: select the text and pick Bold, Italic, Link...
+        Anything that is not one of these tags is shown as typed.
         """,
     ),
     (
@@ -79,7 +80,7 @@ HELP_NOTES = [
     (
         "Examples",
         """
-        /save rules *Be kind, {first}.* [Full rules](buttonurl://example.com/rules)
+        /save rules <b>Be kind, {first}.</b> [Full rules](buttonurl://example.com/rules)
         /save logo - reply to a photo to save the photo.
         /save faq - reply to a document to save the file.
         /get rules
@@ -154,7 +155,7 @@ async def cmd_save(message: Message, command: CommandObject, role: Role | None =
         return
     if not await _admin_only(message, role):
         return
-    word, text = _split_name(command.args or "")
+    word, text = _split_name(sender.args_of(message, command))
     usage = "Use /save &lt;name&gt; &lt;text&gt;, or reply to a message with /save &lt;name&gt;."
     if not word:
         await reply(message, usage)
