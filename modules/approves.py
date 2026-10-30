@@ -12,7 +12,7 @@ from core.filters import cmd
 from core.helpers import edit, reply
 from core.roles import Role
 from core.targets import TargetError, resolve_target
-from core.text import esc, user_ref
+from core.text import esc, user_link, user_ref
 
 # Approve trusted users so locks, blacklists, antiflood, global bans and federation
 # bans stop applying to them. Useful when you trust someone but don't want to make
@@ -67,7 +67,7 @@ async def cmd_approve(message: Message, command: CommandObject, role: Role | Non
     target, actor = started
     bot = message.bot
     chat_id = message.chat.id
-    who = user_ref(target.user_id, target.name)
+    who = user_link(target.user_id, target.name)
 
     if (
         target.user_id == bot.id
@@ -91,8 +91,8 @@ async def cmd_approve(message: Message, command: CommandObject, role: Role | Non
         await federations.forget_applied(chat_id, target.user_id)
     await reply(
         message,
-        f"{who} has been <b>approved</b> in this chat. Locks, blacklists, antiflood and global and "
-        "federation bans no longer apply to them here." + moderation.attribution(actor),
+        f"{who} was <b>approved</b>{moderation.by(actor)}\nLocks, blacklists, antiflood and global and "
+        "federation bans no longer apply to them here." + moderation.staff_note(actor),
     )
 
 
@@ -107,8 +107,8 @@ async def cmd_unapprove(message: Message, command: CommandObject, role: Role | N
         return
     await reply(
         message,
-        f"{user_ref(target.user_id, target.name)} is <b>no longer approved</b> in this chat."
-        + moderation.attribution(actor),
+        f"{user_link(target.user_id, target.name)} is <b>no longer approved</b>{moderation.by(actor)}"
+        + moderation.staff_note(actor),
     )
 
 

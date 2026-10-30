@@ -1,6 +1,7 @@
 """Federations: one ban list for many chats"""
 
 import asyncio
+from types import SimpleNamespace
 import csv
 import io
 import json
@@ -62,7 +63,7 @@ HELP = [
     ("/fedimport [overwrite|keep] [csv|minicsv|json|human]", "Reply to a file to import bans. Keep, the default, keeps existing ones; overwrite replaces the list.", S_OWNER, OWNER),
     ("/setfedlog", "Use this chat as the log of your federation.", S_OWNER, OWNER),
     ("/unsetfedlog", "Stop logging your federation in a chat.", S_OWNER, OWNER),
-    ("/fban <user> [reason]", "Ban a user in this chat's federation, and in those subscribed to it.", S_ADMIN, FED_ADMINS),
+    ("/fban <user> [reason]", "Ban a user in this chat's federation, and in those subscribed to it. If the user is already banned, you are asked whether to update the reason.", S_ADMIN, FED_ADMINS),
     ("/unfban <user>", "Lift a federation ban.", S_ADMIN, FED_ADMINS),
     ("/feddemoteme <FedID>", "Give up your admin rights in a federation.", S_ADMIN, FED_ADMINS),
     ("/myfeds", "List the federations you own or administer. Private chat only.", S_ADMIN, FED_ADMINS),
@@ -108,7 +109,8 @@ EXPORT_COOLDOWN = 30.0
 RECENT_SECONDS = 30
 MAX_LIST_CHARS = 3500  # a longer /fedstat list is sent as a file
 RIGHT = "can_change_info"
-CB_DELETE, CB_TRANSFER, CB_PROMOTE = "fd:", "fx:", "fp:"
+CB_DELETE, CB_TRANSFER, CB_PROMOTE, CB_REASON = "fd:", "fx:", "fp:", "fr:"
+_pending_reasons: dict[tuple[int, int], tuple] = {}  # (chat, message) of a "Update Reason?" question -> what was asked
 
 _exported: dict[int, float] = {}
 _recent: dict[tuple[int, int], float] = {}
@@ -357,13 +359,14 @@ async def cb_fedtransfer(callback: CallbackQuery) -> None:
     if message is None:
         await callback.answer("This button is no longer valid.", show_alert=True)
         return
-    if callback.from_user.id != int(new_id):
-        await callback.answer("Only the person it is offered to can answer.", show_alert=True)
+    giver = callback.from_user.id == int(old_id)
+    if callback.from_user.id != int(new_id) and not (giver and answer != "y"):
+        await callback.answer("Only the person it is offered to can answer. The owner can only decline.", show_alert=True)
         return
     await callback.answer()
     fed = await federations.owned_by(int(old_id))
     if answer != "y":
-        await edit(message, "The transfer was declined.", reply_markup=None)
+        await edit(message, "The transfer was cancelled by the owner." if giver else "The transfer was declined.", reply_markup=None)
         return
     if fed is None:
         await edit(message, "That federation is no longer theirs to give.", reply_markup=None)
@@ -412,13 +415,14 @@ async def cb_fedpromote(callback: CallbackQuery) -> None:
     if message is None:
         await callback.answer("This button is no longer valid.", show_alert=True)
         return
-    if callback.from_user.id != int(user_id):
-        await callback.answer("Only the person it is offered to can answer.", show_alert=True)
+    fed = await federations.get(fed_id)
+    giver = fed is not None and callback.from_user.id == fed["owner_id"]
+    if callback.from_user.id != int(user_id) and not (giver and answer != "y"):
+        await callback.answer("Only the person it is offered to can answer. The owner can only decline.", show_alert=True)
         return
     await callback.answer()
-    fed = await federations.get(fed_id)
     if answer != "y":
-        await edit(message, "The offer was declined.", reply_markup=None)
+        await edit(message, "The offer was cancelled by the owner." if giver else "The offer was declined.", reply_markup=None)
         return
     if fed is None:
         await edit(message, "That federation no longer exists.", reply_markup=None)
@@ -778,13 +782,61 @@ async def cmd_fban(message: Message, command: CommandObject) -> None:
     if fed["require_reason"] and not reason:
         await reply(message, "This federation requires a reason: /fban &lt;user&gt; &lt;reason&gt;.")
         return
-    old = await federations.ban(fed["fed_id"], target.user_id, target.name, reason, user.id, user.full_name)
-    title = "FedBan Reason Update" if old else "New FedBan"
-    text = _ban_text(title, fed, user, target.user_id, target.name, reason)
+    existing = await federations.get_ban(fed["fed_id"], target.user_id)
+    if existing is not None:
+        who = user_link(target.user_id, target.name)
+        if not reason or reason == (existing["reason"] or ""):
+            await reply(message, f"User {who} is already fbanned in {_fed_name(fed)}" + (f", with reason:\n{esc(existing['reason'])}" if existing["reason"] else "."))
+            return
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(text="Update reason", callback_data=f"{CB_REASON}y:{fed['fed_id']}:{target.user_id}"),
+                InlineKeyboardButton(text="Cancel", callback_data=f"{CB_REASON}n:{fed['fed_id']}:{target.user_id}"),
+            ]]
+        )
+        sent = await reply(
+            message,
+            f"User {who} is already fbanned in {_fed_name(fed)}"
+            + (f", with reason:\n{esc(existing['reason'])}" if existing["reason"] else ", with no reason.")
+            + f"\n\nWould you like to update this reason?\n\nNew reason:\n{esc(reason)}",
+            reply_markup=keyboard,
+        )
+        if len(_pending_reasons) > 500:
+            _pending_reasons.clear()
+        _pending_reasons[(message.chat.id, sent.message_id)] = (target.name, reason, user.id, user.full_name)
+        return
+    await federations.ban(fed["fed_id"], target.user_id, target.name, reason, user.id, user.full_name)
+    text = _ban_text("New FedBan", fed, user, target.user_id, target.name, reason)
     await reply(message, text)
     await _event(message.bot, fed, text)
-    if old is None or (old["reason"] or "") != reason:
-        _spawn(_propagate(message.bot, fed["fed_id"], target.user_id))
+    _spawn(_propagate(message.bot, fed["fed_id"], target.user_id))
+
+
+@router.callback_query(F.data.startswith(CB_REASON))
+async def cb_fedreason_update(callback: CallbackQuery) -> None:
+    message = callback.message if isinstance(callback.message, Message) else None
+    _, answer, fed_id, user_id = callback.data.split(":")
+    if message is None:
+        await callback.answer("This button is no longer valid.", show_alert=True)
+        return
+    fed = await federations.get(fed_id)
+    if fed is None or not await federations.is_admin(fed, callback.from_user.id):
+        await callback.answer("Only the admins of this federation can answer.", show_alert=True)
+        return
+    key = (message.chat.id, message.message_id)
+    pending = _pending_reasons.pop(key, None)
+    await callback.answer()
+    if answer != "y":
+        await edit(message, "The reason was not changed.", reply_markup=None)
+        return
+    if pending is None:
+        await edit(message, "This request has expired. Send /fban again.", reply_markup=None)
+        return
+    name, reason, by_id, by_name = pending
+    await federations.ban(fed_id, int(user_id), name, reason, by_id, by_name)
+    text = _ban_text("FedBan Reason Update", fed, SimpleNamespace(id=by_id, full_name=by_name), int(user_id), name, reason)
+    await edit(message, text, reply_markup=None)
+    await _event(callback.bot, fed, text)
 
 
 @router.message(cmd("unfban"))

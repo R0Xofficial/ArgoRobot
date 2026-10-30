@@ -147,7 +147,7 @@ async def cmd_warn(message: Message, command: CommandObject, role: Role | None =
     count = len(await list_warns(chat_id, target.user_id))
     limit = await get_limit(chat_id)
     who = moderation.who(target)
-    text = f"{who} has been warned ({count}/{limit}).{moderation.reason_line(reason)}{moderation.attribution(actor)}"
+    text = f"{who} was warned ({count}/{limit}){moderation.by(actor)}{moderation.reason_line(reason)}{moderation.staff_note(actor)}"
 
     if count < limit:
         await reply(message, text, reply_markup=_undo_keyboard(warn_id))
@@ -168,8 +168,8 @@ async def cmd_warn(message: Message, command: CommandObject, role: Role | None =
     await clear_warns(chat_id, target.user_id)
     await reply(
         message,
-        f"{who} has reached the warn limit ({count}/{limit}) and has been banned."
-        f"{moderation.reason_line(reason)}{moderation.attribution(actor)}",
+        f"{who} reached the warn limit ({count}/{limit}) and was banned{moderation.by(actor)}"
+        f"{moderation.reason_line(reason)}{moderation.staff_note(actor)}",
     )
 
 
@@ -231,7 +231,7 @@ async def cb_undo(callback: CallbackQuery, role: Role | None = None) -> None:
     who = user_link(removed["user_id"], removed["user_name"])
     await edit(
         message,
-        f"The warn <code>#{removed['id']}</code> of {who} has been removed.{moderation.attribution(actor)}",
+        f"The warn <code>#{removed['id']}</code> of {who} was removed{moderation.by(actor)}{moderation.staff_note(actor)}",
         reply_markup=None,
     )
 
@@ -279,7 +279,7 @@ async def cmd_rmwarn(message: Message, command: CommandObject, role: Role | None
     who = user_link(removed["user_id"], removed["user_name"])
     await reply(
         message,
-        f"The warn <code>#{removed['id']}</code> of {who} has been removed.{moderation.attribution(actor)}",
+        f"The warn <code>#{removed['id']}</code> of {who} was removed{moderation.by(actor)}{moderation.staff_note(actor)}",
     )
 
 
@@ -295,7 +295,7 @@ async def cmd_resetwarns(message: Message, command: CommandObject, role: Role | 
     if removed == 0:
         await reply(message, f"{who} has no warns.")
     else:
-        await reply(message, f"All warns of {who} have been removed ({removed}).{moderation.attribution(actor)}")
+        await reply(message, f"All warns of {who} were removed ({removed}){moderation.by(actor)}{moderation.staff_note(actor)}")
 
 
 # --- Limit --------------------------------------------------------------------

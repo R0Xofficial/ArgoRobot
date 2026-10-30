@@ -11,7 +11,7 @@ from core.helpers import reply
 from core.moderation import RIGHTS_MESSAGE, ModerationError, NotAllowed, perform
 from core.roles import Role
 from core.targets import Target, TargetError, replied_message, resolve_target
-from core.text import esc, user_ref
+from core.text import esc, user_link, user_ref
 
 ABOUT = """
 Manage admins without digging through Telegram's menus.
@@ -187,11 +187,11 @@ async def cmd_promote(message: Message, command: CommandObject) -> None:
         await reply(message, _promotion_problem(exc))
         return
 
-    kind = "with every permission I can give" if full else "to admin"
+    kind = "to admin with every permission I can give" if full else "to admin"
     await reply(
         message,
-        f"{user_ref(target.user_id, target.name)} has been promoted {kind}.\n"
-        f"Rights: {_rights_text(rights)}." + moderation.attribution(actor),
+        f"{user_link(target.user_id, target.name)} was promoted {kind}{moderation.by(actor)}\n"
+        f"Rights: {_rights_text(rights)}." + moderation.staff_note(actor),
     )
 
 
@@ -233,7 +233,7 @@ async def cmd_demote(message: Message, command: CommandObject) -> None:
 
     await reply(
         message,
-        f"{user_ref(target.user_id, target.name)} has been demoted." + moderation.attribution(actor),
+        f"{user_link(target.user_id, target.name)} was demoted{moderation.by(actor)}" + moderation.staff_note(actor),
     )
 
 

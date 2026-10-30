@@ -81,8 +81,8 @@ async def cmd_ban(message: Message, command: CommandObject, role: Role | None = 
 
     await reply(
         message,
-        f"{moderation.who(target)} has been banned.{moderation.reason_line(target.extra)}"
-        f"{moderation.attribution(actor)}",
+        f"{moderation.who(target)} was banned{moderation.by(actor)}"
+        f"{moderation.reason_line(target.extra)}{moderation.staff_note(actor)}",
     )
 
 
@@ -102,8 +102,8 @@ async def cmd_tban(message: Message, command: CommandObject, role: Role | None =
 
     await reply(
         message,
-        f"{moderation.who(target)} has been banned for {moderation.format_duration(duration)}."
-        f"{moderation.reason_line(reason)}{moderation.attribution(actor)}",
+        f"{moderation.who(target)} was banned for {moderation.format_duration(duration)}{moderation.by(actor)}"
+        f"{moderation.reason_line(reason)}{moderation.staff_note(actor)}",
     )
 
 
@@ -132,7 +132,7 @@ async def cmd_unban(message: Message, command: CommandObject, role: Role | None 
         await reply(message, esc(exc))
         return
 
-    await reply(message, f"{moderation.who(target)} has been unbanned.{moderation.attribution(actor)}")
+    await reply(message, f"{moderation.who(target)} was unbanned{moderation.by(actor)}{moderation.staff_note(actor)}")
 
 
 @router.message(cmd("kick"))
@@ -152,6 +152,6 @@ async def cmd_kick(message: Message, command: CommandObject, role: Role | None =
 
     await reply(
         message,
-        f"{moderation.who(target)} has been kicked.{moderation.reason_line(target.extra)}"
-        f"{moderation.attribution(actor)}",
+        f"{moderation.who(target)} was kicked{moderation.by(actor)}"
+        f"{moderation.reason_line(target.extra)}{moderation.staff_note(actor)}",
     )

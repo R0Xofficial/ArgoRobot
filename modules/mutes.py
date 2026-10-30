@@ -65,8 +65,8 @@ async def cmd_mute(message: Message, command: CommandObject, role: Role | None =
 
     await reply(
         message,
-        f"{moderation.who(target)} has been muted.{moderation.reason_line(target.extra)}"
-        f"{moderation.attribution(actor)}",
+        f"{moderation.who(target)} was muted{moderation.by(actor)}"
+        f"{moderation.reason_line(target.extra)}{moderation.staff_note(actor)}",
     )
 
 
@@ -91,8 +91,8 @@ async def cmd_tmute(message: Message, command: CommandObject, role: Role | None 
 
     await reply(
         message,
-        f"{moderation.who(target)} has been muted for {moderation.format_duration(duration)}."
-        f"{moderation.reason_line(reason)}{moderation.attribution(actor)}",
+        f"{moderation.who(target)} was muted for {moderation.format_duration(duration)}{moderation.by(actor)}"
+        f"{moderation.reason_line(reason)}{moderation.staff_note(actor)}",
     )
 
 
@@ -121,4 +121,4 @@ async def cmd_unmute(message: Message, command: CommandObject, role: Role | None
         await reply(message, esc(exc))
         return
 
-    await reply(message, f"{moderation.who(target)} has been unmuted.{moderation.attribution(actor)}")
+    await reply(message, f"{moderation.who(target)} was unmuted{moderation.by(actor)}{moderation.staff_note(actor)}")
