@@ -380,10 +380,12 @@ async def on_join(message: Message) -> None:
         people.append(user)
     people = people[:MAX_GREETED]
 
-    await _greet(message, people, settings)
-
-    if settings["clean_service"]:
-        await _delete(message)
+    try:
+        await _greet(message, people, settings)
+    finally:
+        # Whatever went wrong while greeting, the "joined" message still goes when the chat asked for it.
+        if settings["clean_service"]:
+            await _delete(message)
 
 
 async def _greet_after_captcha(bot, chat_id: int, user, join_message_id: int | None) -> None:
@@ -414,8 +416,10 @@ async def on_leave(message: Message) -> None:
     left = message.left_chat_member
     # The sender of the service message is the person who left, or whoever removed them.
     left_on_own = message.from_user is not None and message.from_user.id == left.id
-    if settings["goodbye_on"] and left_on_own and not left.is_bot and left.id != message.bot.id:
-        content, media_type, file_id = greetings.message_of(settings, "goodbye")
-        await sender.send(message, left, content, media_type, file_id, label="goodbye message")
-    if settings["clean_service"]:
-        await _delete(message)
+    try:
+        if settings["goodbye_on"] and left_on_own and not left.is_bot and left.id != message.bot.id:
+            content, media_type, file_id = greetings.message_of(settings, "goodbye")
+            await sender.send(message, left, content, media_type, file_id, label="goodbye message")
+    finally:
+        if settings["clean_service"]:
+            await _delete(message)
