@@ -374,7 +374,7 @@ async def cb_fedtransfer(callback: CallbackQuery) -> None:
         await edit(message, esc(exc), reply_markup=None)
         return
     await edit(message, f"The federation {_fed_name(fed)} now belongs to {user_link(callback.from_user.id, callback.from_user.full_name)}.", reply_markup=None)
-    await _event(callback.bot, {**fed, "owner_id": callback.from_user.id}, f"<b>Federation transferred</b>\n{_item('Federation', _fed_name(fed))}\n{_item('New owner', user_link(callback.from_user.id, callback.from_user.full_name))}")
+    await _event(callback.bot, {**fed, "owner_id": callback.from_user.id}, f"<b>New FedOwner</b>\n{_item('Federation', _fed_name(fed))}\n{_item('New owner', user_link(callback.from_user.id, callback.from_user.full_name))}")
 
 
 @router.message(cmd("fedpromote"))
@@ -448,7 +448,7 @@ async def cmd_feddemote(message: Message, command: CommandObject) -> None:
         return
     who = user_link(target.user_id, target.name)
     await reply(message, f"{who} is no longer an admin of {_fed_name(fed)}.")
-    await _event(message.bot, fed, f"<b>FedAdmin removed</b>\n{_item('Federation', _fed_name(fed))}\n{_item('User', who)}")
+    await _event(message.bot, fed, f"<b>Un-FedAdmin</b>\n{_item('Federation', _fed_name(fed))}\n{_item('User', who)}")
 
 
 @router.message(cmd("feddemoteme"))
@@ -471,7 +471,7 @@ async def cmd_feddemoteme(message: Message, command: CommandObject) -> None:
         await reply(message, "You are not an admin of that federation.")
         return
     await reply(message, f"You are no longer an admin of {_fed_name(fed)}.")
-    await _event(message.bot, fed, f"<b>FedAdmin resigned</b>\n{_item('Federation', _fed_name(fed))}\n{_item('User', user_link(user.id, user.full_name))}")
+    await _event(message.bot, fed, f"<b>Un-FedAdmin</b>\n{_item('Federation', _fed_name(fed))}\n{_item('User', user_link(user.id, user.full_name))}")
 
 
 async def _toggle(message: Message, command: CommandObject, field: str, name: str) -> None:
@@ -520,7 +520,12 @@ async def cmd_subfed(message: Message, command: CommandObject) -> None:
         await reply(message, esc(exc))
         return
     await reply(message, f"{_fed_name(fed)} now inherits the bans of {_fed_name(other)}. Your own ban list is not changed.")
-    await _event(message.bot, fed, f"<b>Federation subscribed</b>\n{_item('Federation', _fed_name(fed))}\n{_item('Subscribed to', _fed_name(other))}")
+    await _event(message.bot, fed, f"<b>FedSubscribed</b>\n{_item('Federation', _fed_name(fed))}\n{_item('Subscribed to', _fed_name(other))}")
+    await _event(
+        message.bot,
+        other,
+        f"<b>New FedSubscriber</b>\n{_item('Federation', _fed_name(other))}\n{_item('Subscribed by', _fed_name(fed))}\n{_item('By', user_link(message.from_user.id, message.from_user.full_name))}",
+    )
 
 
 @router.message(cmd("unsubfed"))
@@ -539,7 +544,13 @@ async def cmd_unsubfed(message: Message, command: CommandObject) -> None:
         return
     name = _fed_name(other) if other else "that federation"
     await reply(message, f"{_fed_name(fed)} no longer inherits the bans of {name}.")
-    await _event(message.bot, fed, f"<b>Federation unsubscribed</b>\n{_item('Federation', _fed_name(fed))}\n{_item('Unsubscribed from', name)}")
+    await _event(message.bot, fed, f"<b>Un-FedSubscribed</b>\n{_item('Federation', _fed_name(fed))}\n{_item('Unsubscribed from', name)}")
+    if other is not None:
+        await _event(
+            message.bot,
+            other,
+            f"<b>Un-FedSubscriber</b>\n{_item('Federation', _fed_name(other))}\n{_item('Unsubscribed', _fed_name(fed))}\n{_item('By', user_link(message.from_user.id, message.from_user.full_name))}",
+        )
 
 
 @router.message(cmd("setfedlog"))
@@ -638,7 +649,7 @@ async def cmd_fedimport(message: Message, command: CommandObject) -> None:
         + (f" Skipped <b>{skipped}</b> (already banned, or admins)." if skipped else "")
         + "\nPeople on the list are removed from the chats when they write or join.",
     )
-    await _event(message.bot, fed, f"<b>Bans imported</b>\n{_item('Federation', _fed_name(fed))}\n{_item('Added', f'<code>{added}</code>')}\n{_item('By', user_link(user.id, user.full_name))}")
+    await _event(message.bot, fed, f"<b>New FedBans</b>\n{_item('Federation', _fed_name(fed))}\n{_item('Added', f'<code>{added}</code>')}\n{_item('By', user_link(user.id, user.full_name))}")
 
 
 # --- Fed admin commands -----------------------------------------------------------------------
@@ -797,7 +808,7 @@ async def cmd_fedinfo(message: Message, command: CommandObject) -> None:
         "<b>Federation Info</b>",
         _item("Name", f"<code>{esc(fed['name'])}</code>"),
         _item("ID", f"<code>{fed_id}</code>"),
-        _item("Owner", _owner_link(fed)),
+        _item("Owner", f"{_owner_link(fed)} [<code>{fed['owner_id']}</code>]"),
         _item("Admins", f"<code>{len(await federations.admins(fed_id))}</code>"),
         _item("Chats", f"<code>{await federations.chat_count(fed_id)}</code>"),
         _item("Banned users", f"<code>{await federations.ban_count(fed_id)}</code>"),
@@ -825,13 +836,15 @@ async def cmd_fedsubs(message: Message, command: CommandObject) -> None:
     if fed is None:
         return
     subs = await federations.subs_of(fed["fed_id"])
+    followers = len(await federations.subscribers_of(fed["fed_id"]))
+    lines = [f"Number of subscribed feds: {followers}", ""]
     if not subs:
-        await reply(message, f"{_fed_name(fed)} is not subscribed to any federation.")
-        return
-    lines = [f"<b>{esc(fed['name'])} is subscribed to</b>"]
-    for sub_id in subs:
-        other = await federations.get(sub_id)
-        lines.append(f"• <b>{esc(other['name']) if other else 'Unknown'}</b>\n  <code>{sub_id}</code>")
+        lines.append(f"{_fed_name(fed)} is not subscribed to any federation.")
+    else:
+        lines.append("Subscribed to the following feds:")
+        for sub_id in subs:
+            other = await federations.get(sub_id)
+            lines.append(f"- {esc(other['name']) if other else 'Unknown'} (<code>{sub_id}</code>)")
     await reply(message, "\n".join(lines))
 
 
@@ -876,7 +889,7 @@ async def cmd_joinfed(message: Message, command: CommandObject) -> None:
         return
     await federations.join(message.chat.id, fed["fed_id"])
     await reply(message, f"This chat joined the federation {_fed_name(fed)}. People it bans are removed from here.")
-    await _event(message.bot, fed, f"<b>Chat joined</b>\n{_item('Federation', _fed_name(fed))}\n{_item('Chat', esc(message.chat.title or str(message.chat.id)))}\n{_item('Chat ID', f'<code>{message.chat.id}</code>')}")
+    await _event(message.bot, fed, f"<b>New FedChat</b>\n{_item('Federation', _fed_name(fed))}\n{_item('Chat', esc(message.chat.title or str(message.chat.id)))}\n{_item('Chat ID', f'<code>{message.chat.id}</code>')}\n{_item('By', user_link(message.from_user.id, message.from_user.full_name))}")
 
 
 @router.message(cmd("leavefed"))
@@ -892,7 +905,7 @@ async def cmd_leavefed(message: Message) -> None:
         return
     await federations.leave(message.chat.id)
     await reply(message, f"This chat left the federation {_fed_name(fed)}. Nobody is unbanned.")
-    await _event(message.bot, fed, f"<b>Chat left</b>\n{_item('Federation', _fed_name(fed))}\n{_item('Chat', esc(message.chat.title or str(message.chat.id)))}\n{_item('Chat ID', f'<code>{message.chat.id}</code>')}")
+    await _event(message.bot, fed, f"<b>Un-FedChat</b>\n{_item('Federation', _fed_name(fed))}\n{_item('Chat', esc(message.chat.title or str(message.chat.id)))}\n{_item('Chat ID', f'<code>{message.chat.id}</code>')}\n{_item('By', user_link(message.from_user.id, message.from_user.full_name))}")
 
 
 @router.message(cmd("quietfed"))
