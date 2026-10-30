@@ -95,24 +95,33 @@ async def remove(user_id: int) -> dict[str, Any] | None:
     return row
 
 
-async def import_many(rows: Iterable[tuple[int, str]]) -> int:
+async def import_many(rows: Iterable[tuple]) -> int:
     """
-    Add bans that do not exist yet (users already banned are left alone).
-    Imported bans have no admin. Returns how many were added.
+    Add bans that do not exist yet (users already banned are left alone). A row is
+    (user id, reason) or (user id, reason, name). Imported bans have no admin.
+    Returns how many were added.
     """
     rows = list(rows)
     if not rows:
         return 0
     added = await database.fetch_all(
-        "INSERT INTO gbans (user_id, reason) "
-        "SELECT * FROM unnest($1::bigint[], $2::text[]) "
+        "INSERT INTO gbans (user_id, reason, name) "
+        "SELECT * FROM unnest($1::bigint[], $2::text[], $3::text[]) "
         "ON CONFLICT (user_id) DO NOTHING RETURNING user_id",
-        [user_id for user_id, _ in rows],
-        [reason for _, reason in rows],
+        [row[0] for row in rows],
+        [row[1] for row in rows],
+        [row[2] if len(row) > 2 else None for row in rows],
     )
     ids = await _all_ids()
     ids.update(row["user_id"] for row in added)
     return len(added)
+
+
+async def all_bans() -> list[dict[str, Any]]:
+    """Every global ban, oldest first, as rows for core.banfiles (banned_by_name = the admin)."""
+    return await database.fetch_all(
+        "SELECT user_id, name, reason, admin_name AS banned_by_name, created_at FROM gbans ORDER BY created_at, user_id"
+    )
 
 
 async def count() -> int:
