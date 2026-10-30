@@ -27,6 +27,8 @@ Commands for running the bot itself. Most of them are for my staff, so you only 
 Staff roles, from lowest to highest: Support, Sudo, Developer, Owner. The Owner grants and removes Developers; Developers grant and remove Sudo and Support users.
 
 The whitelist shields people from global actions: someone on it can't be globally banned, in any chat I'm in. It is different from /approve, which only works in one chat. Sudo and up manage it.
+
+Staff are greeted in a way of their own: when someone with a role joins a chat they get the welcome of their role, and the goodbye of their role when they leave, in every chat and whatever its settings are.
 """
 
 HELP = [
@@ -429,3 +431,4 @@ async def _end_all_connections(message: Message) -> str:
             )
     n = len(open_ones)
     return f"\n{n} connection{'s' if n != 1 else ''} ended." if n else ""
+

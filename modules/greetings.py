@@ -9,7 +9,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
 from aiogram.types import Chat, ChatPermissions, Message
 
-from core import approvals, captchas, disabled, gbans, greetings, immunity, moderation, registry, sender
+from core import approvals, captchas, disabled, gbans, greetings, immunity, moderation, registry, roles, sender, staffgreet
 from core.filters import cmd
 from core.help_index import Section
 from core.helpers import reply
@@ -27,6 +27,8 @@ Greet people when they join the chat and say goodbye when they leave. Welcomes a
 A message can be written after the command or taken from a message you reply to, media included. It can be formatted, address people by name, carry buttons and vary at random, as described below. Everything that changes these settings is for chat admins with the right to change chat info.
 
 Welcomes are sent when I see someone join, and goodbyes only when someone leaves on their own: people who are removed get none. Bots are not greeted.
+
+My staff (Support, Sudo, Developer, Owner) are different: they are always welcomed when they join and seen off when they leave, with a message of their role, whatever the chat's settings are. They are not welcome-muted or tested with a captcha.
 """
 
 S_WELCOME, S_GOODBYE = Section("Welcome Commands"), Section("Goodbye Commands")
@@ -339,8 +341,22 @@ async def _delete(message: Message) -> None:
         await message.delete()
 
 
+async def _greet_staff(message: Message, user, role: Role) -> None:
+    """Somebody with a role is welcomed with the message of their role, whatever the chat's settings are."""
+    await sender.send(message, user, staffgreet.get(role, "welcome"), None, None, label="staff welcome message")
+
+
 async def _greet(message: Message, people: list, settings: dict) -> None:
     """The welcome mute and the welcome message for people who are in."""
+    members = []
+    for user in people:
+        role = await roles.get_role(user.id)
+        if role is None:
+            members.append(user)
+        else:
+            await _greet_staff(message, user, role)  # the chat's own welcome, mute and captcha are for everyone else
+    people = members
+
     if settings["welcome_mute"]:
         for user in people:
             await _restrict_newcomer(message, user)
@@ -417,9 +433,13 @@ async def on_leave(message: Message) -> None:
     # The sender of the service message is the person who left, or whoever removed them.
     left_on_own = message.from_user is not None and message.from_user.id == left.id
     try:
-        if settings["goodbye_on"] and left_on_own and not left.is_bot and left.id != message.bot.id:
-            content, media_type, file_id = greetings.message_of(settings, "goodbye")
-            await sender.send(message, left, content, media_type, file_id, label="goodbye message")
+        if left_on_own and not left.is_bot and left.id != message.bot.id:
+            role = await roles.get_role(left.id)
+            if role is not None:  # staff are always seen off, with the goodbye of their role
+                await sender.send(message, left, staffgreet.get(role, "goodbye"), None, None, label="staff goodbye message")
+            elif settings["goodbye_on"]:
+                content, media_type, file_id = greetings.message_of(settings, "goodbye")
+                await sender.send(message, left, content, media_type, file_id, label="goodbye message")
     finally:
         if settings["clean_service"]:
             await _delete(message)
