@@ -12,17 +12,19 @@ from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter
 from aiogram.filters import CommandObject
 from aiogram.types import (
+    BufferedInputFile,
     CallbackQuery,
     ChatMemberUpdated,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     LinkPreviewOptions,
     Message,
+    MessageReactionUpdated,
     ReplyParameters,
 )
 
 from config import settings
-from core import approvals, chats, chatsettings, gbans, immunity, info_hooks, logs, moderation, roles, users, whitelist
+from core import approvals, banfiles, chats, chatsettings, gbans, immunity, info_hooks, logs, moderation, roles, users, whitelist
 from core.filters import HasRole, cmd
 from core.helpers import edit, reply
 from core.moderation import GROUP_TYPES, ModerationError
@@ -37,7 +39,7 @@ log = logging.getLogger(__name__)
 PRIORITY = -100
 
 ABOUT = """
-A global ban removes a troublemaker from every chat I'm in. They are handled by my staff: Sudo and up ban immediately, while Support users send a request that a Sudo user approves or declines with buttons.
+A global ban works in every chat I'm in: I remove the user as soon as they show up there (write, edit, react, join or leave). They are handled by my staff: Sudo and up ban immediately, while Support users send a request that a Sudo user approves or declines with buttons.
 
 Banned users are removed when they write or join. Each chat can switch this off with /gbans. Whitelisted and approved users are skipped, and lifting a global ban only undoes the bans I made because of it. The ban message names the support chat to appeal in, when one is configured.
 """
@@ -48,7 +50,8 @@ HELP = [
     ("/ungban <user> <reason>", "Lift a global ban. Support users send a request instead.", Role.SUPPORT),
     ("/gstat [user]", "Show whether you are globally banned, and why. Support users can look up anyone. Alias: /gbanstat."),
     ("/gbans [on|off]", "Choose whether this chat removes globally banned users. On by default; any admin can look, only the chat owner can change it. Alias: /enforcegban.", "chat owner"),
-    ("/importbans", "Reply to a JSON file to import global bans from it.", Role.OWNER),
+    ("/gimport [csv|minicsv|json|human]", "Reply to a file to import global bans from it (or send the file with the command). The format is detected if you leave it out. JSON files with one ban per line work too.", Role.OWNER),
+    ("/gexport [csv|minicsv|json|human]", "Get the list of global bans as a file. The default is csv.", Role.OWNER),
 ]
 
 router = Router(name="gbans")
@@ -56,7 +59,6 @@ router = Router(name="gbans")
 MAX_REASON_LENGTH = 500
 CB_PREFIX = "gban:"  # gban:apr:<request id> / gban:dec:<request id>
 IMPORT_CHUNK = 5000
-MAX_IMPORT_BYTES = 20 * 1024 * 1024  # what a bot can download
 
 SUDO = Role.SUDO
 
@@ -246,28 +248,18 @@ def _spawn(coroutine) -> None:
     task.add_done_callback(_tasks.discard)
 
 
-async def _propagate_ban(bot: Bot, user_id: int, skip_chat_id: int | None) -> None:
-    """Remove a newly banned user from every chat where the bot has seen them."""
-    removed = 0
-    try:
-        for chat in await chats.chats_of_user(user_id):
-            if chat["chat_id"] == skip_chat_id or chat["type"] not in GROUP_TYPES or chat.get("bot_admin") is False:
-                continue
-            if not await gbans.is_gbanned(user_id):
-                break  # lifted while this was running
-            if await _remove_from(bot, chat["chat_id"], user_id):
-                removed += 1
-            await asyncio.sleep(0.05)
-    except Exception:
-        log.exception("Could not remove %s from their chats", user_id)
-    log.info("Global ban of %s: removed from %d more chat(s)", user_id, removed)
-
-
 async def _propagate_unban(bot: Bot, user_id: int, origin: tuple[int, int | None, int | None] | None) -> None:
-    """Undo what the global ban did (only that), then report to the chat the command came from."""
+    """Unban them everywhere the bot knows of, then report to the chat the command came from."""
     started = time.monotonic()
     try:
-        for chat_id in await gbans.banned_chats(user_id):
+        # Where the bot removed them, and every group it has seen them in (ban or not: only_if_banned).
+        targets = dict.fromkeys(await gbans.banned_chats(user_id))
+        for chat in await chats.chats_of_user(user_id):
+            if chat["type"] in GROUP_TYPES and chat.get("bot_admin") is not False:
+                targets.setdefault(chat["chat_id"])
+        if origin is not None and origin[0] < 0:
+            targets.setdefault(origin[0])  # the chat the command came from, always
+        for chat_id in targets:
             try:
                 await bot.unban_chat_member(chat_id, user_id, only_if_banned=True)
             except TelegramRetryAfter as exc:
@@ -317,7 +309,6 @@ async def _apply_ban(
     if origin_chat is not None and origin_chat[1] in GROUP_TYPES:
         origin_id = origin_chat[0]
         await _remove_from(bot, origin_id, target_id)
-    _spawn(_propagate_ban(bot, target_id, origin_id))
     return old
 
 
@@ -720,38 +711,23 @@ async def cmd_gbans(message: Message, command: CommandObject, role: Role | None 
         )
 
 
-# --- /importbans ---------------------------------------------------------------------------------------
+# --- /gimport and /gexport -----------------------------------------------------------------------------
 
-def _parse_import(text: str) -> tuple[dict[int, str], int]:
-    """JSON lines with a user_id and a reason -> ({user_id: reason}, number of unusable lines)."""
-    found: dict[int, str] = {}
-    invalid = 0
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            data = json.loads(line)
-            user_id = int(data["user_id"])
-        except (ValueError, TypeError, KeyError):
-            invalid += 1
-            continue
-        if user_id <= 0:
-            invalid += 1
-            continue
-        reason = " ".join(str(data.get("reason") or "").split()) or "No reason given."
-        found.setdefault(user_id, reason[:MAX_REASON_LENGTH])
-    return found, invalid
+EXPORT_COOLDOWN = 30.0
+_exported_at = 0.0
 
 
-@router.message(cmd("importbans"), HasRole(Role.OWNER))
-async def cmd_importbans(message: Message) -> None:
-    document = message.document or (message.reply_to_message.document if message.reply_to_message else None)
-    name = (getattr(document, "file_name", None) or "").lower()
-    if document is None or not name.endswith((".json", ".jsonl")):
-        await reply(message, "Reply to a valid <code>.json</code> file, or send one with the command.")
+@router.message(cmd("gimport"), HasRole(Role.OWNER))
+async def cmd_gimport(message: Message, command: CommandObject) -> None:
+    fmt = (command.args or "").strip().lower() or None
+    if fmt is not None and fmt not in banfiles.FORMATS:
+        await reply(message, "Use /gimport [csv|minicsv|json|human], as a reply to a file or with the file attached.")
         return
-    if (document.file_size or 0) > MAX_IMPORT_BYTES:
+    document = message.document or (message.reply_to_message.document if message.reply_to_message else None)
+    if document is None:
+        await reply(message, "Reply to a file with the bans (csv, minicsv, json or human), or send it with the command.")
+        return
+    if (document.file_size or 0) > banfiles.MAX_IMPORT_BYTES:
         await reply(message, "That file is too big (the limit is 20 MB).")
         return
 
@@ -759,15 +735,23 @@ async def cmd_importbans(message: Message) -> None:
     try:
         buffer = io.BytesIO()
         await message.bot.download(document, destination=buffer)
-        found, invalid = _parse_import(buffer.getvalue().decode("utf-8", errors="ignore"))
+        try:
+            parsed = banfiles.parse_import(buffer.getvalue().decode("utf-8", errors="replace"), fmt)
+        except ValueError as exc:
+            await edit(status, esc(exc))
+            return
 
-        rows: list[tuple[int, str]] = []
+        found: dict[int, tuple[str, str | None]] = {}
+        for user_id, name, reason in parsed:
+            reason = " ".join((reason or "").split())[:MAX_REASON_LENGTH] or "No reason given."
+            found.setdefault(user_id, (reason, name))
+        rows: list[tuple[int, str, str | None]] = []
         protected = 0
-        for user_id, reason in found.items():
+        for user_id, (reason, name) in found.items():
             if await whitelist.is_protected(user_id) or await roles.get_role(user_id) is not None:
                 protected += 1
             else:
-                rows.append((user_id, reason))
+                rows.append((user_id, reason, name))
 
         added = 0
         for start in range(0, len(rows), IMPORT_CHUNK):
@@ -782,7 +766,7 @@ async def cmd_importbans(message: Message) -> None:
         "<b>Import Bans Successful!</b>\n"
         f"Added <code>{added}</code> new bans to the database.\n"
         f"Already banned: <code>{len(rows) - added}</code>, "
-        f"protected: <code>{protected}</code>, unusable lines: <code>{invalid}</code>.",
+        f"protected: <code>{protected}</code>.",
     )
     admin = message.from_user
     await logs.role_log(
@@ -794,6 +778,31 @@ async def cmd_importbans(message: Message) -> None:
     )
 
 
+@router.message(cmd("gexport"), HasRole(Role.OWNER))
+async def cmd_gexport(message: Message, command: CommandObject) -> None:
+    global _exported_at
+    fmt = (command.args or "csv").strip().lower() or "csv"
+    if fmt not in banfiles.FORMATS:
+        await reply(message, "Use /gexport csv, minicsv, json or human.")
+        return
+    now = time.monotonic()
+    if now - _exported_at < EXPORT_COOLDOWN:
+        await reply(message, "Wait a little before exporting again.")
+        return
+    rows = await gbans.all_bans()
+    if not rows:
+        await reply(message, "There are no global bans to export.")
+        return
+    _exported_at = now
+    data, extension = banfiles.render_export(rows, fmt)
+    await message.bot.send_document(
+        message.chat.id,
+        BufferedInputFile(data, filename=f"gbans.{extension}"),
+        caption=f"{len(rows)} global bans.",
+        message_thread_id=message.message_thread_id if message.is_topic_message else None,
+    )
+
+
 # --- Enforcement ---------------------------------------------------------------------------------------------
 
 async def _banned_in_message(message: Message, bot: Bot) -> bool:
@@ -801,6 +810,8 @@ async def _banned_in_message(message: Message, bot: Bot) -> bool:
     user = message.from_user
     if user is None or message.chat.type not in GROUP_TYPES:
         return False
+    if getattr(message, "new_chat_members", None) or getattr(message, "left_chat_member", None):
+        return False  # joins and leaves are handled as member updates
     if not await gbans.is_gbanned(user.id):
         return False
     return await _enforceable(bot, message.chat.id, user.id)
@@ -814,31 +825,39 @@ async def enforce_on_message(message: Message, bot: Bot) -> None:
     await _enforce(bot, message.chat.id, message.from_user.id, _thread_of(message))
 
 
-def _joined(event: ChatMemberUpdated) -> bool:
-    def status(member) -> str:
-        value = getattr(member.status, "value", member.status)
-        if value == "restricted" and not getattr(member, "is_member", True):
-            return "left"  # restricted, but not in the chat
-        return value
+def _moved(event: ChatMemberUpdated) -> bool:
+    """Joining or leaving, as in KryoRobot: a ban (by anyone) or another change is not acted on."""
+    def value(member) -> str:
+        return str(getattr(member.status, "value", member.status))
 
-    return status(event.old_chat_member) in ("left", "kicked") and status(event.new_chat_member) in (
-        "member",
-        "restricted",
-    )
+    before, after = value(event.old_chat_member), value(event.new_chat_member)
+    return (after == "member" and before != "member") or (after == "left" and before == "member")
 
 
-async def _banned_joining(event: ChatMemberUpdated, bot: Bot) -> bool:
+async def _banned_active(event: ChatMemberUpdated, bot: Bot) -> bool:
     user = event.new_chat_member.user
-    if event.chat.type not in GROUP_TYPES or user.id == bot.id or not _joined(event):
+    if event.chat.type not in GROUP_TYPES or user.id == bot.id or not _moved(event):
         return False
     if not await gbans.is_gbanned(user.id):
         return False
     return await _enforceable(bot, event.chat.id, user.id)
 
 
-@router.chat_member(_banned_joining)
-async def enforce_on_join(event: ChatMemberUpdated, bot: Bot) -> None:
+@router.chat_member(_banned_active)
+async def enforce_on_member_change(event: ChatMemberUpdated, bot: Bot) -> None:
     await _enforce(bot, event.chat.id, event.new_chat_member.user.id, None)
+
+
+async def _banned_reacting(reaction: MessageReactionUpdated, bot: Bot) -> bool:
+    user = reaction.user
+    if user is None or reaction.chat.type not in GROUP_TYPES or not await gbans.is_gbanned(user.id):
+        return False
+    return await _enforceable(bot, reaction.chat.id, user.id)
+
+
+@router.message_reaction(_banned_reacting)
+async def enforce_on_reaction(reaction: MessageReactionUpdated, bot: Bot) -> None:
+    await _enforce(bot, reaction.chat.id, reaction.user.id, None)
 
 
 # --- /info ----------------------------------------------------------------------------------------------------

@@ -2,9 +2,6 @@
 
 import asyncio
 from types import SimpleNamespace
-import csv
-import io
-import json
 import logging
 import re
 import time
@@ -22,8 +19,10 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     LinkPreviewOptions,
     Message,
+    MessageReactionUpdated,
 )
 
+from core.banfiles import FORMATS, MAX_IMPORT_BYTES, parse_import, render_export, stamp as _stamp
 from core import approvals, federations, immunity, info_hooks, moderation, roles
 from core.federations import FederationError
 from core.help_index import Section
@@ -39,7 +38,7 @@ log = logging.getLogger(__name__)
 PRIORITY = -95
 
 ABOUT = """
-A federation links chats so that one ban works in all of them. Create one, let your chats join it, and everyone it bans is removed from every chat of the federation when they write or join. A federation can also subscribe to others and inherit their bans.
+A federation links chats so that one ban works in all of them. Create one, let your chats join it, and everyone it bans is removed from every chat of the federation as soon as they show up there (write, edit, react, join or leave). A federation can also subscribe to others and inherit their bans.
 
 A chat is in one federation at a time. Chat admins, approved users and my staff are never removed by federation bans, and federation admins can't be banned in their own federation. Federations are identified by an ID like 3f1c2a3e-...: share it with the owners of the chats that should join.
 """
@@ -60,7 +59,7 @@ HELP = [
     ("/subfed <FedID>", "Inherit the bans of another federation.", S_OWNER, OWNER),
     ("/unsubfed <FedID>", "Stop inheriting its bans.", S_OWNER, OWNER),
     ("/fedexport [csv|minicsv|json|human]", "Get the ban list as a file. The default is csv.", S_OWNER, OWNER),
-    ("/fedimport [overwrite|keep] [csv|minicsv|json|human]", "Reply to a file to import bans. Keep, the default, keeps existing ones; overwrite replaces the list.", S_OWNER, OWNER),
+    ("/fedimport [overwrite|keep] [csv|minicsv|json|human]", "Reply to a file (or send it with the command) to import bans. Keep, the default, keeps existing ones; overwrite replaces the list. JSON files with one ban per line work too.", S_OWNER, OWNER),
     ("/setfedlog", "Use this chat as the log of your federation.", S_OWNER, OWNER),
     ("/unsetfedlog", "Stop logging your federation in a chat.", S_OWNER, OWNER),
     ("/fban <user> [reason]", "Ban a user in this chat's federation, and in those subscribed to it. If the user is already banned, you are asked whether to update the reason.", S_ADMIN, FED_ADMINS),
@@ -102,9 +101,6 @@ HELP_NOTES = [
 router = Router(name="federations")
 
 _FED_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
-_FORMATS = ("csv", "minicsv", "json", "human")
-MAX_IMPORT_BYTES = 5 * 1024 * 1024
-MAX_IMPORT_ROWS = 100_000
 EXPORT_COOLDOWN = 30.0
 RECENT_SECONDS = 30
 MAX_LIST_CHARS = 3500  # a longer /fedstat list is sent as a file
@@ -574,35 +570,6 @@ async def cmd_unsetfedlog(message: Message) -> None:
 
 # --- Export and import ------------------------------------------------------------------------
 
-def _stamp(row: dict[str, Any]) -> str:
-    when = row.get("created_at")
-    return when.strftime("%Y-%m-%d %H:%M:%S") if hasattr(when, "strftime") else str(when or "")
-
-
-def render_export(rows: list[dict[str, Any]], fmt: str) -> tuple[bytes, str]:
-    """(file content, extension) of a ban list."""
-    if fmt == "json":
-        data = [
-            {"user_id": r["user_id"], "name": r["name"], "reason": r["reason"], "banned_by": r["banned_by_name"], "banned_at": _stamp(r)}
-            for r in rows
-        ]
-        return json.dumps(data, ensure_ascii=False, indent=1).encode(), "json"
-    if fmt == "human":
-        lines = [f"{r['name'] or 'Unknown'} [{r['user_id']}]" + (f" - {r['reason']}" if r["reason"] else "") for r in rows]
-        return "\n".join(lines).encode(), "txt"
-    out = io.StringIO()
-    writer = csv.writer(out, lineterminator="\n")
-    if fmt == "minicsv":
-        writer.writerow(["user_id", "reason"])
-        for r in rows:
-            writer.writerow([r["user_id"], r["reason"] or ""])
-    else:
-        writer.writerow(["user_id", "name", "reason", "banned_by", "banned_at"])
-        for r in rows:
-            writer.writerow([r["user_id"], r["name"] or "", r["reason"] or "", r["banned_by_name"] or "", _stamp(r)])
-    return out.getvalue().encode(), "csv"
-
-
 @router.message(cmd("fedexport"))
 async def cmd_fedexport(message: Message, command: CommandObject) -> None:
     mine = await _own_fed(message)
@@ -610,7 +577,7 @@ async def cmd_fedexport(message: Message, command: CommandObject) -> None:
         return
     user, fed = mine
     fmt = (command.args or "csv").strip().lower() or "csv"
-    if fmt not in _FORMATS:
+    if fmt not in FORMATS:
         await reply(message, "Use /fedexport csv, minicsv, json or human.")
         return
     now = time.monotonic()
@@ -631,70 +598,6 @@ async def cmd_fedexport(message: Message, command: CommandObject) -> None:
     )
 
 
-def _id_of(text: str) -> int | None:
-    text = text.strip()
-    return int(text) if re.fullmatch(r"-?\d{1,15}", text) and int(text) > 0 else None
-
-
-def parse_import(text: str, fmt: str | None) -> list[tuple[int, str | None, str | None]]:
-    """(user id, name, reason) rows from a file's text. Raises ValueError with a sentence."""
-    text = text.lstrip("﻿").strip()
-    if not text:
-        raise ValueError("The file is empty.")
-    if fmt is None:
-        if text[0] in "[{":
-            fmt = "json"
-        elif re.match(r"^(user_id|id)\b", text, re.IGNORECASE) or re.match(r"^\d+\s*(,|$)", text.splitlines()[0]):
-            fmt = "csv"
-        else:
-            fmt = "human"
-    rows: list[tuple[int, str | None, str | None]] = []
-    if fmt == "json":
-        try:
-            data = json.loads(text)
-        except ValueError:
-            raise ValueError("That is not valid JSON.") from None
-        if isinstance(data, dict):
-            data = data.get("bans", data.get("users", [data]))
-        if not isinstance(data, list):
-            raise ValueError("I expected a list of bans.")
-        for entry in data:
-            if isinstance(entry, dict):
-                user_id = _id_of(str(entry.get("user_id", entry.get("id", ""))))
-                name, reason = entry.get("name"), entry.get("reason")
-            else:
-                user_id, name, reason = _id_of(str(entry)), None, None
-            if user_id:
-                rows.append((user_id, str(name) if name else None, str(reason) if reason else None))
-    elif fmt in ("csv", "minicsv"):
-        table = list(csv.reader(io.StringIO(text)))
-        columns = {"user_id": 0, "name": 1, "reason": 2} if fmt == "csv" else {"user_id": 0, "reason": 1}
-        if table and _id_of(table[0][0] if table[0] else "") is None:
-            header = [cell.strip().lower() for cell in table.pop(0)]
-            columns = {key: header.index(key) for key in ("user_id", "name", "reason") if key in header} or columns
-            if "user_id" not in columns and "id" in header:
-                columns["user_id"] = header.index("id")
-        for row in table:
-            cell = lambda key: (row[columns[key]].strip() if key in columns and columns[key] < len(row) else "")
-            user_id = _id_of(cell("user_id"))
-            if user_id:
-                rows.append((user_id, cell("name") or None, cell("reason") or None))
-    else:
-        for line in text.splitlines():
-            found = re.search(r"\[(\d{1,15})\]", line) or re.match(r"^\s*(\d{1,15})\b", line)
-            if not found:
-                continue
-            before, after = line[: found.start()], line[found.end():]
-            reason = re.sub(r"^\s*[-:–—,]\s*", "", after).strip() or None
-            name = before.strip() or None
-            rows.append((int(found.group(1)), name, reason))
-    if not rows:
-        raise ValueError("I found no user IDs in that file.")
-    if len(rows) > MAX_IMPORT_ROWS:
-        raise ValueError(f"That is too many bans: at most {MAX_IMPORT_ROWS} at once.")
-    return rows
-
-
 @router.message(cmd("fedimport"))
 async def cmd_fedimport(message: Message, command: CommandObject) -> None:
     mine = await _own_fed(message)
@@ -703,16 +606,16 @@ async def cmd_fedimport(message: Message, command: CommandObject) -> None:
     user, fed = mine
     words = (command.args or "").lower().split()
     overwrite = "overwrite" in words
-    fmt = next((w for w in words if w in _FORMATS), None)
-    if any(w not in _FORMATS and w not in ("overwrite", "keep") for w in words):
+    fmt = next((w for w in words if w in FORMATS), None)
+    if any(w not in FORMATS and w not in ("overwrite", "keep") for w in words):
         await reply(message, "Use /fedimport [overwrite|keep] [csv|minicsv|json|human], as a reply to a file.")
         return
-    document = getattr(replied_message(message), "document", None)
+    document = getattr(message, "document", None) or getattr(replied_message(message), "document", None)
     if document is None:
-        await reply(message, "Reply to a file with the bans to import.")
+        await reply(message, "Reply to a file with the bans to import, or send the file with the command as its caption.")
         return
     if (document.file_size or 0) > MAX_IMPORT_BYTES:
-        await reply(message, "That file is too big: at most 5 MB.")
+        await reply(message, "That file is too big: at most 20 MB.")
         return
     try:
         raw = (await message.bot.download(document.file_id)).read()
@@ -723,11 +626,13 @@ async def cmd_fedimport(message: Message, command: CommandObject) -> None:
     except TelegramAPIError:
         await reply(message, "I couldn't download that file.")
         return
+    status = await reply(message, f"Importing {len(rows)} bans... Please wait!") if len(rows) > 2000 else None
     admins = {a["user_id"] for a in await federations.admins(fed["fed_id"])} | {fed["owner_id"], message.bot.id}
     kept = [r for r in rows if r[0] not in admins and not immunity.is_immune(r[0])]
     added = await federations.import_bans(fed["fed_id"], kept, overwrite, user.id, user.full_name)
     skipped = len(rows) - added
-    await reply(
+    send = (lambda m, text: edit(status, text)) if status is not None else reply
+    await send(
         message,
         f"Imported <b>{added}</b> ban{'s' if added != 1 else ''} into {_fed_name(fed)}."
         + (f" Skipped <b>{skipped}</b> (already banned, or admins)." if skipped else "")
@@ -813,7 +718,6 @@ async def cmd_fban(message: Message, command: CommandObject) -> None:
     text = _ban_text("New FedBan", fed, user, target.user_id, target.name, reason)
     await reply(message, text)
     await _event(message.bot, fed, text)
-    _spawn(_propagate(message.bot, fed["fed_id"], target.user_id))
 
 
 @router.callback_query(F.data.startswith(CB_REASON))
@@ -1112,24 +1016,15 @@ async def _spared(bot: Bot, chat_id: int, user_id: int) -> bool:
     )
 
 
-async def _propagate(bot: Bot, fed_id: str, user_id: int) -> None:
-    """Remove a newly banned user from every chat the ban reaches."""
-    try:
-        for chat_id in await federations.chats_of(await federations.reaches(fed_id)):
-            if await federations.effective_ban(chat_id, user_id) is None:
-                continue  # lifted, or never applied to this chat, while this was running
-            if not await _spared(bot, chat_id, user_id):
-                await _ban_in(bot, chat_id, user_id)
-            await asyncio.sleep(0.05)
-    except Exception:
-        log.exception("Spreading a federation ban failed")
-
-
 async def _lift(bot: Bot, fed_id: str, user_id: int) -> None:
     """Unban where the bot banned because of this federation, unless another federation still bans them there."""
     try:
         reach = set(await federations.chats_of(await federations.reaches(fed_id)))
-        for chat_id in await federations.applied_in(user_id):
+        # Every chat the ban reached, not only those where the bot remembers banning them.
+        targets = dict.fromkeys(await federations.applied_in(user_id))
+        for chat_id in reach:
+            targets.setdefault(chat_id)
+        for chat_id in targets:
             if chat_id not in reach or await federations.effective_ban(chat_id, user_id) is not None:
                 continue
             with suppress(TelegramAPIError):
@@ -1171,6 +1066,8 @@ async def _banned_in_message(message: Message, bot: Bot) -> dict[str, Any] | boo
     user = message.from_user
     if user is None or message.chat.type not in GROUP_TYPES or message.sender_chat is not None:
         return False
+    if getattr(message, "new_chat_members", None) or getattr(message, "left_chat_member", None):
+        return False  # joins and leaves are handled as member updates
     return await _banned(bot, message.chat.id, user)
 
 
@@ -1183,26 +1080,36 @@ async def enforce_on_message(message: Message, bot: Bot, fed_ban: tuple) -> None
     await _enforce(bot, message.chat.id, message.from_user, fed_ban, thread)
 
 
-def _joined(event: ChatMemberUpdated) -> bool:
-    def status(member) -> str:
-        value = getattr(member.status, "value", member.status)
-        if value == "restricted" and not getattr(member, "is_member", True):
-            return "left"
-        return value
+def _moved(event: ChatMemberUpdated) -> bool:
+    """Joining or leaving, as in KryoRobot: a ban (by anyone) or another change is not acted on."""
+    def value(member) -> str:
+        return str(getattr(member.status, "value", member.status))
 
-    return status(event.old_chat_member) in ("left", "kicked") and status(event.new_chat_member) in ("member", "restricted")
+    before, after = value(event.old_chat_member), value(event.new_chat_member)
+    return (after == "member" and before != "member") or (after == "left" and before == "member")
 
 
-async def _banned_joining(event: ChatMemberUpdated, bot: Bot) -> dict[str, Any] | bool:
+async def _banned_active(event: ChatMemberUpdated, bot: Bot) -> dict[str, Any] | bool:
     user = event.new_chat_member.user
-    if event.chat.type not in GROUP_TYPES or user.id == bot.id or not _joined(event):
+    if event.chat.type not in GROUP_TYPES or user.id == bot.id or not _moved(event):
         return False
     return await _banned(bot, event.chat.id, user)
 
 
-@router.chat_member(_banned_joining)
-async def enforce_on_join(event: ChatMemberUpdated, bot: Bot, fed_ban: tuple) -> None:
+@router.chat_member(_banned_active)
+async def enforce_on_member_change(event: ChatMemberUpdated, bot: Bot, fed_ban: tuple) -> None:
     await _enforce(bot, event.chat.id, event.new_chat_member.user, fed_ban, None)
+
+
+async def _banned_reacting(reaction: MessageReactionUpdated, bot: Bot) -> dict[str, Any] | bool:
+    if reaction.user is None or reaction.chat.type not in GROUP_TYPES:
+        return False
+    return await _banned(bot, reaction.chat.id, reaction.user)
+
+
+@router.message_reaction(_banned_reacting)
+async def enforce_on_reaction(reaction: MessageReactionUpdated, bot: Bot, fed_ban: tuple) -> None:
+    await _enforce(bot, reaction.chat.id, reaction.user, fed_ban, None)
 
 
 # --- /info ------------------------------------------------------------------------------------
