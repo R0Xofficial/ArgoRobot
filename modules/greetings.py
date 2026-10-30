@@ -184,7 +184,7 @@ async def _set(message: Message, command: CommandObject, role: Role | None, kind
     # Typed text and a replied-to message are both turned into the HTML of core/markup.py.
     text = sender.args_of(message, command)
     replied = replied_message(message)
-    media = sender.media_of(replied)
+    media = sender.media_of(message) or sender.media_of(replied)  # media sent with the command, else the replied-to message's
     if not text and replied is not None:
         text = sender.text_of(replied)
     if not text and media is None:

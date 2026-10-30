@@ -40,7 +40,7 @@ The basics: get to know me, find your way around, and look people up.
 
 HELP = [
     ("/start", "Say hello. In a group I only point you to a private chat, where I can show you what I do."),
-    ("/help", "Open this panel. In a group you get a button that opens it in a private chat."),
+    ("/help [topic]", "Open this panel, or go straight to a page: /help notes, or the name of any command. In a group you get a button that opens it in a private chat."),
     ("/id [user]", "Show your Telegram ID, plus the chat's ID when you use it in a group. Give a user, group or channel to see their ID instead."),
     ("/info [user]", "Show what I know about a user, bot, group or channel. Users get a User Info section (name, username, ID and, in a group, their status: Owner, Admin, Member, Muted or Banned, with Approved added) and an Argo Info section (bot role and Yes/No flags like Globally Banned, FedBanned, Whitelisted, Immune and AFK). People with a role show no flags. If I have no data on someone, I say so: they have to message me first, or I have to see them in a chat I am in."),
     ("/tr [language] <text>", "Translate text into a language (default: English). Give a language code like pl, de or es first, or reply to a message to translate it."),
@@ -214,7 +214,15 @@ async def cmd_start(message: Message, command: CommandObject, role: Role | None 
         return
 
     # Deep link from the group's /help button: t.me/<bot>?start=help
-    if (command.args or "").strip().lower() == "help":
+    payload = (command.args or "").strip().lower()
+    if payload == "help":
+        await reply(message, _help_home_text(role), reply_markup=_help_home_keyboard(role))
+        return
+    if payload.startswith("help_"):
+        info = registry.get(payload[len("help_"):])
+        if info is not None and info.enabled and help_index.entries(info.module, role):
+            await reply(message, _help_category_text(info, role), reply_markup=_help_category_keyboard(info, role))
+            return
         await reply(message, _help_home_text(role), reply_markup=_help_home_keyboard(role))
         return
 
@@ -234,14 +242,45 @@ async def cb_start(callback: CallbackQuery) -> None:
 
 # --- /help ------------------------------------------------------------------
 
+def _help_topic(topic: str, role: Role | None) -> registry.ModuleInfo | None:
+    """
+    The help page a typed word stands for: a category by its name or title, else the category
+    that has a command of that name (/help save opens the notes).
+    """
+    word = " ".join(topic.lower().lstrip("/!").split())
+    if not word:
+        return None
+    found = help_index.categories(role)
+    for info in found:
+        if word in (info.name.lower(), _help_title(info).lower()):
+            return info
+    starts = [info for info in found if info.name.lower().startswith(word) or _help_title(info).lower().startswith(word)]
+    if len(starts) == 1:
+        return starts[0]
+    command = word.split()[0]
+    for info in found:
+        for usage, _description in help_index.entries(info.module, role):
+            names = {part.lstrip("/!").split("[")[0].split("<")[0].lower() for part in usage.split()[:1]}
+            if command in names:
+                return info
+    return None
+
+
 @router.message(cmd("help"))
-async def cmd_help(message: Message, role: Role | None = None) -> None:
+async def cmd_help(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    topic = (command.args or "").strip()
+    info = _help_topic(topic, role) if topic else None
+    if topic and info is None:
+        await reply(message, f"I have no help page for <b>{esc(topic[:40])}</b>. Use /help to see the categories.")
+        return
+
     if message.chat.type != "private":
-        # Groups: a button that opens the help panel in the private chat.
+        # Groups: a button that opens the help panel (or the asked-for page) in the private chat.
         me = await message.bot.me()
+        suffix = f"help_{info.name}" if info is not None else "help"
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="Help", url=f"https://t.me/{me.username}?start=help")]
+                [InlineKeyboardButton(text="Help", url=f"https://t.me/{me.username}?start={suffix}")]
             ]
         )
         await reply(
@@ -251,6 +290,9 @@ async def cmd_help(message: Message, role: Role | None = None) -> None:
         )
         return
 
+    if info is not None:
+        await reply(message, _help_category_text(info, role), reply_markup=_help_category_keyboard(info, role))
+        return
     await reply(message, _help_home_text(role), reply_markup=_help_home_keyboard(role))
 
 
