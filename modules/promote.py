@@ -24,8 +24,8 @@ Name the target by replying to their message, or with a @username or a numeric I
 HELP_WHO = "admins"
 
 HELP = [
-    ("/promote <user>", "Make a user an admin with the usual permissions."),
-    ("/fullPromote <user>", "Make a user an admin with every permission except staying anonymous."),
+    ("/promote <user> [title]", "Make a user an admin with the usual permissions. Text after the user becomes their title, like /promote @name Guy."),
+    ("/fullPromote <user> [title]", "Make a user an admin with every permission except staying anonymous. A title can follow the user too."),
     ("/demote <user>", "Take admin rights away from an admin I promoted."),
     ("/title <user> <text>", "Set a custom title (up to 16 characters, no emoji) on an admin I promoted. Without text the title is cleared. Admins can change their own."),
     ("/tag <user> <text>", "Set a custom tag (up to 16 characters) on a member. Without text the tag is cleared."),
@@ -160,6 +160,9 @@ async def cmd_promote(message: Message, command: CommandObject) -> None:
 
     try:
         target = await _target(message, command)
+        title = target.extra.strip()
+        if len(title) > MAX_LENGTH:
+            raise ModerationError(f"A title can have at most {MAX_LENGTH} characters.")
         await moderation.check_target(bot, message.chat, target, actor, None, punitive=False)
         bot_member = await _bot_member(message, "can_promote_members")
         target_member = await _member(message, target.user_id)
@@ -187,11 +190,21 @@ async def cmd_promote(message: Message, command: CommandObject) -> None:
         await reply(message, _promotion_problem(exc))
         return
 
+    # /promote @user Guy: the rest of the line is the new admin's title.
+    title_line = ""
+    if title:
+        try:
+            await _call(bot.set_chat_administrator_custom_title(message.chat.id, target.user_id, title))
+            title_line = f"\nTitle: <b>{esc(title)}</b>"
+        except (TelegramBadRequest, ModerationError) as exc:
+            reason = "A title can't contain emoji." if "emoji" in str(exc).lower() else "I couldn't set the title."
+            title_line = f"\nTitle not set: {reason}"
+
     kind = "to admin with every permission I can give" if full else "to admin"
     await reply(
         message,
         f"{user_link(target.user_id, target.name)} was promoted {kind}{moderation.by(actor)}\n"
-        f"Rights: {_rights_text(rights)}." + moderation.staff_note(actor),
+        f"Rights: {_rights_text(rights)}.{title_line}" + moderation.staff_note(actor),
     )
 
 
@@ -284,11 +297,11 @@ async def cmd_title(message: Message, command: CommandObject) -> None:
             raise
         return
 
-    who = user_ref(target.user_id, target.name)
+    who = user_link(target.user_id, target.name)
     if text:
-        await reply(message, f"The title of {who} is now <b>{esc(text)}</b>." + moderation.attribution(actor))
+        await reply(message, f"{who} was given the title <b>{esc(text)}</b>{moderation.by(actor)}")
     else:
-        await reply(message, f"The title of {who} has been cleared." + moderation.attribution(actor))
+        await reply(message, f"The title of {who} was cleared{moderation.by(actor)}")
 
 
 # --- /tag -------------------------------------------------------------------------------
@@ -347,8 +360,8 @@ async def cmd_tag(message: Message, command: CommandObject) -> None:
             return
         raise
 
-    who = user_ref(target.user_id, target.name)
+    who = user_link(target.user_id, target.name)
     if text:
-        await reply(message, f"The tag of {who} is now <b>{esc(text)}</b>." + moderation.attribution(actor))
+        await reply(message, f"{who} was given the tag <b>{esc(text)}</b>{moderation.by(actor)}")
     else:
-        await reply(message, f"The tag of {who} has been cleared." + moderation.attribution(actor))
+        await reply(message, f"The tag of {who} was cleared{moderation.by(actor)}")

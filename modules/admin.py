@@ -230,7 +230,7 @@ async def cmd_link(message: Message, command: CommandObject, role: Role | None =
         kind = f"Invite link for {limit} {'person' if limit == 1 else 'people'}"
     await reply(
         message,
-        f"{kind}: {esc(created.invite_link)}" + moderation.attribution(actor),
+        f"{kind} was created{moderation.by(actor)}:\n{esc(created.invite_link)}",
         link_preview_options=NO_PREVIEW,
     )
 
@@ -258,7 +258,7 @@ async def cmd_gtitle(message: Message, command: CommandObject, role: Role | None
     except ModerationError as exc:
         await moderation.deny(message, exc)
         return
-    await reply(message, f"The chat title is now <b>{esc(title)}</b>." + moderation.attribution(actor))
+    await reply(message, f"The chat title was changed to <b>{esc(title)}</b>{moderation.by(actor)}")
 
 
 # --- /adminlist ---------------------------------------------------------------------------------
@@ -365,7 +365,7 @@ async def cmd_pin(message: Message, command: CommandObject, role: Role | None = 
         return
     await reply(
         message,
-        "Pinned the message" + (" and notified everyone." if argument else ".") + moderation.attribution(actor),
+        "The message was pinned" + moderation.by(actor) + (" and everyone was notified." if argument else "."),
     )
 
 
@@ -386,8 +386,8 @@ async def cmd_unpin(message: Message, role: Role | None = None) -> None:
     except TelegramBadRequest as exc:
         await reply(message, esc(_pin_problem(exc, "unpin")))
         return
-    what = "the message" if target else "the most recent pinned message"
-    await reply(message, f"Unpinned {what}." + moderation.attribution(actor))
+    what = "The message" if target else "The most recent pinned message"
+    await reply(message, f"{what} was unpinned{moderation.by(actor)}.")
 
 
 def _pin_problem(exc: Exception, action: str) -> str:

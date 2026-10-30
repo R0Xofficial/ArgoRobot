@@ -52,8 +52,8 @@ HELP = [
     ("/renamefed <name>", "Rename your federation. Private chat only.", S_OWNER, OWNER),
     ("/delfed", "Delete your federation. Nobody is unbanned in their chats. Private chat only.", S_OWNER, OWNER),
     ("/fedtransfer <user>", "Give your federation to a user, who has to accept. Private chat only.", S_OWNER, OWNER),
-    ("/fedpromote <user>", "Make a user a federation admin. They have to accept.", S_OWNER, OWNER),
-    ("/feddemote <user>", "Take a federation admin's rights away.", S_OWNER, OWNER),
+    ("/fedpromote <user>", "Make a user a federation admin. They have to accept. Alias: /fpromote.", S_OWNER, OWNER),
+    ("/feddemote <user>", "Take a federation admin's rights away. Alias: /fdemote.", S_OWNER, OWNER),
     ("/fednotif <on|off>", "Get a private message about every action.", S_OWNER, OWNER),
     ("/fedreason <on|off>", "Make federation bans require a reason. Private chat only.", S_OWNER, OWNER),
     ("/subfed <FedID>", "Inherit the bans of another federation.", S_OWNER, OWNER),
@@ -377,7 +377,7 @@ async def cb_fedtransfer(callback: CallbackQuery) -> None:
     await _event(callback.bot, {**fed, "owner_id": callback.from_user.id}, f"<b>New FedOwner</b>\n{_item('Federation', _fed_name(fed))}\n{_item('New owner', user_link(callback.from_user.id, callback.from_user.full_name))}")
 
 
-@router.message(cmd("fedpromote"))
+@router.message(cmd("fedpromote", "fpromote"))
 async def cmd_fedpromote(message: Message, command: CommandObject) -> None:
     mine = await _own_fed(message)
     if mine is None:
@@ -434,7 +434,7 @@ async def cb_fedpromote(callback: CallbackQuery) -> None:
     await _event(callback.bot, fed, f"<b>New FedAdmin</b>\n{_item('Federation', _fed_name(fed))}\n{_item('User', who)}")
 
 
-@router.message(cmd("feddemote"))
+@router.message(cmd("feddemote", "fdemote"))
 async def cmd_feddemote(message: Message, command: CommandObject) -> None:
     mine = await _own_fed(message)
     if mine is None:
