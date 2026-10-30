@@ -7,9 +7,9 @@ from datetime import datetime, timedelta, timezone
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
-from aiogram.types import ChatPermissions, Message
+from aiogram.types import Chat, ChatPermissions, Message
 
-from core import approvals, gbans, greetings, immunity, moderation, sender
+from core import approvals, captchas, disabled, gbans, greetings, immunity, moderation, registry, sender
 from core.filters import cmd
 from core.help_index import Section
 from core.helpers import reply
@@ -103,6 +103,7 @@ router = Router(name="greetings")
 RIGHT = "can_change_info"  # the admin right needed to change these settings
 LOOK_RIGHT = "can_manage_chat"  # every admin holds it: enough to look
 MAX_GREETED = 5  # people greeted for one "joined" message (someone can add many at once)
+captchas.WELCOME_LIMIT = MAX_GREETED  # the captcha button rides on these welcomes
 MUTE_HOURS = 24
 
 
@@ -338,6 +339,34 @@ async def _delete(message: Message) -> None:
         await message.delete()
 
 
+async def _greet(message: Message, people: list, settings: dict) -> None:
+    """The welcome mute and the welcome message for people who are in."""
+    if settings["welcome_mute"]:
+        for user in people:
+            await _restrict_newcomer(message, user)
+
+    if settings["welcome_on"] and people:
+        content, media_type, file_id = greetings.message_of(settings, "welcome")
+        previous = settings["last_welcome_id"]
+        if settings["clean_welcome"] and previous:
+            with suppress(TelegramAPIError):
+                await message.bot.delete_message(message.chat.id, previous)
+        last_sent = None
+        for user in people:
+            # Somebody with a captcha message of their own is welcomed once through; someone whose
+            # welcome carries the captcha button gets it.
+            skip, button = await captchas.welcome_for(message.bot, message.chat.id, user.id)
+            if skip:
+                continue
+            sent = await sender.send(message, user, content, media_type, file_id, label="welcome message", extra_button=button)
+            if sent is not None:
+                last_sent = sent.message_id
+                if button is not None:
+                    await captchas.mark_welcomed(message.chat.id, user.id)
+        if last_sent is not None and settings["clean_welcome"]:
+            await greetings.update(message.chat.id, last_welcome_id=last_sent)
+
+
 @router.message(F.new_chat_members)
 async def on_join(message: Message) -> None:
     if message.chat.type not in GROUP_TYPES:
@@ -351,26 +380,30 @@ async def on_join(message: Message) -> None:
         people.append(user)
     people = people[:MAX_GREETED]
 
-    if settings["welcome_mute"]:
-        for user in people:
-            await _restrict_newcomer(message, user)
-
-    if settings["welcome_on"] and people:
-        content, media_type, file_id = greetings.message_of(settings, "welcome")
-        previous = settings["last_welcome_id"]
-        if settings["clean_welcome"] and previous:
-            with suppress(TelegramAPIError):
-                await message.bot.delete_message(message.chat.id, previous)
-        last_sent = None
-        for user in people:
-            sent = await sender.send(message, user, content, media_type, file_id, label="welcome message")
-            if sent is not None:
-                last_sent = sent.message_id
-        if last_sent is not None and settings["clean_welcome"]:
-            await greetings.update(message.chat.id, last_welcome_id=last_sent)
+    await _greet(message, people, settings)
 
     if settings["clean_service"]:
         await _delete(message)
+
+
+async def _greet_after_captcha(bot, chat_id: int, user, join_message_id: int | None) -> None:
+    """Somebody got through a captcha: this is the welcome they would have had on joining."""
+    info = registry.get("greetings")
+    if info is None or not info.enabled or await disabled.module_off(chat_id, "greetings"):
+        return
+    try:
+        chat = await bot.get_chat(chat_id)
+    except TelegramAPIError:
+        return
+    message = Message(
+        message_id=join_message_id or 0,
+        date=datetime.now(timezone.utc),
+        chat=Chat(id=chat.id, type=chat.type, title=chat.title),
+    ).as_(bot)
+    await _greet(message, [user], await greetings.get(chat_id))
+
+
+captchas.on_released(_greet_after_captcha)
 
 
 @router.message(F.left_chat_member)

@@ -94,6 +94,43 @@ CREATE TABLE IF NOT EXISTS connections (
     connected_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Captchas (see core/captchas.py): a chat's settings, and the people who still have to solve one.
+CREATE TABLE IF NOT EXISTS captcha_settings (
+    chat_id      BIGINT PRIMARY KEY,
+    enabled      BOOLEAN NOT NULL DEFAULT FALSE,
+    mode         TEXT    NOT NULL DEFAULT 'button',
+    rules        BOOLEAN NOT NULL DEFAULT FALSE,
+    mute_seconds INTEGER,
+    kick         BOOLEAN NOT NULL DEFAULT FALSE,
+    kick_seconds INTEGER NOT NULL DEFAULT 300,
+    button_text  TEXT
+);
+CREATE TABLE IF NOT EXISTS captcha_pending (
+    id              BIGSERIAL PRIMARY KEY,
+    chat_id         BIGINT NOT NULL,
+    user_id         BIGINT NOT NULL,
+    kind            TEXT   NOT NULL DEFAULT 'join',
+    mode            TEXT   NOT NULL,
+    phase           TEXT   NOT NULL DEFAULT 'captcha',
+    question        TEXT,
+    answer          TEXT,
+    layout          TEXT,
+    taken           TEXT   NOT NULL DEFAULT '',
+    name            TEXT,
+    title           TEXT,
+    message_chat_id BIGINT,
+    message_id      BIGINT,
+    is_photo        BOOLEAN NOT NULL DEFAULT FALSE,
+    join_message_id BIGINT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    unmute_at       TIMESTAMPTZ,
+    kick_at         TIMESTAMPTZ,
+    expires_at      TIMESTAMPTZ,
+    UNIQUE (chat_id, user_id)
+);
+ALTER TABLE captcha_pending ADD COLUMN IF NOT EXISTS attached BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE captcha_pending ADD COLUMN IF NOT EXISTS welcomed BOOLEAN NOT NULL DEFAULT FALSE;
+
 -- Settings the owner of a chat controls (see core/chatsettings.py).
 CREATE TABLE IF NOT EXISTS chat_settings (
     chat_id    BIGINT PRIMARY KEY,

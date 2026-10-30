@@ -26,7 +26,7 @@ GROUP_TYPES = ("group", "supergroup")
 # Modules whose commands are about running the group.
 CONNECTABLE = frozenset({
     "bans", "mutes", "warns", "locks", "blacklists", "filters", "notes", "greetings", "rules",
-    "approves", "promote", "antiflood", "joinblacklists", "admin",
+    "approves", "promote", "antiflood", "joinblacklists", "admin", "captcha",
 })
 
 # Commands of those modules that don't make sense from a private chat: they delete the command

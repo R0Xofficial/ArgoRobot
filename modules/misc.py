@@ -42,7 +42,7 @@ HELP = [
     ("/start", "Say hello. In a group I only point you to a private chat, where I can show you what I do."),
     ("/help [topic]", "Open this panel, or go straight to a page: /help notes, or the name of any command. In a group you get a button that opens it in a private chat."),
     ("/id [user]", "Show your Telegram ID, plus the chat's ID when you use it in a group. Give a user, group or channel to see their ID instead."),
-    ("/info [user]", "Show what I know about a user, bot, group or channel. Users get a User Info section (name, username, ID and, in a group, their status: Owner, Admin, Member, Muted or Banned, with Approved added) and an Argo Info section (bot role and Yes/No flags like Globally Banned, FedBanned, Whitelisted, Immune and AFK). People with a role show no flags. If I have no data on someone, I say so: they have to message me first, or I have to see them in a chat I am in."),
+    ("/info [user]", "Show what I know about a user, bot, group or channel. Users get a User Info section (name, username, ID and, in a group, their status: Owner, Admin, Member, Muted or Banned, with Approved added, or Muted (No Captcha) while a captcha is unsolved) and an Argo Info section (bot role and Yes/No flags like Globally Banned, FedBanned, Whitelisted, Immune and AFK). People with a role show no flags. If I have no data on someone, I say so: they have to message me first, or I have to see them in a chat I am in."),
     ("/tr [language] <text>", "Translate text into a language (default: English). Give a language code like pl, de or es first, or reply to a message to translate it."),
     ("/dict <word>", "Look up an English word: how it is pronounced and what it means."),
     ("/time <place or timezone>", "Show the current time and date in a city or a timezone, like Tokyo or Europe/Warsaw."),
@@ -226,6 +226,14 @@ async def cmd_start(message: Message, command: CommandObject, role: Role | None 
         if chat_id.lstrip("-").isdigit():
             await connect_and_tell(message, int(chat_id))
             return
+    if payload.startswith("cap_") and payload[4:].lstrip("-").isdigit():
+        # t.me/<bot>?start=cap_<id>: the captcha button of a welcome message
+        from core import captchas
+
+        problem = await captchas.open_in_private(message.bot, message.from_user, int(payload[4:]), message.chat.id)
+        if problem:
+            await reply(message, problem)
+        return
     if payload.startswith("help_"):
         info = registry.get(payload[len("help_"):])
         if info is not None and info.enabled and help_index.entries(info.module, role):
@@ -470,7 +478,7 @@ def _chat_status(member) -> str:
 FLAG_ORDER = ("Globally Banned", "FedBanned", "Whitelisted", "Immune", "AFK", "FedAdmin")
 
 
-def _standing(member, approved: bool) -> str | None:
+def _standing(member, approved: bool, captcha: bool = False) -> str | None:
     """
     The "Status" of a person in a chat: Owner, Admin, Banned, Muted, Member (Approved) ...
     None when Telegram won't say.
@@ -486,6 +494,8 @@ def _standing(member, approved: bool) -> str | None:
             text = "Muted"
     if approved and text in ("Member", "Muted"):
         text += " (Approved)"
+    elif captcha and text == "Muted":
+        text = "Muted (No Captcha)"  # muted until the captcha is solved (modules/captcha.py)
     return text
 
 
@@ -535,15 +545,16 @@ async def _user_info(bot, chat, target: Target) -> list[str]:
     # A role settles it: admins and the bot's staff have no flags to list.
     has_role = role is not None or (member not in (None, "gone") and _chat_status(member) in ("Owner", "Admin"))
     flags: list[tuple[str, bool]] = []
-    approved = False
+    approved = captcha = False
     if not has_role:
         found = await info_hooks.flags_for(bot, target.user_id, chat_id)
         approved = any(name == "Approved" and value for name, value in found)  # shown in the Status
-        flags = [flag for flag in found if flag[0] != "Approved"]
+        captcha = any(name == "Captcha Pending" and value for name, value in found)  # shown in the Status too
+        flags = [flag for flag in found if flag[0] not in ("Approved", "Captcha Pending")]
     # Facts that hold for admins and staff as well.
     flags += await info_hooks.flags_for(bot, target.user_id, chat_id, always=True)
 
-    standing = _standing(member, approved)
+    standing = _standing(member, approved, captcha)
     if standing is not None:
         lines.append(_item("Status", f"<code>{standing}</code>"))
 

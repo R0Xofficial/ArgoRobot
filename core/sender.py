@@ -156,6 +156,7 @@ async def send(
     raw: bool = False,
     label: str = "saved message",
     chat=None,
+    extra_button: InlineKeyboardButton | None = None,
 ) -> Message | None:
     """
     Send a saved message in answer to `message`, filled in for `user`. Returns the
@@ -164,6 +165,7 @@ async def send(
 
     raw: send the text exactly as it was saved, without formatting, buttons or options.
     chat: the chat the message belongs to when it is sent somewhere else (a private chat).
+    extra_button: one more button, on a row of its own under the saved ones (the captcha button).
     """
     if raw:
         parsed = markup.Parsed(esc(content), [], set())
@@ -176,6 +178,9 @@ async def send(
             return None
 
     keyboard = _keyboard(parsed)
+    if extra_button is not None:
+        rows = list(keyboard.inline_keyboard) if keyboard else []
+        keyboard = InlineKeyboardMarkup(inline_keyboard=rows + [[extra_button]])
     extra: dict[str, Any] = {}
     if "protect" in parsed.options:
         extra["protect_content"] = True

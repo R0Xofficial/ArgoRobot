@@ -30,7 +30,7 @@ from aiogram.enums import ParseMode
 
 import modules
 from config import settings
-from core import chats, database, logs, registry, users
+from core import captchas, chats, database, logs, registry, users
 from core.errors import setup_error_handling
 from core.middlewares import CleanCommandsMiddleware, ConnectionMiddleware, LoggingMiddleware, RolesMiddleware, UsersMiddleware
 from core.text import esc
@@ -119,10 +119,14 @@ async def on_startup(bot: Bot) -> None:
     # Periodically forget chats the bot has been removed from (see core/chats.py).
     chats.start_cleanup_schedule(bot, settings.CHAT_CLEANUP_HOURS)
 
+    # Kicks and unmutes of people who did not solve their captcha in time (core/captchas.py).
+    captchas.start_sweeper(bot)
+
 
 async def on_shutdown(bot: Bot) -> None:
     log.info("Shutting down")
     await chats.stop_cleanup_schedule()
+    await captchas.stop_sweeper()
     await logs.dev_log(bot, "Bot stopped.")
     try:
         await database.close()

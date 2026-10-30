@@ -36,7 +36,7 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
 )
 
-from core import blacklist, chatsettings, connection, database, disabled, filterstore, flood, federations, joinblacklist, locks, logs
+from core import blacklist, captchas, chatsettings, connection, database, disabled, filterstore, flood, federations, joinblacklist, locks, logs
 from core.errors import report_exception
 from core.text import esc
 from core.users import CACHE_LIMIT, IGNORED_IDS, REFRESH_SECONDS
@@ -151,7 +151,8 @@ ON CONFLICT (user_id, chat_id) DO UPDATE SET last_seen = now()
 # A data-modifying CTE runs even though nothing reads from it.
 DELETE_CHAT = """
 WITH gone AS (DELETE FROM user_chats WHERE chat_id = $1),
-     bans AS (DELETE FROM gban_bans WHERE chat_id = $1)
+     bans AS (DELETE FROM gban_bans WHERE chat_id = $1),
+     waiting AS (DELETE FROM captcha_pending WHERE chat_id = $1)
 DELETE FROM chats WHERE chat_id = $1
 """
 
@@ -224,11 +225,12 @@ async def migrate_chat(old_id: int, new_id: int) -> None:
         new_id,
     )
     # Settings, warns and approvals follow the chat to its new id.
-    for table in ("chat_settings", "warn_settings", "warns", "approvals", "gban_bans", "flood_settings", "blacklist", "blacklist_settings", "filters", "greetings", "join_blacklist", "notes", "rules", "locks", "lock_settings", "lock_allowlist", "fed_chats", "fed_applied", "disabled_commands", "connections"):
+    for table in ("chat_settings", "warn_settings", "warns", "approvals", "gban_bans", "flood_settings", "blacklist", "blacklist_settings", "filters", "greetings", "join_blacklist", "notes", "rules", "locks", "lock_settings", "lock_allowlist", "fed_chats", "fed_applied", "disabled_commands", "connections", "captcha_settings", "captcha_pending"):
         await database.execute(f"UPDATE {table} SET chat_id = $2 WHERE chat_id = $1", old_id, new_id)
     chatsettings.forget(old_id)
     disabled.forget(old_id)
     connection.forget_chat(old_id, new_id)
+    captchas.forget(old_id)
     flood.forget(old_id)
     blacklist.forget(old_id)
     filterstore.forget(old_id)

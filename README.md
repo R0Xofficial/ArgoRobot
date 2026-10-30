@@ -14,19 +14,20 @@ Repository: <https://github.com/R0Xofficial/ArgoRobot>
 4. [Configuration](#4-configuration)
 5. [Roles](#5-roles)
 6. [How bans reach people](#6-how-bans-reach-people)
-7. [Federations](#7-federations)
-8. [Managing a group from a private chat](#8-managing-a-group-from-a-private-chat)
-9. [Switching commands off](#9-switching-commands-off)
-10. [Logs](#10-logs)
-11. [Project layout and adding modules](#11-project-layout-and-adding-modules)
-12. [Good to know](#12-good-to-know)
+7. [Captchas](#7-captchas)
+8. [Federations](#8-federations)
+9. [Managing a group from a private chat](#9-managing-a-group-from-a-private-chat)
+10. [Switching commands off](#10-switching-commands-and-modules-off)
+11. [Logs](#11-logs)
+12. [Project layout and adding modules](#12-project-layout-and-adding-modules)
+13. [Good to know](#13-good-to-know)
 
 ## 1. What it does
 
 | Area | Features |
 | --- | --- |
 | **Moderation** | Bans, temporary bans, kicks, mutes, temporary mutes, warnings with a limit and an action, silent and "delete the message too" variants (`/sban`, `/smute`, `/dban`, `/dwarn` ...), `/kickme`, removing zombies (deleted accounts) with `/zombies`, bulk deleting messages (`/purge`). |
-| **Automatic protection** | Antiflood, locks (urls, media, forwards ...), blacklisted words and phrases, warn filters, join blacklists (names, usernames, bios, channels), approved users that automatic measures skip, user reports to the admins. |
+| **Automatic protection** | Captchas for newcomers (button, math, scrambled code, picture), antiflood, locks (urls, media, forwards ...), blacklisted words and phrases, warn filters, join blacklists (names, usernames, bios, channels), approved users that automatic measures skip, user reports to the admins. |
 | **Chat tools** | Welcome and goodbye messages (with media and buttons), rules, notes, filters, promote/demote with custom titles, pins, invite links, AFK, backups of a chat's data, sticker tools, light commands for fun. |
 | **Bans across chats** | Federations (one ban list for many chats, with subscriptions) and global bans (`/gban`) decided by the bot's staff. |
 | **Housekeeping** | A log chat for moderation actions, per-chat switches, switching single commands or whole modules off, managing a group from a private chat (`/connect`). |
@@ -131,7 +132,29 @@ The bot says why ("This user is globally banned ...", with the reason) so chat a
 
 **Why it works this way.** It needs far fewer requests to Telegram, covers chats the person joins later, and every removal comes with a visible reason.
 
-## 7. Federations
+## 7. Captchas
+
+Chats that get spammed by joining accounts can make newcomers prove they are people. Everybody who joins is muted until they pass a test; then they are unmuted and the welcome message is sent.
+
+```
+/captcha on                  /captcha off
+/captchamode math            (button, math, text or text2)
+/captcharules on             (also accept the rules before speaking)
+/captchamutetime 1d          (unmute people who didn't solve it after a day; off: stay muted)
+/captchakick on              /captchakicktime 5m
+/setcaptchatext I come in peace    /resetcaptchatext
+```
+
+| Mode | The test |
+| --- | --- |
+| `button` | Press one button (its text can be changed). |
+| `math` | A small sum with six answers to choose from. |
+| `text` | A code is written in the message; its characters sit scrambled on buttons and must be pressed in the order of the code. |
+| `text2` | The same, but the code is a picture. |
+
+With welcome messages on, the newcomer's welcome carries a verify button: in `button` mode one press unmutes them, the other modes (and `button` with `/captcharules`) lead to a private chat with the bot, where the test is solved. Captchas need welcome messages: with `/welcome` off nobody is muted. If the chat uses join requests, the captcha is sent to the person privately and their request is approved once they pass; when time runs out the request is dismissed. Waiting people survive a restart of the bot. Admins, approved users, bots and the bot's staff are never tested. Turning captchas (or the module) off lets everybody who was waiting in. The bot needs the right to restrict users.
+
+## 8. Federations
 
 A federation is a ban list shared by many chats.
 
@@ -148,7 +171,7 @@ A federation is a ban list shared by many chats.
 
 **Lost rights.** When the bot loses the right to ban users in a chat, that chat leaves its federation by itself and says so. Give the right back and use `/joinfed` to join again.
 
-## 8. Managing a group from a private chat
+## 9. Managing a group from a private chat
 
 1. In the group, send `/connect`. The bot answers with a button. (Or, in a private chat with the bot: `/connect <chat id or @username>`.)
 2. From then on, the group's admin commands you send to the bot privately (`/ban @someone`, `/lock url`, `/filters` ...) act on that group, and the bot answers privately.
@@ -156,7 +179,7 @@ A federation is a ban list shared by many chats.
 
 Your rights in the group are checked on every command, exactly as if you had sent it there. Commands that need a reply to a message, delete your command, or show a saved message in the chat must still be sent in the group.
 
-## 9. Switching commands and modules off
+## 10. Switching commands and modules off
 
 **For members only.** Chat admins can switch off commands they do not want members to use:
 
@@ -181,14 +204,14 @@ Everything can be switched off completely except the commands of this page (so a
 
 Bot-wide, the owner and developers can turn whole modules on and off for every chat with `/module` and list them with `/modules`.
 
-## 10. Logs
+## 11. Logs
 
 - **Console / container log:** one line per command or button press (never message text), plus warnings and errors.
 - **Developer log** (`DEV_LOG_CHAT`): start and stop messages and error reports with the traceback as a file.
 - **Public log** (`LOG_CHAT_ID`): staff changes and other public notices.
 - **Chat log:** `/setlog <chat id | @username | reply to a forwarded channel post>` makes the bot copy that chat's moderation actions (bans, mutes, warns, locks, promotions ...) to a chat of the admins' choice. `/unsetlog` and `/logchannel` manage it.
 
-## 11. Project layout and adding modules
+## 12. Project layout and adding modules
 
 ```
 main.py                 Entry point: builds the bot, loads modules, polls.
@@ -213,7 +236,7 @@ Drop a new file into `modules/` and restart: no other file needs to change. A mo
 
 All text the bot writes is in English.
 
-## 12. Good to know
+## 13. Good to know
 
 - Telegram does not let bots list a group's members. Features that sweep a chat (`/zombies`, global bans reaching old members) work on people the bot has seen.
 - Reactions and member changes reach the bot only in chats where it is an admin.

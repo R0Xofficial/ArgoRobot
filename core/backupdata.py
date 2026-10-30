@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from core import blacklist, chatsettings, database, filterstore, flood, joinblacklist, locks, markup, notestore
+from core import blacklist, captchas, chatsettings, database, filterstore, flood, joinblacklist, locks, markup, notestore
 
 FORMAT_VERSION = 1
 MAX_FILE_BYTES = 20 * 1024 * 1024
@@ -126,6 +126,10 @@ ITEMS: list[Item] = [
                             "welcome_mute": "b", "clean_welcome": "b", "clean_service": "b"},
               single=True, choices={"welcome_media_type": MEDIA, "goodbye_media_type": MEDIA}, check=_greeting),
     ], ("welcome", "goodbye", "welcomes")),
+    Item("captcha", "Captcha settings", [
+        Table("captcha_settings", {"enabled": "b", "mode": "s", "rules": "b", "mute_seconds": "i?", "kick": "b", "kick_seconds": "i", "button_text": "s?"},
+              single=True, choices={"mode": captchas.MODES}, ranges={"mute_seconds": (0, MAX_SECONDS), "kick_seconds": (60, MAX_SECONDS)}),
+    ], ("captchas",)),
     Item("rules", "The rules", [
         Table("rules", {"content": "s", "media_type": "s?", "media_file_id": "s?"}, single=True, choices={"media_type": MEDIA}, check=_content),
     ]),
