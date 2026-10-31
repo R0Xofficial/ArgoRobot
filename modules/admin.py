@@ -102,7 +102,7 @@ async def cmd_staffhelp(message: Message, command: CommandObject, role: Role | N
         if enabled:
             return (
                 "Help from the bot's staff is now <b>on</b>. Developers and Sudo users can use "
-                "this chat's admin commands. Their actions are marked as taken by the bot's staff."
+                "this chat's admin commands. Their actions end with a note that the bot's staff did it."
             )
         return (
             "Help from the bot's staff is now <b>off</b>. Their commands are treated like "
