@@ -1,5 +1,5 @@
 services:
-  argorobot:
+  argo:
     build: .
     container_name: argorobot
     restart: unless-stopped
