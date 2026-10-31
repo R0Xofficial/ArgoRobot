@@ -138,9 +138,10 @@ async def _send_media(message: Message, kind: str, file_id: str, caption: str | 
         "chat_id": message.chat.id,
         kind: file_id,
         "message_thread_id": message.message_thread_id if message.is_topic_message else None,
-        "reply_parameters": ReplyParameters(message_id=message.message_id, allow_sending_without_reply=True),
         **extra,
     }
+    if message.message_id:  # a made-up message (id 0) has nothing to answer to
+        kwargs["reply_parameters"] = ReplyParameters(message_id=message.message_id, allow_sending_without_reply=True)
     if caption is not None and kind not in ("sticker", "video_note"):
         kwargs["caption"] = caption
     return await getattr(message.bot, _METHODS[kind])(**kwargs)

@@ -180,14 +180,14 @@ async def is_chat_admin(bot, chat_id: int, user_id: int) -> bool:
 
 
 async def check_target(
-    bot, chat, target: Target, actor: Actor, actor_role: Role | None, punitive: bool
+    bot, chat, target: Target, actor: Actor, actor_role: Role | None, punitive: bool, allow_self: bool = False
 ) -> None:
     """
     Raise ModerationError if the target must not be touched.
 
     `punitive` is for commands that restrict someone (ban, mute, warn). They also
-    refuse chat admins (admins can't restrict each other) and keep the bot's staff
-    from acting against each other. Undoing a punishment is never blocked that way.
+    refuse chat admins (admins can't restrict each other). Undoing a punishment is never
+    blocked that way. `allow_self` lets people aim the command at themselves (/promote, /demote).
     """
     if target.is_chat:
         # Only channels writing into the chat can be banned; never the group itself.
@@ -195,7 +195,7 @@ async def check_target(
             raise ModerationError("Only channels can be banned that way.")
         return
 
-    if actor.id is not None and actor.id == target.user_id:
+    if not allow_self and actor.id is not None and actor.id == target.user_id:
         raise ModerationError("You can't do that to yourself.")
     if target.user_id == (await bot.me()).id:
         raise ModerationError("I can't take action against myself.")
@@ -204,10 +204,6 @@ async def check_target(
     if not punitive:
         return
 
-    # Admins of a group decide who stays in it, staff included. But someone with
-    # a role in the bot may not act against themselves or another member of the staff.
-    if actor_role is not None and await roles.get_role(target.user_id) is not None:
-        raise ModerationError("Members of the bot's staff can't take action against each other.")
     if await is_chat_admin(bot, chat.id, target.user_id):
         raise ModerationError("I can't take action against a chat admin.")
 

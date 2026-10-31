@@ -63,7 +63,7 @@ async def reply(
     if private is not None:
         # A command run for a connected group (core/connection.py) is answered where it was sent.
         params["chat_id"], params["message_thread_id"], quote = private, None, False
-    if quote:
+    if quote and message.message_id:  # a made-up message (id 0) has nothing to answer to
         # allow_sending_without_reply makes Telegram deliver the answer even
         # if the original message has been deleted in the meantime.
         params["reply_parameters"] = ReplyParameters(

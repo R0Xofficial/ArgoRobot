@@ -197,7 +197,7 @@ async def cmd_promote(message: Message, command: CommandObject, role: Role | Non
         title = target.extra.strip()
         if len(title) > MAX_LENGTH:
             raise ModerationError(f"A title can have at most {MAX_LENGTH} characters.")
-        await moderation.check_target(bot, message.chat, target, actor, None, punitive=False)
+        await moderation.check_target(bot, message.chat, target, actor, None, punitive=False, allow_self=True)
         bot_member = await _bot_member(message, "can_promote_members")
         target_member = await _member(message, target.user_id)
         status = _status(target_member)
@@ -267,7 +267,7 @@ async def cmd_demote(message: Message, command: CommandObject, role: Role | None
 
     try:
         target = await _target(message, command)
-        await moderation.check_target(bot, message.chat, target, actor, None, punitive=False)
+        await moderation.check_target(bot, message.chat, target, actor, None, punitive=False, allow_self=True)
         await _bot_member(message, "can_promote_members")
         target_member = await _member(message, target.user_id)
         status = _status(target_member)
@@ -316,7 +316,7 @@ async def cmd_title(message: Message, command: CommandObject, role: Role | None 
             actor_member = await _actor_member(message, role, "can_promote_members")
             if actor_member is None:
                 raise ModerationError("I couldn't check your rights in this chat.")
-            await moderation.check_target(bot, message.chat, target, actor, None, punitive=False)
+            await moderation.check_target(bot, message.chat, target, actor, None, punitive=False, allow_self=True)
             if not _has(actor_member, "can_promote_members"):
                 raise NotAllowed("You need the right to add new admins to change someone else's title.")
             _mark_staff(actor, actor_member)
@@ -387,7 +387,7 @@ async def cmd_tag(message: Message, command: CommandObject, role: Role | None = 
             actor_member = await _actor_member(message, role, "can_manage_tags")
             if actor_member is None:
                 raise ModerationError("I couldn't check your rights in this chat.")
-            await moderation.check_target(bot, message.chat, target, actor, None, punitive=False)
+            await moderation.check_target(bot, message.chat, target, actor, None, punitive=False, allow_self=True)
             if not _has(actor_member, "can_manage_tags"):
                 raise NotAllowed("You need the right to manage tags to change someone else's tag.")
             _mark_staff(actor, actor_member)

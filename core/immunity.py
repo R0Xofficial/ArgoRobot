@@ -5,8 +5,7 @@ The ids are written in by hand: Telegram's own accounts. Banning, muting or
 warning them makes no sense.
 
 The bot's own staff (Owner, Developers, Sudo, Support) is not immune: the admins
-of a group decide who stays in their group. Staff are only kept from acting
-against each other (see core/moderation.py).
+of a group decide who stays in their group, and staff may act against each other.
 
 Modules that act against a user (bans, mutes, warns, global bans ...) ask
 `is_immune()` first. Immunity is fixed in the code, unlike the whitelist

@@ -253,9 +253,14 @@ async def body(row: dict[str, Any]) -> str:
     if row["phase"] == "rules":
         rules = _rules_html(await rulestore.get(row["chat_id"]), row["title"] or "", name)
         shown = rules if rules is not None else "Read the rules of the chat with /rules there, then come back to accept them."
-        lead = f"{user_link(row['user_id'], name)}, one last thing: read the rules of <b>{title}</b> and accept them." \
-            if row["kind"] == "join" and row["message_chat_id"] == row["chat_id"] \
-            else f"Last step: read the rules of <b>{title}</b> and accept them."
+        if row["kind"] == "request":
+            lead = f"Hi {esc(name)}! You sent a request to join <b>{title}</b>. Read the rules and accept them, and I'll accept it right away."
+        elif row["message_chat_id"] == row["chat_id"]:
+            lead = f"{user_link(row['user_id'], name)}, one last thing: read the rules of <b>{title}</b> and accept them."
+        elif row["mode"] == "button":
+            lead = f"Hi {esc(name)}! To speak in <b>{title}</b>, read the rules and accept them."
+        else:
+            lead = f"Last step: read the rules of <b>{title}</b> and accept them."
         return f"{lead}\n\n{shown}"
 
     if row["kind"] == "request":
@@ -383,6 +388,16 @@ async def _insert(chat, user, kind: str, config: dict[str, Any], join_message_id
         chat.id, user.id, kind, mode, test["question"], test["answer"], test["layout"],
         user.full_name, chat.title, message_chat_id, join_message_id, now, unmute_at, kick_at, expires_at, attached,
     )
+
+
+async def _rules_only(row: dict[str, Any], config: dict[str, Any]) -> None:
+    """
+    In the private chat, `button` mode with rules to accept needs no button of its own: the rules
+    come at once, and accepting them is the test. (Under a welcome message the button is the test.)
+    """
+    if row["mode"] == "button" and row["phase"] == "captcha" and config["rules"] and _rules_exist(await rulestore.get(row["chat_id"])):
+        await database.execute("UPDATE captcha_pending SET phase = 'rules' WHERE id = $1", row["id"])
+        row["phase"] = "rules"
 
 
 async def _present(bot: Bot, row: dict[str, Any], config: dict[str, Any]) -> bool:
@@ -587,6 +602,7 @@ async def hold_request(bot: Bot, chat, user: User, user_chat_id: int) -> bool:
     if old is not None:
         await drop(bot, old)
     row = await _insert(chat, user, "request", config, None, user_chat_id)
+    await _rules_only(row, config)
     if not await _present(bot, row, config):
         await _delete(row["id"])
         return False
@@ -652,6 +668,7 @@ async def open_in_private(bot: Bot, user: User, chat_id: int, private_chat_id: i
         row["id"], private_chat_id,
     )
     row.update(message_chat_id=private_chat_id, message_id=None, is_photo=False)
+    await _rules_only(row, config)
     if not await _present(bot, row, config):
         return "I couldn't send you the captcha. Try again."
     return None

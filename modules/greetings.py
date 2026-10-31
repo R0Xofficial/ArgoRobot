@@ -4,12 +4,12 @@ import logging
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
-from aiogram.types import Chat, ChatPermissions, Message
+from aiogram.types import Chat, ChatMemberUpdated, ChatPermissions, Message
 
-from core import approvals, captchas, disabled, gbans, greetings, immunity, moderation, registry, roles, sender, staffgreet
+from core import approvals, captchas, disabled, gbans, greetings, immunity, memberevents, moderation, registry, roles, sender, staffgreet
 from core.filters import cmd
 from core.help_index import Section
 from core.helpers import reply
@@ -389,6 +389,8 @@ async def on_join(message: Message) -> None:
         return
     settings = await greetings.get(message.chat.id)
     bot_id = message.bot.id
+    for user in message.new_chat_members:
+        memberevents.mark("join", message.chat.id, user.id)
     people = []
     for user in message.new_chat_members:
         if user.is_bot or user.id == bot_id or await gbans.is_gbanned(user.id):
@@ -430,16 +432,98 @@ async def on_leave(message: Message) -> None:
         return
     settings = await greetings.get(message.chat.id)
     left = message.left_chat_member
+    memberevents.mark("leave", message.chat.id, left.id)
     # The sender of the service message is the person who left, or whoever removed them.
     left_on_own = message.from_user is not None and message.from_user.id == left.id
     try:
-        if left_on_own and not left.is_bot and left.id != message.bot.id:
-            role = await roles.get_role(left.id)
-            if role is not None:  # staff are always seen off, with the goodbye of their role
-                await sender.send(message, left, staffgreet.get(role, "goodbye"), None, None, label="staff goodbye message")
-            elif settings["goodbye_on"]:
-                content, media_type, file_id = greetings.message_of(settings, "goodbye")
-                await sender.send(message, left, content, media_type, file_id, label="goodbye message")
+        await _say_goodbye(message, left, settings, left_on_own)
     finally:
         if settings["clean_service"]:
             await _delete(message)
+
+
+async def _say_goodbye(message: Message, left, settings: dict, left_on_own: bool) -> None:
+    """The goodbye of someone who left on their own: their role's, or the chat's when it has them on."""
+    if not left_on_own or left.is_bot or left.id == message.bot.id:
+        return
+    role = await roles.get_role(left.id)
+    if role is not None:  # staff are always seen off, with the goodbye of their role
+        await sender.send(message, left, staffgreet.get(role, "goodbye"), None, None, label="staff goodbye message")
+    elif settings["goodbye_on"]:
+        content, media_type, file_id = greetings.message_of(settings, "goodbye")
+        await sender.send(message, left, content, media_type, file_id, label="goodbye message")
+
+
+# --- Joins and leaves that come without a service message ---------------------------------------------
+# In a group with hidden members (and in big ones) Telegram sends no "joined" or "left" message, only the
+# chat_member update to admins. The update does the greeting when no service message showed up for it.
+
+def _present(member) -> bool:
+    status = str(getattr(member.status, "value", member.status))
+    return status in ("member", "administrator", "creator") or (status == "restricted" and getattr(member, "is_member", True))
+
+
+def _status_of(member) -> str:
+    return str(getattr(member.status, "value", member.status))
+
+
+def _joined(event: ChatMemberUpdated) -> bool:
+    return (
+        event.chat.type in GROUP_TYPES
+        and not _present(event.old_chat_member)
+        and _present(event.new_chat_member)
+        and _status_of(event.new_chat_member) != "creator"
+    )
+
+
+def _left(event: ChatMemberUpdated) -> bool:
+    return (
+        event.chat.type in GROUP_TYPES
+        and _present(event.old_chat_member)
+        and _status_of(event.new_chat_member) == "left"  # not "kicked": a ban is no goodbye
+    )
+
+
+def _made_up_message(bot, chat) -> Message:
+    """A message to answer to when there is none: the welcome goes to the chat's main topic."""
+    return Message(
+        message_id=0,
+        date=datetime.now(timezone.utc),
+        chat=Chat(id=chat.id, type=chat.type, title=chat.title),
+    ).as_(bot)
+
+
+async def _greetings_here(chat_id: int) -> bool:
+    info = registry.get("greetings")
+    return info is not None and info.enabled and not await disabled.module_off(chat_id, "greetings")
+
+
+@router.chat_member(_joined)
+async def on_member_joined(event: ChatMemberUpdated, bot: Bot) -> None:
+    user = event.new_chat_member.user
+    if user.is_bot or user.id == bot.id or not await _greetings_here(event.chat.id):
+        return
+    if not await memberevents.no_service_message("join", event.chat.id, user.id):
+        return  # the service message came and has done it
+    if await gbans.is_gbanned(user.id):
+        return
+    try:
+        await captchas.hold(bot, event.chat, user, None, 0)
+    except Exception:
+        log.exception("Starting a captcha for %s in chat %s failed", user.id, event.chat.id)
+    await _greet(_made_up_message(bot, event.chat), [user], await greetings.get(event.chat.id))
+
+
+@router.chat_member(_left)
+async def on_member_left(event: ChatMemberUpdated, bot: Bot) -> None:
+    user = event.old_chat_member.user
+    if user.is_bot or user.id == bot.id or not await _greetings_here(event.chat.id):
+        return
+    if not await memberevents.no_service_message("leave", event.chat.id, user.id):
+        return
+    try:
+        await captchas.drop_user(bot, event.chat.id, user.id)
+    except Exception:
+        log.exception("Cleaning up the captcha of %s in chat %s failed", user.id, event.chat.id)
+    left_on_own = event.from_user is not None and event.from_user.id == user.id
+    await _say_goodbye(_made_up_message(bot, event.chat), user, await greetings.get(event.chat.id), left_on_own)
