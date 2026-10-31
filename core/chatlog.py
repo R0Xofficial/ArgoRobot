@@ -64,6 +64,7 @@ def entry(
     user: str | None = None,
     reason: str = "",
     details: tuple[tuple[str, str], ...] = (),
+    note: str = "",
 ) -> str:
     """
         #BANNED
@@ -72,6 +73,7 @@ def entry(
         User: name [id]
         Reason: ...
     Admin, user and details are HTML made by the caller; the reason is plain text.
+    A note (plain text) goes last, in italics, after an empty line.
     """
     title = esc(getattr(chat, "title", None) or "Chat")
     lines = [f"<b>#{tag}</b>", f"<b>Chat:</b> {title} [<code>{chat.id}</code>]"]
@@ -83,7 +85,8 @@ def entry(
         lines.append(f"<b>{esc(label)}:</b> {value}")
     if reason.strip():
         lines.append(f"<b>Reason:</b> {esc(reason.strip()[:300])}")
-    return "\n".join(lines)
+    text = "\n".join(lines)
+    return f"{text}\n\n<i>{esc(note)}</i>" if note else text
 
 
 async def record(
@@ -94,6 +97,7 @@ async def record(
     user: str | None = None,
     reason: str = "",
     details: tuple[tuple[str, str], ...] = (),
+    note: str = "",
 ) -> bool:
     """Send one entry to the chat's log, if it has one. Returns whether something was sent."""
     try:
@@ -106,7 +110,7 @@ async def record(
     try:
         await bot.send_message(
             chat_id=target,
-            text=entry(tag, chat, admin, user, reason, details),
+            text=entry(tag, chat, admin, user, reason, details, note),
             link_preview_options=LinkPreviewOptions(is_disabled=True),
         )
         return True

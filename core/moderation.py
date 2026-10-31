@@ -322,7 +322,6 @@ def who(target: Target) -> str:
     return user_link(target.user_id, target.name)
 
 
-STAFF_MARK = " (Bot Staff)"  # in log entries
 STAFF_NOTE = "Done by the bot's staff."
 
 
@@ -342,8 +341,8 @@ def staff_note(actor: Actor) -> str:
 
 
 def admin_ref(actor: Actor) -> str:
-    """Who did it, for a log entry: a link, marked when it is the bot's staff."""
-    return f"{actor.link}{STAFF_MARK if actor.staff else ''}"
+    """Who did it, for a log entry: a link and the id (an anonymous admin has none)."""
+    return actor.link if actor.id is None else f"{actor.link} [<code>{actor.id}</code>]"
 
 
 def _user_ref(target: Target) -> str:
@@ -370,6 +369,7 @@ async def log_action(
             _user_ref(target) if target is not None else None,
             reason,
             details,
+            STAFF_NOTE if actor.staff else "",
         )
     except Exception:
         log.exception("Could not log %s", tag)
