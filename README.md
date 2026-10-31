@@ -114,7 +114,7 @@ Support  <  Sudo  <  Developer  <  Owner
 | **Sudo** | Approves global bans, manages the whitelist, and may use a chat's admin commands (moderation, pins, promoting, settings) as if it held every admin right. A chat's owner can turn that off with `/staffhelp`. |
 | **Support** | Asks for global bans. A request is approved or declined by Sudo. |
 
-Roles are managed with `/addsudo`, `/rmsudo`, `/addsupport`, `/rmsupport`, `/adddev` and `/rmdev`. `/staff` shows who holds what. Sudo and up can run any chat like an admin; their actions are marked as taken by the bot's staff. Only what belongs to the chat's owner stays with them: `/staffhelp` itself, `/gbans`, `/adminerror`, `/anonadmin`, the "remove everything" buttons, `/export` and `/import`. Support is not part of this.
+Roles are managed with `/addsudo`, `/rmsudo`, `/addsupport`, `/rmsupport`, `/adddev` and `/rmdev`. `/staff` shows who holds what. Sudo and up can run any chat like an admin; their actions end with an italic note, "Done by the bot's staff." Only what belongs to the chat's owner stays with them: `/staffhelp` itself, `/gbans`, `/adminerror`, `/anonadmin`, the "remove everything" buttons, `/export` and `/import`. Support is not part of this.
 
 **Chats with hidden members.** Telegram sends no "joined" or "left" message in groups with hidden members (and in very big ones). There Argo goes by the member updates it gets as an admin: welcomes, goodbyes and captchas still work, about 3 seconds after the event, and the message goes to the group's main topic. The bot must be an admin of the chat.
 

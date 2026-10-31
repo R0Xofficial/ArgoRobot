@@ -322,22 +322,23 @@ def who(target: Target) -> str:
     return user_link(target.user_id, target.name)
 
 
-STAFF_MARK = " (Bot Staff)"
+STAFF_MARK = " (Bot Staff)"  # in log entries
+STAFF_NOTE = "Done by the bot's staff."
 
 
 def attribution(actor: Actor) -> str:
-    """Who did it, shown under every moderation message. Staff are marked as such."""
-    return f"\nBy: {actor.link}{STAFF_MARK if actor.staff else ''}"
+    """Who did it, shown under every moderation message."""
+    return f"\nBy: {actor.link}"
 
 
 def by(actor: Actor) -> str:
     """" by Name": who did it, written into the sentence ("King was banned by Jey"). No ids."""
-    return f" by {actor.link}{STAFF_MARK if actor.staff else ''}"
+    return f" by {actor.link}"
 
 
 def staff_note(actor: Actor) -> str:
-    """Nothing any more: staff are marked next to their name (kept so call sites stay simple)."""
-    return ""
+    """A short italic note on its own line when the bot's staff did it (added at the end of the message)."""
+    return f"\n\n<i>{STAFF_NOTE}</i>" if actor.staff else ""
 
 
 def admin_ref(actor: Actor) -> str:

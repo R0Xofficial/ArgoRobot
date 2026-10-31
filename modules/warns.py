@@ -462,7 +462,7 @@ async def cmd_addwarn(message: Message, command: CommandObject, role: Role | Non
         return
     await reply(
         message,
-        f"Anyone who writes <code>{esc(pattern)}</code> gets a warn. The filter was {'added' if outcome else 'updated'}{moderation.by(actor)}",
+        f"Anyone who writes <code>{esc(pattern)}</code> gets a warn. The filter was {'added' if outcome else 'updated'}{moderation.by(actor)}{moderation.staff_note(actor)}",
     )
 
 
@@ -484,7 +484,7 @@ async def cmd_nowarn(message: Message, command: CommandObject, role: Role | None
     if not any(t.pattern == pattern for t in await _warn_triggers(message.chat.id)) or not await blacklist.remove(message.chat.id, pattern):
         await reply(message, "There is no warn filter like that in this chat. /warnlist shows them.")
         return
-    await reply(message, f"The warn filter <code>{esc(pattern)}</code> was removed{moderation.by(actor)}")
+    await reply(message, f"The warn filter <code>{esc(pattern)}</code> was removed{moderation.by(actor)}{moderation.staff_note(actor)}")
 
 
 @router.message(cmd("warnlist"))

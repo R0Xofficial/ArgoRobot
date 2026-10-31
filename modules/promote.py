@@ -234,14 +234,14 @@ async def cmd_promote(message: Message, command: CommandObject, role: Role | Non
             reason = "A title can't contain emoji." if "emoji" in str(exc).lower() else "I couldn't set the title."
             title_line = f"\nTitle not set: {reason}"
 
-    kind = "to admin with every permission I can give" if full else "to admin"
+    kind = "to admin with full rights" if full else "to admin"
     await moderation.log_action(
         message, "PROMOTED", actor, target, "", ("Rights", esc(_rights_text(rights))), *((("Title", esc(title)),) if title else ())
     )
     await reply(
         message,
-        f"{user_link(target.user_id, target.name)} was promoted {kind}{moderation.by(actor)}\n"
-        f"Rights: {_rights_text(rights)}.{title_line}" + moderation.staff_note(actor),
+        f"{user_link(target.user_id, target.name)} was promoted {kind}{moderation.by(actor)}"
+        + title_line + moderation.staff_note(actor),
     )
 
 
