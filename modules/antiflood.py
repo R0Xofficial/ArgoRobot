@@ -10,7 +10,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
 from aiogram.types import Message
 
-from core import approvals, enforce, flood, immunity, moderation
+from core import approvals, enforce, flood, immunity, moderation, roles
 from core.filters import cmd
 from core.helpers import reply
 from core.moderation import GROUP_TYPES, MAX_DURATION, MIN_DURATION, ModerationError, parse_duration, perform
@@ -20,7 +20,7 @@ from core.text import duration_text, esc, user_link, SWITCH as _ON_OFF, parse_sw
 # By default the bot mutes anyone who sends more than 10 messages in a row. Bots are
 # ignored, and so are chat admins and approved users.
 ABOUT = """
-Takes action on people who flood the chat with messages. By default I mute anyone who sends more than 10 messages in a row. Bots, chat admins and approved users are ignored, and an album of photos counts as one message.
+Takes action on people who flood the chat with messages. By default I mute anyone who sends more than 10 messages in a row. Bots, chat admins, approved users and the bot's staff are ignored, and an album of photos counts as one message.
 
 Two rules can run side by side: the limit counts messages in a row from one person, the timer counts messages from one person within a time window, whoever else writes in between.
 
@@ -268,6 +268,7 @@ async def _flooding(message: Message, bot: Bot) -> dict[str, Any] | bool:
     # Only now, when someone is over the limit, the (slow) checks of who is exempt.
     if (
         immunity.is_immune(user.id)
+        or await roles.get_role(user.id) is not None  # anybody with a role in the bot
         or await approvals.is_approved(message.chat.id, user.id)
         or await moderation.is_chat_admin(bot, message.chat.id, user.id)
     ):

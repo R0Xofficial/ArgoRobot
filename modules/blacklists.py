@@ -11,7 +11,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from core import approvals, blacklist, enforce, immunity, moderation
+from core import approvals, blacklist, enforce, immunity, moderation, roles
 from core.blacklist import TriggerError
 from core.filters import cmd
 from core.helpers import edit, reply
@@ -23,7 +23,7 @@ from core.text import duration_text, esc, truncate, user_link, SWITCH as _ON_OFF
 # Messages that match a trigger are deleted, or get a custom action. Blacklists do not
 # affect group admins, or approved users.
 ABOUT = """
-Stop certain words or phrases from being said in the group. Matching messages are deleted, or get a custom action. Blacklists do not affect chat admins, or approved users, and edited messages are checked too.
+Stop certain words or phrases from being said in the group. Matching messages are deleted, or get a custom action. Blacklists do not affect chat admins, approved users or the bot's staff, and edited messages are checked too.
 
 Triggers are matched as whole words and ignore case, so "spam" catches "SPAM!" but not "spammer". Add several triggers at once with one per line.
 
@@ -420,6 +420,7 @@ async def _blacklisted(message: Message, bot: Bot) -> dict[str, Any] | bool:
     # Only now, with a match in hand, the (slower) checks of who is exempt.
     if (
         immunity.is_immune(user.id)
+        or await roles.get_role(user.id) is not None  # anybody with a role in the bot
         or await approvals.is_approved(message.chat.id, user.id)
         or await moderation.is_chat_admin(bot, message.chat.id, user.id)
     ):

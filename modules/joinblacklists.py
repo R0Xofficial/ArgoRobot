@@ -8,7 +8,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
 from aiogram.types import Message
 
-from core import approvals, enforce, greetings, immunity, joinblacklist, moderation
+from core import approvals, enforce, greetings, immunity, joinblacklist, moderation, roles
 from core.blacklist import TriggerError
 from core.filters import cmd
 from core.helpers import reply
@@ -23,7 +23,7 @@ HELP_TITLE = "Join Blacklists"
 ABOUT = """
 Block people from joining when their profile contains certain words, which stops spammers before they post a single message. There are four lists, one for each part of a profile that is checked: the name, the @username, the bio and the personal channel (its name and its username). Each chat can have up to 10 triggers per list.
 
-Someone who matches is banned and the "joined" message is removed. Bots, chat admins and approved users are never blocked, and neither is anyone who was added by a chat admin.
+Someone who matches is banned and the "joined" message is removed. Bots, chat admins, approved users and the bot's staff are never blocked, and neither is anyone who was added by a chat admin.
 
 Triggers match whole words and ignore case, so "casino" catches "Best Casino!" but not "casinos". To catch a word inside a longer one, use a wildcard: *casino* matches @best_casino_bot. Write one trigger per line to add several at once.
 
@@ -242,9 +242,9 @@ async def _profile_match(bot: Bot, chat_id: int, user) -> tuple[str, str] | None
 
 
 async def _exempt(bot: Bot, message: Message, user) -> bool:
-    """Bots, immune accounts, approved users, chat admins and people an admin added."""
+    """Bots, immune accounts, the bot's staff, approved users, chat admins and people an admin added."""
     chat_id = message.chat.id
-    if user.is_bot or immunity.is_immune(user.id) or await approvals.is_approved(chat_id, user.id):
+    if user.is_bot or immunity.is_immune(user.id) or await roles.get_role(user.id) is not None or await approvals.is_approved(chat_id, user.id):
         return True
     if await moderation.is_chat_admin(bot, chat_id, user.id):
         return True

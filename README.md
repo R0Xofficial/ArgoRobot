@@ -116,7 +116,7 @@ Support  <  Sudo  <  Developer  <  Owner
 
 Roles are managed with `/addsudo`, `/rmsudo`, `/addsupport`, `/rmsupport`, `/adddev` and `/rmdev`. `/staff` shows who holds what. Sudo and up can run any chat like an admin; their actions are marked as taken by the bot's staff. Only what belongs to the chat's owner stays with them: `/staffhelp` itself, `/gbans`, `/adminerror`, `/anonadmin`, the "remove everything" buttons, `/export` and `/import`. Support is not part of this.
 
-**Staff in chats.** Somebody with a role is always welcomed when they join a chat and seen off when they leave, with a message of their role (Support, Sudo, Developer, Owner), whatever the chat's `/welcome` and `/goodbye` settings are. They are not welcome-muted and never get a captcha. The texts are in `core/staffgreet.py`; edit them there.
+**Staff in chats.** Somebody with a role is always welcomed when they join a chat and seen off when they leave, with a message of their role (Support, Sudo, Developer, Owner), whatever the chat's `/welcome` and `/goodbye` settings are. They are not welcome-muted, never get a captcha, and are skipped by antiflood, locks, blacklists, join blacklists, global bans and federation bans (like admins and approved users). The texts are in `core/staffgreet.py`; edit them there.
 
 Chat admins use the moderation commands of their chat. Each command checks the exact admin right it needs.
 

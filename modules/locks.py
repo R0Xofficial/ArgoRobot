@@ -10,7 +10,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from core import approvals, greetings, immunity, locks, moderation
+from core import approvals, greetings, immunity, locks, moderation, roles
 from core.filters import cmd
 from core.helpers import edit, reply
 from core.moderation import GROUP_TYPES, ModerationError, perform
@@ -18,7 +18,7 @@ from core.roles import Role
 from core.text import esc, user_link, SWITCH as _ON_OFF
 
 ABOUT = """
-Lock a kind of message and I delete every one of them: stickers, links, forwards, voice messages, a whole alphabet... Locks do not affect chat admins or approved users, and edited messages are checked too. /locktypes explains every kind.
+Lock a kind of message and I delete every one of them: stickers, links, forwards, voice messages, a whole alphabet... Locks do not affect chat admins, approved users or the bot's staff, and edited messages are checked too. /locktypes explains every kind.
 
 Locks that catch links, forwards, commands, stickers and the like can be eased with the allowlist: whatever is on it stays allowed, so you can lock all links but let one site through.
 
@@ -329,6 +329,7 @@ async def cb_rmallowlistall(callback: CallbackQuery) -> None:
 async def _exempt(bot: Bot, chat_id: int, user_id: int) -> bool:
     return (
         immunity.is_immune(user_id)
+        or await roles.get_role(user_id) is not None  # anybody with a role in the bot
         or await approvals.is_approved(chat_id, user_id)
         or await moderation.is_chat_admin(bot, chat_id, user_id)
     )
