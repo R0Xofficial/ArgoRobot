@@ -282,9 +282,10 @@ async def _fed_to_ban_in(message: Message, user) -> dict[str, Any] | None:
     return mine[0]
 
 
-async def _target(message: Message, command: CommandObject):
+async def _target(message: Message, command: CommandObject, *, allow_bots: bool = False):
+    """The user a command names. allow_bots: bans may name a bot (spam bots are banned too); roles may not."""
     try:
-        return await resolve_target(message, command)
+        return await resolve_target(message, command, allow_bots=allow_bots)
     except TargetError as exc:
         await reply(message, esc(str(exc)))
         return None
@@ -740,7 +741,7 @@ async def cmd_fban(message: Message, command: CommandObject) -> None:
     fed = await _fed_to_ban_in(message, user)
     if fed is None:
         return
-    target = await _target(message, command)
+    target = await _target(message, command, allow_bots=True)
     if target is None:
         return
     problem = await _protected(message.bot, fed, target)
@@ -818,7 +819,7 @@ async def cmd_unfban(message: Message, command: CommandObject) -> None:
     fed = await _fed_to_ban_in(message, user)
     if fed is None:
         return
-    target = await _target(message, command)
+    target = await _target(message, command, allow_bots=True)
     if target is None:
         return
     if await federations.unban(fed["fed_id"], target.user_id) is None:
@@ -1009,7 +1010,7 @@ async def cmd_fedstat(message: Message, command: CommandObject) -> None:
     me = message.from_user
     if words or (replied_message(message) is not None and fed_id is None):
         command = CommandObject(prefix=command.prefix, command=command.command, mention=command.mention, args=" ".join(words) or None)
-        target = await _target(message, command)
+        target = await _target(message, command, allow_bots=True)
         if target is None:
             return
         user_id, name = target.user_id, target.name
