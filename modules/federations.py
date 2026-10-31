@@ -959,7 +959,7 @@ async def cmd_quietfed(message: Message, command: CommandObject, role=None) -> N
         await reply(message, "Use /quietfed on or /quietfed off.")
         return
     right = RIGHT if argument else "can_manage_chat"
-    if await moderation.begin_chat_command(message, role, allow_staff=False, right=right) is None:
+    if await moderation.begin_chat_command(message, role, right=right) is None:
         return
     if await federations.chat_fed(message.chat.id) is None:
         await reply(message, "This chat is not in a federation.")

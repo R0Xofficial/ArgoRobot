@@ -40,7 +40,7 @@ async def _begin(message: Message, role: Role | None):
     if message.chat.type not in GROUP_TYPES:
         await reply(message, "This command only works in groups.")
         return None
-    return await moderation.begin_chat_command(message, role, allow_staff=False, right=RIGHT)
+    return await moderation.begin_chat_command(message, role, right=RIGHT)
 
 
 @router.message(cmd("del", "delete"))

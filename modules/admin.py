@@ -18,7 +18,7 @@ from core.text import esc, truncate, user_link, SWITCH as _ANSWERS
 ABOUT = """
 Tools for looking after the chat itself.
 
-The settings /adminerror, /anonadmin and /staffhelp belong to the chat owner: any admin can see the current value by sending the command with no argument, but only the owner can change it. My staff never changes a chat's settings.
+The settings /adminerror, /anonadmin and /staffhelp belong to the chat owner: any admin can see the current value by sending the command with no argument, but only the owner can change it, my staff included.
 """
 
 HELP = [
@@ -30,7 +30,7 @@ HELP = [
     ("/cleanbluetext [on|off]", "Delete commands after I have dealt with them, so only my answers stay in the chat. Off by default. I need the right to delete messages; commands meant for other bots are left alone. Needs the right to change chat info.", "admins"),
     ("/adminerror [on|off]", "Choose whether I answer people who try admin commands without being admins. On by default; off makes me ignore them silently.", "chat owner"),
     ("/anonadmin [on|off]", "Let anonymous admins use every command without their rights being checked, because Telegram hides who they are. Off by default and not recommended: anyone who can post anonymously gets full use of my commands.", "chat owner"),
-    ("/staffhelp [on|off]", "Let my staff (Sudo and up) help moderate this chat, or not. On by default. They can never change the chat's settings either way.", "chat owner"),
+    ("/staffhelp [on|off]", "Let my staff (Sudo and up) help moderate this chat, or not. On by default. Staff can never change this setting or the other owner-only ones.", "chat owner"),
 ]
 
 router = Router(name="admin")
@@ -62,13 +62,13 @@ async def _switch(
 ) -> None:
     """
     A yes/no setting of the chat. Any admin can look at it; only the chat's owner
-    can change it. The bot's staff never changes a chat's settings.
+    can change it. The bot's staff can't change it either.
     """
     argument = (command.args or "").strip().lower()
 
     if not argument:
         # can_manage_chat is held by every admin: looking is for any of them.
-        if await moderation.begin_chat_command(message, role, allow_staff=False, right="can_manage_chat") is None:
+        if await moderation.begin_chat_command(message, role, right="can_manage_chat") is None:
             return
         await reply(message, status_text(await read(message.chat.id)))
         return
@@ -95,15 +95,14 @@ async def cmd_staffhelp(message: Message, command: CommandObject, role: Role | N
 
     On by default. Only the chat's owner can change it; any admin can look.
     When it is off, the staff's commands are treated like those of any other member.
-    Either way the staff never changes the chat's settings.
+    Staff can't change this switch, whatever it says.
     """
 
     def changed(enabled: bool) -> str:
         if enabled:
             return (
-                "Help from the bot's staff is now <b>on</b>. Developers and Sudo users can help "
-                "moderate users here. Their actions are marked as taken by the bot's staff, "
-                "and they can't change this chat's settings."
+                "Help from the bot's staff is now <b>on</b>. Developers and Sudo users can use "
+                "this chat's admin commands. Their actions are marked as taken by the bot's staff."
             )
         return (
             "Help from the bot's staff is now <b>off</b>. Their commands are treated like "
@@ -187,7 +186,7 @@ def _parse_link_options(argument: str) -> tuple[bool, int | None]:
 
 @router.message(cmd("link"))
 async def cmd_link(message: Message, command: CommandObject, role: Role | None = None) -> None:
-    actor = await moderation.begin_chat_command(message, role, allow_staff=False, right="can_invite_users")
+    actor = await moderation.begin_chat_command(message, role, right="can_invite_users")
     if actor is None:
         return
     bot = message.bot
@@ -239,7 +238,7 @@ async def cmd_link(message: Message, command: CommandObject, role: Role | None =
 
 @router.message(cmd("gtitle"))
 async def cmd_gtitle(message: Message, command: CommandObject, role: Role | None = None) -> None:
-    actor = await moderation.begin_chat_command(message, role, allow_staff=False, right="can_change_info")
+    actor = await moderation.begin_chat_command(message, role, right="can_change_info")
     if actor is None:
         return
     title = (command.args or "").strip()
@@ -311,7 +310,7 @@ async def cmd_cleanbluetext(message: Message, command: CommandObject, role: Role
     if message.chat.type not in moderation.GROUP_TYPES:
         await reply(message, "This command only works in groups.")
         return
-    if await moderation.begin_chat_command(message, role, allow_staff=False, right=CLEAN_RIGHT) is None:
+    if await moderation.begin_chat_command(message, role, right=CLEAN_RIGHT) is None:
         return
     usage = "Use /cleanbluetext on or /cleanbluetext off."
     argument = (command.args or "").strip().lower()
@@ -342,7 +341,7 @@ _LOUD = ("loud", "notify", "violent")
 
 @router.message(cmd("pin"))
 async def cmd_pin(message: Message, command: CommandObject, role: Role | None = None) -> None:
-    actor = await moderation.begin_chat_command(message, role, allow_staff=False, right=PIN_RIGHT)
+    actor = await moderation.begin_chat_command(message, role, right=PIN_RIGHT)
     if actor is None:
         return
     argument = (command.args or "").strip().lower()
@@ -371,7 +370,7 @@ async def cmd_pin(message: Message, command: CommandObject, role: Role | None = 
 
 @router.message(cmd("unpin"))
 async def cmd_unpin(message: Message, role: Role | None = None) -> None:
-    actor = await moderation.begin_chat_command(message, role, allow_staff=False, right=PIN_RIGHT)
+    actor = await moderation.begin_chat_command(message, role, right=PIN_RIGHT)
     if actor is None:
         return
     target = replied_message(message)

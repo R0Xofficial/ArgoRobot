@@ -77,7 +77,7 @@ LABELS = {"name": "Names", "username": "Usernames", "bio": "Bios", "channel": "C
 
 async def _admin_only(message: Message, role: Role | None) -> bool:
     """Chat business: admins only, never the bot's staff."""
-    return await moderation.begin_chat_command(message, role, allow_staff=False, right=RIGHT) is not None
+    return await moderation.begin_chat_command(message, role, right=RIGHT) is not None
 
 
 @router.message(cmd("joinblacklists", "joinblacklist"))

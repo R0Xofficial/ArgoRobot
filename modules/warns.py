@@ -370,8 +370,7 @@ async def cmd_unwarn(message: Message, command: CommandObject, role: Role | None
 
 @router.message(cmd("warnlimit"))
 async def cmd_warnlimit(message: Message, command: CommandObject, role: Role | None = None) -> None:
-    # Chat settings are for the chat's own admins; the bot's staff stays out of them.
-    if await moderation.begin_chat_command(message, role, allow_staff=False) is None:
+    if await moderation.begin_chat_command(message, role) is None:
         return
     limit = await get_limit(message.chat.id)
     await reply(message, f"The warn limit in this chat is <b>{limit}</b>.")
@@ -379,7 +378,7 @@ async def cmd_warnlimit(message: Message, command: CommandObject, role: Role | N
 
 @router.message(cmd("setwarnlimit"))
 async def cmd_setwarnlimit(message: Message, command: CommandObject, role: Role | None = None) -> None:
-    if await moderation.begin_chat_command(message, role, allow_staff=False) is None:
+    if await moderation.begin_chat_command(message, role) is None:
         return
 
     argument = (command.args or "").strip()
@@ -393,7 +392,7 @@ async def cmd_setwarnlimit(message: Message, command: CommandObject, role: Role 
 
 @router.message(cmd("strongwarn"))
 async def cmd_strongwarn(message: Message, command: CommandObject, role: Role | None = None) -> None:
-    if await moderation.begin_chat_command(message, role, allow_staff=False) is None:
+    if await moderation.begin_chat_command(message, role) is None:
         return
 
     argument = (command.args or "").strip()
@@ -441,7 +440,7 @@ async def _warn_triggers(chat_id: int):
 
 @router.message(cmd("addwarn"))
 async def cmd_addwarn(message: Message, command: CommandObject, role: Role | None = None) -> None:
-    actor = await moderation.begin_chat_command(message, role, allow_staff=False)
+    actor = await moderation.begin_chat_command(message, role)
     if actor is None:
         return
 
@@ -469,7 +468,7 @@ async def cmd_addwarn(message: Message, command: CommandObject, role: Role | Non
 
 @router.message(cmd("nowarn", "stopwarn"))
 async def cmd_nowarn(message: Message, command: CommandObject, role: Role | None = None) -> None:
-    actor = await moderation.begin_chat_command(message, role, allow_staff=False)
+    actor = await moderation.begin_chat_command(message, role)
     if actor is None:
         return
 
@@ -490,7 +489,7 @@ async def cmd_nowarn(message: Message, command: CommandObject, role: Role | None
 
 @router.message(cmd("warnlist"))
 async def cmd_warnlist(message: Message, command: CommandObject, role: Role | None = None) -> None:
-    if await moderation.begin_chat_command(message, role, allow_staff=False) is None:
+    if await moderation.begin_chat_command(message, role) is None:
         return
     found = await _warn_triggers(message.chat.id)
     if not found:

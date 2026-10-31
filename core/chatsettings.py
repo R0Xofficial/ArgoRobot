@@ -4,11 +4,12 @@ Per-chat settings that belong to the chat's owner.
 Each setting is one yes/no switch with a default, read on many updates and
 therefore cached in memory:
 
-  staff_help    whether the bot's staff (Owner, Developers, Sudo) may help moderate
-                users in the chat. On by default. The chat's owner turns it off with
-                /staffhelp (modules/admin.py); then the staff's commands are treated
-                like those of any other member. Staff can never change a chat's
-                settings, whatever this says.
+  staff_help    whether the bot's staff (Owner, Developers, Sudo) may use the chat's
+                admin commands: moderation, pins, promoting, settings. On by default.
+                The chat's owner turns it off with /staffhelp (modules/admin.py); then
+                the staff's commands are treated like those of any other member. The
+                owner-only switches (this one, /gbans, /adminerror, /anonadmin, clearing
+                everything, /export, /import) are never changed by staff.
   gban_enforce  whether the chat removes globally banned users (modules/gbans.py).
                 On by default; the owner turns it off with /gbans.
   admin_errors  whether people who are not admins get an answer when they try an

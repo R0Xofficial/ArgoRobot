@@ -159,7 +159,7 @@ def _sticker_trigger(sticker) -> str:
 # --- Commands -----------------------------------------------------------------------------
 
 async def _admin_only(message: Message, role: Role | None) -> bool:
-    return await moderation.begin_chat_command(message, role, allow_staff=False, right=RIGHT) is not None
+    return await moderation.begin_chat_command(message, role, right=RIGHT) is not None
 
 
 @router.message(cmd("blacklists"))

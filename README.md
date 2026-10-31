@@ -111,10 +111,10 @@ Support  <  Sudo  <  Developer  <  Owner
 | --- | --- |
 | **Owner** | Set only by `OWNER_ID`, never stored, cannot be removed. |
 | **Developer** | Same powers as the owner, but can be demoted. |
-| **Sudo** | Approves global bans, manages the whitelist, and may help moderate chats (a chat's owner can turn that off with `/staffhelp`). |
+| **Sudo** | Approves global bans, manages the whitelist, and may use a chat's admin commands (moderation, pins, promoting, settings) as if it held every admin right. A chat's owner can turn that off with `/staffhelp`. |
 | **Support** | Asks for global bans. A request is approved or declined by Sudo. |
 
-Roles are managed with `/addsudo`, `/rmsudo`, `/addsupport`, `/rmsupport`, `/adddev` and `/rmdev`. `/staff` shows who holds what. Staff can never change a chat's settings: those belong to the chat's own admins and owner.
+Roles are managed with `/addsudo`, `/rmsudo`, `/addsupport`, `/rmsupport`, `/adddev` and `/rmdev`. `/staff` shows who holds what. Sudo and up can run any chat like an admin; their actions are marked as taken by the bot's staff. Only what belongs to the chat's owner stays with them: `/staffhelp` itself, `/gbans`, `/adminerror`, `/anonadmin`, the "remove everything" buttons, `/export` and `/import`. Support is not part of this.
 
 **Staff in chats.** Somebody with a role is always welcomed when they join a chat and seen off when they leave, with a message of their role (Support, Sudo, Developer, Owner), whatever the chat's `/welcome` and `/goodbye` settings are. They are not welcome-muted and never get a captcha. The texts are in `core/staffgreet.py`; edit them there.
 
@@ -169,14 +169,14 @@ A federation is a ban list shared by many chats.
 
 **Subscriptions.** `/subfed` makes your federation inherit the bans of another one, `/unsubfed` undoes it. `/fedsubs` shows both directions.
 
-**Log events.** Every change goes to the federation's log chat (`/setfedlog`; the owner gets them privately without one). Each event has a title and the same readable lines: the federation as `FedName: Name | @tag`, people as a mention with their `[id]`, and `By` for who did it.
+**Log events.** Every change goes to the federation's log chat (`/setfedlog`; the owner gets them privately without one). Each event has a title and the same readable lines: the federation as `FedName: Name` (exactly as its owner named it; nothing is added), people as a mention with their `[id]`, and `By` for who did it (not for promotions and demotions: that is always the owner).
 
 ```
 New FedSubscribed          New FedChat               New Fed Promotion
-FedName: Knox | @Knox      FedName: Knox | @Knox     FedName: Knox | @Knox
-SubbedFed: ALT-F4 (@Alt)   Chat: Group (link)        Promoted FedAdmin: Ann
+FedName: Knox              FedName: Knox             FedName: Knox
+SubbedFed: ALT-F4          Chat: Group (link)        Promoted FedAdmin: Ann
 SubbedFedID: 5475ba3a-...  Chat ID: -100123...       User ID: 123
-By: Ann [123]              By: Ann [123]             By: Owner [1]
+By: Ann [123]              By: Ann [123]
 ```
 
 The titles are New FedChat, Un-FedChat, New FedSubscribed, New FedSubscriber, Un-FedSubscribed, Un-FedSubscriber, New Fed Promotion, New Fed Demotion, New FedOwner (with the previous and the new owner), New FedBans, New FedBan, FedBan Reason Update and FedBan Revoked.

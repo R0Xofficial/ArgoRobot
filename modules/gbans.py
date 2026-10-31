@@ -670,12 +670,12 @@ async def cmd_gbans(message: Message, command: CommandObject, role: Role | None 
     """
     Whether this chat removes globally banned users. On by default. Chat admins can
     look at the setting, only the chat's owner can change it, and the bot's staff
-    never changes it (see /staffhelp).
+    can't change it either (see /staffhelp).
     """
     argument = (command.args or "").strip().lower()
 
     if not argument:
-        if await moderation.begin_chat_command(message, role, allow_staff=False) is None:
+        if await moderation.begin_chat_command(message, role) is None:
             return
         enabled = await chatsettings.gban_enforce(message.chat.id)
         await reply(

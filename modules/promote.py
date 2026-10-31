@@ -1,11 +1,13 @@
 """Promote, demote, titles and tags"""
 
+from types import SimpleNamespace
+
 from aiogram import Router
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import CommandObject
 from aiogram.types import Message
 
-from core import moderation
+from core import chatsettings, moderation
 from core.filters import cmd
 from core.helpers import reply
 from core.moderation import RIGHTS_MESSAGE, ModerationError, NotAllowed, perform
@@ -93,11 +95,40 @@ async def _member(message: Message, user_id: int):
     return member
 
 
-async def _begin(message: Message) -> object | None:
+# What the bot's staff counts as in the chat: somebody holding every admin right.
+_STAFF_MEMBER = SimpleNamespace(status="creator", staff=True)
+
+
+async def _staff_may_help(message: Message, role: Role | None) -> bool:
+    """Whether this person acts as the bot's staff: Sudo and up, while the chat's owner has not turned that off."""
+    return role is not None and role >= moderation.STAFF_ROLE and await chatsettings.staff_help(message.chat.id)
+
+
+async def _actor_member(message: Message, role: Role | None, right: str):
+    """
+    The person's membership when they hold `right`, the staff stand-in when they act as the
+    bot's staff, else whatever they are (possibly None) for the caller to refuse.
+    """
+    try:
+        member = await _member(message, message.from_user.id)
+    except ModerationError:
+        member = None
+    if member is not None and _has(member, right):
+        return member
+    if await _staff_may_help(message, role):
+        return _STAFF_MEMBER
+    return member
+
+
+def _mark_staff(actor, member) -> None:
+    actor.staff = getattr(member, "staff", False)
+
+
+async def _begin(message: Message, role: Role | None = None) -> object | None:
     """
     Common start: groups only, not anonymous, and the person must be the owner of
-    the chat or an admin allowed to add admins. The bot's staff has no special
-    say here: who runs a chat is for the chat to decide.
+    the chat, an admin allowed to add admins, or one of the bot's staff (Sudo and up)
+    unless the chat's owner turned their help off.
     Returns the person's membership, or None after answering.
     """
     try:
@@ -105,7 +136,9 @@ async def _begin(message: Message) -> object | None:
             raise ModerationError("This command only works in groups.")
         if moderation.actor_of(message).anonymous:
             raise NotAllowed("Send this command as yourself, not as an anonymous admin.")
-        member = await _member(message, message.from_user.id)
+        member = await _actor_member(message, role, "can_promote_members")
+        if member is None:
+            raise ModerationError("I couldn't check your rights in this chat.")
         if not _has(member, "can_promote_members"):
             raise NotAllowed("You need the right to add new admins to use this command.")
         return member
@@ -150,13 +183,14 @@ def _rights_text(rights: list[str]) -> str:
 # --- /promote, /fullPromote -------------------------------------------------------
 
 @router.message(cmd("promote", "fullPromote", "fullpromote"))
-async def cmd_promote(message: Message, command: CommandObject) -> None:
+async def cmd_promote(message: Message, command: CommandObject, role: Role | None = None) -> None:
     full = command.command.lower() == "fullpromote"
-    actor_member = await _begin(message)
+    actor_member = await _begin(message, role)
     if actor_member is None:
         return
     bot = message.bot
     actor = moderation.actor_of(message)
+    _mark_staff(actor, actor_member)
 
     try:
         target = await _target(message, command)
@@ -223,11 +257,13 @@ def _promotion_problem(exc: TelegramBadRequest) -> str:
 # --- /demote --------------------------------------------------------------------------
 
 @router.message(cmd("demote"))
-async def cmd_demote(message: Message, command: CommandObject) -> None:
-    if await _begin(message) is None:
+async def cmd_demote(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    actor_member = await _begin(message, role)
+    if actor_member is None:
         return
     bot = message.bot
     actor = moderation.actor_of(message)
+    _mark_staff(actor, actor_member)
 
     try:
         target = await _target(message, command)
@@ -257,7 +293,7 @@ async def cmd_demote(message: Message, command: CommandObject) -> None:
 # --- /title ---------------------------------------------------------------------------
 
 @router.message(cmd("title"))
-async def cmd_title(message: Message, command: CommandObject) -> None:
+async def cmd_title(message: Message, command: CommandObject, role: Role | None = None) -> None:
     """Custom title of an admin. Admins may change their own; changing another's needs the right to add admins."""
     bot = message.bot
     actor = moderation.actor_of(message)
@@ -271,15 +307,19 @@ async def cmd_title(message: Message, command: CommandObject) -> None:
         if len(text) > MAX_LENGTH:
             raise ModerationError(f"A title can have at most {MAX_LENGTH} characters.")
 
-        actor_member = await _member(message, actor.id)
         own = target.user_id == actor.id
         if own:
+            actor_member = await _member(message, actor.id)
             if _status(actor_member) not in ("administrator", "creator"):
                 raise NotAllowed("Only admins can have a title.")
         else:
+            actor_member = await _actor_member(message, role, "can_promote_members")
+            if actor_member is None:
+                raise ModerationError("I couldn't check your rights in this chat.")
             await moderation.check_target(bot, message.chat, target, actor, None, punitive=False)
             if not _has(actor_member, "can_promote_members"):
                 raise NotAllowed("You need the right to add new admins to change someone else's title.")
+            _mark_staff(actor, actor_member)
         await _bot_member(message, "can_promote_members")
         target_member = await _member(message, target.user_id)
         status = _status(target_member)
@@ -324,7 +364,7 @@ async def _may_edit_own_tag(message: Message, member) -> bool:
 
 
 @router.message(cmd("tag"))
-async def cmd_tag(message: Message, command: CommandObject) -> None:
+async def cmd_tag(message: Message, command: CommandObject, role: Role | None = None) -> None:
     """Custom tag of a member. Anyone may set their own where the chat allows it; others' needs the right to manage tags."""
     bot = message.bot
     actor = moderation.actor_of(message)
@@ -338,15 +378,19 @@ async def cmd_tag(message: Message, command: CommandObject) -> None:
         if len(text) > MAX_LENGTH:
             raise ModerationError(f"A tag can have at most {MAX_LENGTH} characters.")
 
-        actor_member = await _member(message, actor.id)
         own = target.user_id == actor.id
         if own:
+            actor_member = await _member(message, actor.id)
             if not await _may_edit_own_tag(message, actor_member):
                 raise NotAllowed("This chat doesn't let members edit their own tag.")
         else:
+            actor_member = await _actor_member(message, role, "can_manage_tags")
+            if actor_member is None:
+                raise ModerationError("I couldn't check your rights in this chat.")
             await moderation.check_target(bot, message.chat, target, actor, None, punitive=False)
             if not _has(actor_member, "can_manage_tags"):
                 raise NotAllowed("You need the right to manage tags to change someone else's tag.")
+            _mark_staff(actor, actor_member)
         await _bot_member(message, "can_manage_tags")
         target_member = await _member(message, target.user_id)
         status = _status(target_member)

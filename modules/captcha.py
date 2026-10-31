@@ -177,7 +177,7 @@ async def _begin(message: Message, role: Role | None, *, change: bool) -> bool:
         await reply(message, "This command only works in groups.")
         return False
     right = RIGHT if change else LOOK_RIGHT
-    return await moderation.begin_chat_command(message, role, allow_staff=False, right=right) is not None
+    return await moderation.begin_chat_command(message, role, right=right) is not None
 
 
 def _on_off(value: bool) -> str:

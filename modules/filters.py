@@ -127,7 +127,7 @@ _answered: dict[tuple[int, str], float] = {}
 
 async def _admin_only(message: Message, role: Role | None) -> bool:
     """Filters are the chat's own business: admins only, never the bot's staff."""
-    return await moderation.begin_chat_command(message, role, allow_staff=False, right=RIGHT) is not None
+    return await moderation.begin_chat_command(message, role, right=RIGHT) is not None
 
 
 @router.message(cmd("filters"))

@@ -89,7 +89,7 @@ _SERVICE = (
 
 async def _admin_only(message: Message, role: Role | None, *, change: bool) -> bool:
     right = RIGHT if change else LOOK_RIGHT
-    return await moderation.begin_chat_command(message, role, allow_staff=False, right=right) is not None
+    return await moderation.begin_chat_command(message, role, right=right) is not None
 
 
 def _words(text: str | None) -> list[str]:

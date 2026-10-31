@@ -251,8 +251,9 @@ async def begin_chat_command(
     """
     Like begin(), for commands about the chat itself (no target user).
 
-    Commands that change or reveal the chat's settings pass allow_staff=False:
-    the bot's staff helps moderate users, it does not run other people's chats.
+    The bot's staff (Sudo and up) may use these commands like an admin with every right, unless
+    the chat's owner turned their help off with /staffhelp. A command that must stay with
+    the people of the chat can pass allow_staff=False.
     """
     actor = actor_of(message)
     try:

@@ -117,8 +117,8 @@ def _settings_text(chat_title: str, settings: dict[str, Any]) -> str:
 # --- Commands -------------------------------------------------------------------
 
 async def _admin_only(message: Message, role: Role | None) -> bool:
-    """Settings are for chat admins; the bot's staff does not run other people's chats."""
-    return await moderation.begin_chat_command(message, role, allow_staff=False, right=RIGHT) is not None
+    """Settings are for chat admins and, unless the chat's owner turned it off (/staffhelp), the bot's staff."""
+    return await moderation.begin_chat_command(message, role, right=RIGHT) is not None
 
 
 @router.message(cmd("flood"))

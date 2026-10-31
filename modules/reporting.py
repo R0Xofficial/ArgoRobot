@@ -250,12 +250,12 @@ async def cmd_reports(message: Message, command: CommandObject, role: Role | Non
         await reply(message, "This command only works in groups and in private.")
         return
     if not argument:
-        if await moderation.begin_chat_command(message, role, allow_staff=False, right=LOOK_RIGHT) is None:
+        if await moderation.begin_chat_command(message, role, right=LOOK_RIGHT) is None:
             return
         on = await chatsettings.reports(message.chat.id)
         await reply(message, f"Reporting is <b>{'on' if on else 'off'}</b> in this chat.\n{usage}")
         return
-    if await moderation.begin_chat_command(message, role, allow_staff=False, right=RIGHT) is None:
+    if await moderation.begin_chat_command(message, role, right=RIGHT) is None:
         return
     await chatsettings.set_reports(message.chat.id, _ANSWERS[argument])
     if _ANSWERS[argument]:

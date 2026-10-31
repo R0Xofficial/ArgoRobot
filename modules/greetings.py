@@ -130,7 +130,7 @@ def _yes_no(value: bool) -> str:
 async def _begin(message: Message, role: Role | None, *, change: bool) -> bool:
     """The chat's own business: admins only, never the bot's staff."""
     right = RIGHT if change else LOOK_RIGHT
-    return await moderation.begin_chat_command(message, role, allow_staff=False, right=right) is not None
+    return await moderation.begin_chat_command(message, role, right=right) is not None
 
 
 # --- Welcome and goodbye: the same commands for both -----------------------------------------

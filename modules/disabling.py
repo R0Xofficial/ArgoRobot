@@ -47,7 +47,7 @@ async def _begin(message: Message, role: Role | None, right: str = RIGHT) -> boo
     if message.chat.type not in GROUP_TYPES:
         await reply(message, "This command only works in groups.")
         return False
-    return await moderation.begin_chat_command(message, role, allow_staff=False, right=right) is not None
+    return await moderation.begin_chat_command(message, role, right=right) is not None
 
 
 def _word(command: CommandObject) -> str:

@@ -58,7 +58,7 @@ async def connect_and_tell(message: Message, reference: int | str) -> None:
 @router.message(cmd("connect"))
 async def cmd_connect(message: Message, command: CommandObject, role: Role | None = None) -> None:
     if message.chat.type in GROUP_TYPES:
-        if await moderation.begin_chat_command(message, role, allow_staff=False, right="can_manage_chat") is None:
+        if await moderation.begin_chat_command(message, role, right="can_manage_chat") is None:
             return
         me = await message.bot.me()
         button = InlineKeyboardButton(text="Connect", url=f"https://t.me/{me.username}?start=connect_{message.chat.id}")
