@@ -171,41 +171,16 @@ def _fed_name(fed: dict[str, Any]) -> str:
     return f"<b>{esc(fed['name'])}</b>"
 
 
-_tags: dict[str, tuple[float, str | None]] = {}
-TAG_SECONDS = 600
-
-
-async def _fed_tag(bot: Bot, fed: dict[str, Any] | None) -> str | None:
-    """@username of a federation: that of its log chat, when the log is a public chat."""
-    if not fed or not fed.get("log_chat_id"):
-        return None
-    key = str(fed.get("fed_id") or fed["log_chat_id"])
-    cached = _tags.get(key)
-    if cached is not None and time.monotonic() - cached[0] < TAG_SECONDS:
-        return cached[1]
-    tag = None
-    try:
-        username = (await bot.get_chat(fed["log_chat_id"])).username
-        tag = f"@{username}" if username else None
-    except Exception:
-        pass
-    _tags[key] = (time.monotonic(), tag)
-    return tag
-
-
 async def _own_line(bot: Bot, fed: dict[str, Any]) -> str:
-    """FedName: Knox Federation | @KnoxFederation"""
-    tag = await _fed_tag(bot, fed)
-    return _item("FedName", f"{esc(fed['name'])} | {esc(tag)}" if tag else esc(fed["name"]))
+    """FedName: the name as its owner set it (a @tag in it is theirs; nothing is added)."""
+    return _item("FedName", esc(fed["name"]))
 
 
 async def _other_lines(bot: Bot, label: str, fed: dict[str, Any] | None, fed_id: str | None = None) -> str:
-    """The other federation of a subscription, as two lines: <label>: ALT-F4 (@ALTF4Fed) and <label>ID: <code>id</code>."""
-    tag = await _fed_tag(bot, fed)
+    """The other federation of a subscription, as two lines: <label>: its name and <label>ID: <code>id</code>."""
     name = esc(fed["name"]) if fed else "that federation"
-    shown = f"{name} ({esc(tag)})" if tag else name
     identifier = fed["fed_id"] if fed else fed_id
-    return f"{_item(label, shown)}\n{_item(label + 'ID', f'<code>{esc(identifier)}</code>')}"
+    return f"{_item(label, name)}\n{_item(label + 'ID', f'<code>{esc(identifier)}</code>')}"
 
 
 def _owner_link(fed: dict[str, Any]) -> str:
@@ -226,12 +201,10 @@ async def _event(bot: Bot, fed: dict[str, Any], text: str) -> None:
             await bot.send_message(fed["owner_id"], text, link_preview_options=LinkPreviewOptions(is_disabled=True))
 
 
-async def _admin_event(bot: Bot, fed: dict[str, Any], promoted: bool, user_id: int, who: str, by: str | None = None) -> None:
-    """Tell the federation's log that someone became or stopped being one of its admins (`by`: who did it)."""
+async def _admin_event(bot: Bot, fed: dict[str, Any], promoted: bool, user_id: int, who: str) -> None:
+    """Tell the federation's log that someone became or stopped being one of its admins."""
     title, label = ("New Fed Promotion", "Promoted FedAdmin") if promoted else ("New Fed Demotion", "Demoted FedAdmin")
     text = f"<b>{title}</b>\n{await _own_line(bot, fed)}\n{_item(label, who)}\n{_item('User ID', f'<code>{user_id}</code>')}"
-    if by:
-        text += f"\n{_item('By', by)}"
     await _event(bot, fed, text)
 
 
@@ -488,7 +461,7 @@ async def cb_fedpromote(callback: CallbackQuery) -> None:
         return
     who = user_link(callback.from_user.id, callback.from_user.full_name)
     await edit(message, f"{who} is now an admin of the federation {_fed_name(fed)}.", reply_markup=None)
-    await _admin_event(callback.bot, fed, True, callback.from_user.id, who, user_ref(fed["owner_id"], fed["owner_name"]))
+    await _admin_event(callback.bot, fed, True, callback.from_user.id, who)
 
 
 @router.message(cmd("feddemote", "fdemote"))
@@ -505,7 +478,7 @@ async def cmd_feddemote(message: Message, command: CommandObject) -> None:
         return
     who = user_link(target.user_id, target.name)
     await reply(message, f"{who} is no longer an admin of {_fed_name(fed)}.")
-    await _admin_event(message.bot, fed, False, target.user_id, who, user_ref(message.from_user.id, message.from_user.full_name))
+    await _admin_event(message.bot, fed, False, target.user_id, who)
 
 
 @router.message(cmd("feddemoteme"))
@@ -528,7 +501,7 @@ async def cmd_feddemoteme(message: Message, command: CommandObject) -> None:
         await reply(message, "You are not an admin of that federation.")
         return
     await reply(message, f"You are no longer an admin of {_fed_name(fed)}.")
-    await _admin_event(message.bot, fed, False, user.id, user_link(user.id, user.full_name), user_ref(user.id, user.full_name))
+    await _admin_event(message.bot, fed, False, user.id, user_link(user.id, user.full_name))
 
 
 async def _toggle(message: Message, command: CommandObject, field: str, name: str) -> None:
