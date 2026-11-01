@@ -3,14 +3,14 @@
 from contextlib import suppress
 from datetime import datetime, timezone
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
-from aiogram.types import ChatPermissions, Message
+from aiogram.types import CallbackQuery, ChatPermissions, Message
 
 from core import moderation
 from core.filters import cmd
-from core.helpers import reply
+from core.helpers import edit, reply
 from core.moderation import ModerationError, perform
 from core.roles import Role
 from core.text import esc
@@ -27,6 +27,8 @@ Name the target by replying to their message, or with a @username or a numeric I
 I won't act against chat admins, my own staff or protected accounts, and I need the right to restrict users myself.
 
 Times look like 30m, 2h, 3d or 1w, from 1 minute to 365 days.
+
+Under every mute there is an Unmute button, so you don't have to look up the ID. It works for admins and staff who may mute, like /unmute. Silent mutes say nothing, so they have no button.
 """
 
 HELP_WHO = "admins"
@@ -82,6 +84,7 @@ async def cmd_mute(message: Message, command: CommandObject, role: Role | None =
         message,
         f"{moderation.who(target)} was muted{moderation.by(actor)}"
         f"{moderation.reason_line(target.extra)}{moderation.staff_note(actor)}",
+        reply_markup=moderation.undo_keyboard("mute", target),
     )
 
 
@@ -113,6 +116,7 @@ async def cmd_tmute(message: Message, command: CommandObject, role: Role | None 
         message,
         f"{moderation.who(target)} was muted for {moderation.format_duration(duration)}{moderation.by(actor)}"
         f"{moderation.reason_line(reason)}{moderation.staff_note(actor)}",
+        reply_markup=moderation.undo_keyboard("mute", target),
     )
 
 
@@ -147,3 +151,34 @@ async def cmd_unmute(message: Message, command: CommandObject, role: Role | None
         await _silently(message)
         return
     await reply(message, f"{moderation.who(target)} was unmuted{moderation.by(actor)}{moderation.staff_note(actor)}")
+
+
+@router.callback_query(F.data.startswith(moderation.CB_UNDO + "mute:"))
+async def cb_unmute(callback: CallbackQuery, role: Role | None = None) -> None:
+    """The Unmute button under a mute."""
+    user_id = moderation.parse_undo(callback, "mute")
+    allowed = await moderation.authorize_callback(callback, role)
+    if allowed is None:
+        return
+    message, actor = allowed
+    if user_id is None or user_id < 0:
+        await callback.answer("This button is not valid.", show_alert=True)
+        return
+    bot = callback.bot
+    target = await moderation.target_by_id(bot, message.chat.id, user_id)
+    member = await moderation.get_member(bot, message.chat.id, user_id)
+    status = getattr(getattr(member, "status", None), "value", getattr(member, "status", None))
+    if member is not None and (status != "restricted" or getattr(member, "can_send_messages", False) is not False):
+        await callback.answer("They aren't muted any more.", show_alert=True)
+        with suppress(TelegramAPIError):
+            await message.edit_reply_markup(reply_markup=None)
+        return
+    try:
+        permissions = await _default_permissions(bot, message.chat.id)
+        await perform(bot.restrict_chat_member(message.chat.id, user_id, permissions=permissions))
+    except ModerationError as exc:
+        await callback.answer(str(exc), show_alert=True)
+        return
+    await callback.answer()
+    await moderation.log_action(message, "UNMUTED", actor, target, "", ("Undo", "yes"))
+    await edit(message, f"{moderation.who(target)} was unmuted{moderation.by(actor)}{moderation.staff_note(actor)}", reply_markup=None)

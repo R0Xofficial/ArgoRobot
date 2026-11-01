@@ -230,21 +230,7 @@ async def cmd_warns(message: Message, command: CommandObject, role: Role | None 
     await reply(message, text, reply_markup=keyboard)
 
 
-async def _authorize_callback(
-    callback: CallbackQuery, role: Role | None
-) -> tuple[Message, moderation.Actor] | None:
-    """The message a button is under and who pressed it, if they may moderate there."""
-    message = callback.message
-    if not isinstance(message, Message):
-        await callback.answer("This message is too old.", show_alert=True)
-        return None
-    try:
-        capacity = await moderation.authorize(callback.bot, message.chat, callback.from_user, role)
-    except ModerationError as exc:
-        await callback.answer(str(exc), show_alert=True)
-        return None
-    user = callback.from_user
-    return message, moderation.Actor(user.id, user.full_name, staff=capacity == "staff")
+_authorize_callback = moderation.authorize_callback
 
 
 def _warn_id(callback: CallbackQuery, prefix: str) -> int | None:
