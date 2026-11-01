@@ -53,13 +53,9 @@ class Settings(BaseSettings):
     COMMAND_PREFIXES: str = "/!"        # characters that can start a command
     GITHUB_URL: str | None = "https://github.com/R0Xofficial/ArgoRobot"  # button in /start (private chat)
 
-    # The support chat named in /help, where people report bugs, e.g. "@MySupport". Optional.
-    SUPPORT_CHAT_USERNAME: str | None = "ArgoRobotSupport"
-
-    # --- Global bans --------------------------------------------------------
-    # Where people can appeal a global ban, shown in the alert when a globally
-    # banned user is removed from a chat, e.g. "@MyAppealChat". Optional.
-    APPEAL_CHAT_USERNAME: str | None = None
+    # The support chat, e.g. "@MySupport" (with or without the @). Named at the bottom of /help,
+    # where people report bugs, and in the alert of a global ban, where they can appeal it. Optional.
+    SUPPORT_CHAT_USERNAME: str | None = "@ArgoRobotSupport"
 
     # --- Optional external services ---------------------------------------
     # Add API keys here as modules need them, e.g.:
