@@ -97,6 +97,7 @@ Settings come from environment variables or from a `.env` file next to `config.p
 | `CHAT_CLEANUP_HOURS` | How often the bot forgets chats it was removed from. Default `24`, `0` turns it off (`/cleanchats` still works). |
 | `APPEAL_CHAT_USERNAME` | Where people can appeal a global ban, for example `@MyAppealChat`. Shown when a globally banned user is removed. |
 | `COMMAND_PREFIXES` | Characters that start a command. Default `/!`. In groups `!` commands only reach the bot if it is an admin or privacy mode is off (BotFather: `/setprivacy`). |
+| `SUPPORT_CHAT_USERNAME` | The support chat named at the bottom of `/help`, where people report bugs, for example `@MySupport`. Default: `ArgoRobotSupport`. |
 | `GITHUB_URL` | Repository button in `/start`. |
 
 ## 5. Roles
