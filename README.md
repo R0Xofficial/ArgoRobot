@@ -28,7 +28,7 @@ Repository: <https://github.com/R0Xofficial/ArgoRobot>
 | --- | --- |
 | **Moderation** | Bans, temporary bans, kicks, mutes, temporary mutes, warnings with a limit and an action, silent and "delete the message too" variants (`/sban`, `/smute`, `/dban`, `/dwarn` ...), `/kickme`, removing zombies (deleted accounts) with `/zombies`, bulk deleting messages (`/purge`). |
 | **Automatic protection** | Captchas for newcomers (button, math, scrambled code, picture), antiflood, locks (urls, media, forwards ...), blacklisted words and phrases, warn filters, join blacklists (names, usernames, bios, channels), approved users that automatic measures skip, user reports to the admins. |
-| **Chat tools** | Welcome and goodbye messages (with media and buttons), rules, notes, filters, promote/demote with custom titles, pins, invite links, AFK, backups of a chat's data, sticker tools, light commands for fun. |
+| **Chat tools** | Welcome and goodbye messages (with media and buttons), rules, notes, filters, Unban and Unmute buttons under every ban and mute, promote/demote with custom titles, pins, invite links, AFK, backups of a chat's data, sticker tools, light commands for fun. |
 | **Bans across chats** | Federations (one ban list for many chats, with subscriptions) and global bans (`/gban`) decided by the bot's staff. |
 | **Housekeeping** | A log chat for moderation actions, per-chat switches, switching single commands or whole modules off, managing a group from a private chat (`/connect`). |
 
