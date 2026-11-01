@@ -55,6 +55,12 @@ def user_link(user_id: int, name: str | None) -> str:
     return f'<a href="tg://user?id={int(user_id)}">{esc(name or "User")}</a>'
 
 
+def at_name(username: str | None) -> str:
+    """A chat's username as it is shown, always with one @ in front ("Chat" and "@Chat" both give "@Chat"). "" when empty."""
+    name = (username or "").strip().lstrip("@")
+    return f"@{name}" if name else ""
+
+
 def user_ref(user_id: int, name: str | None) -> str:
     """Profile link followed by the id: Name [123456789]."""
     return f"{user_link(user_id, name)} [<code>{int(user_id)}</code>]"
