@@ -30,7 +30,7 @@ from core.helpers import edit, reply
 from core.moderation import GROUP_TYPES, ModerationError
 from core.roles import Role
 from core.targets import Target, TargetError, display_name, replied_message, resolve_target, sender_as_target
-from core.text import esc, user_ref, SWITCH as _ANSWERS
+from core.text import at_name, esc, user_ref, SWITCH as _ANSWERS
 
 log = logging.getLogger(__name__)
 
@@ -229,8 +229,8 @@ async def _alert(bot: Bot, chat_id: int, ban: dict, thread_id: int | None, name:
         f"<b>User:</b> {user_ref(ban['user_id'], name)}",
         f"<b>Reason:</b> <code>{esc(ban['reason'])}</code>",
     ]
-    if settings.APPEAL_CHAT_USERNAME:
-        lines.append(f"<b>Appeal Chat:</b> {esc(settings.APPEAL_CHAT_USERNAME)}")
+    if at_name(settings.SUPPORT_CHAT_USERNAME):
+        lines.append(f"<b>Appeal Chat:</b> {esc(at_name(settings.SUPPORT_CHAT_USERNAME))}")
     await _notify(bot, chat_id, "\n".join(lines), thread_id=thread_id)
 
 

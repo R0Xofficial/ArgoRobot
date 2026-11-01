@@ -27,7 +27,7 @@ from core.targets import (
     resolve_target,
     sender_as_target,
 )
-from core.text import esc
+from core.text import at_name, esc
 
 # Commands shown in /help (see core/help_index.py).
 ABOUT = """
@@ -72,6 +72,13 @@ CB_HELP = "help:home"
 CB_HELP_MODULE = "help:module:"
 CB_HELP_SECTION = "help:section:"
 CB_HELP_PAGE = "help:page:"
+CB_HELP_MORE = "help:more:"  # help:more:<module>:<section number or ->:<page number>
+
+# A module page up to this long stays one page; a longer one keeps its notes behind buttons,
+# and when even its commands are too much they get pages of their own.
+SINGLE_LIMIT = 2000
+MAIN_LIMIT = 2400
+PART_LIMIT = 1800
 
 NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
@@ -100,12 +107,28 @@ def _group_start_text(name: str, username: str) -> str:
     )
 
 
+def _support_line() -> str:
+    name = at_name(settings.SUPPORT_CHAT_USERNAME)
+    return f"Found a bug, or something doesn't work as it should? Report it in the support chat: {esc(name)}" if name else ""
+
+
 def _help_home_text(role: Role | None = None) -> str:
     prefixes = " ".join(f"<code>{esc(p)}</code>" for p in settings.COMMAND_PREFIXES)
-    lines = ["<b>Help</b>", "", "Pick a category to see what it does and how to use its commands.", "Settings that take on or off also understand yes and no.", ""]
-    for info in help_index.categories(role):
-        lines.append(f"• <b>{esc(_help_title(info))}</b> - {esc(info.description)}" if info.description else f"• <b>{esc(_help_title(info))}</b>")
-    lines += ["", f"Commands can start with: {prefixes}"]
+    lines = [
+        "<b>Help</b>",
+        "",
+        "Pick a category below to see what it does and how to use its commands.",
+        "",
+        "<b>Useful commands</b>",
+        "/start - say hello. In a private chat it opens the main menu, in a group it only points you to me.",
+        "/help - open this panel. <code>/help notes</code> (or the name of any command) goes straight to a page. In a group you get a button that opens it in a private chat.",
+        "",
+        "Settings that take on or off also understand yes and no.",
+        f"Commands can start with: {prefixes}",
+    ]
+    support = _support_line()
+    if support:
+        lines += ["", support]
     return "\n".join(lines)
 
 
@@ -119,36 +142,61 @@ def _paragraphs(text: str) -> str:
     return "\n".join(esc(line.rstrip()) for line in inspect.cleandoc(text).splitlines())
 
 
-def _help_category_text(info: registry.ModuleInfo, role: Role | None, section: int | None = None) -> str:
+def _help_parts(info: registry.ModuleInfo, role: Role | None, section: int | None = None) -> tuple[str, list[tuple[str, str]]]:
     """
-    The page of one module: what it is, then every command it offers to this person. A module
-    with sections shows the commands that belong to none here, and a page per section.
+    The page of one module and the extra pages behind its buttons, as (text, [(label, html)]).
+    The page says what the module is, then lists the commands this person may use. A module with
+    sections shows the commands that belong to none here, and a page per section. A page that
+    gets long keeps its notes behind buttons, and its commands too when they alone are too much.
     """
     names = help_index.sections(info.module)
     chosen = names[section] if section is not None and 0 <= section < len(names) else None
-    lines = [f"<b>{esc(_help_title(info))}</b>" if chosen is None else f"<b>{esc(_help_title(info))} - {esc(chosen)}</b>"]
+    title = _help_title(info)
+    page_title = f"<b>{esc(title)}</b>" if chosen is None else f"<b>{esc(title)} - {esc(chosen)}</b>"
+    head = [page_title]
     if chosen is None:
         if info.description:
-            lines.append(f"<i>{esc(info.description)}</i>")
+            head.append(f"<i>{esc(info.description)}</i>")
         about = getattr(info.module, "ABOUT", None)
         if about:
-            lines += ["", _paragraphs(about)]
+            head += ["", _paragraphs(about)]
 
-    commands = help_index.detailed(info.module, role, chosen)
-    if commands:
-        lines += ["", "<b>Commands</b>"]
-    for usage, description, who in commands:
-        head = f"<code>{esc(usage)}</code>"
-        if who:
-            head += f"  <i>({esc(who)})</i>"
-        lines += ["", head, esc(description)]
-    if chosen is None and help_index.visible_sections(info.module, role):
-        lines += ["", "Pick a section below for the commands."]
+    blocks = []
+    for usage, description, who in help_index.detailed(info.module, role, chosen):
+        line = f"<code>{esc(usage)}</code>" + (f"  <i>({esc(who)})</i>" if who else "")
+        blocks.append(f"{line}\n{esc(description)}")
+    hint = ["", "Pick a section below for the commands."] if chosen is None and help_index.visible_sections(info.module, role) else []
+    notes = [(note[0], note[1]) for note in getattr(info.module, "HELP_NOTES", ()) if (str(note[2]) if len(note) > 2 else None) == chosen]
 
-    for title, text, *where in getattr(info.module, "HELP_NOTES", ()):
-        if (str(where[0]) if where else None) == chosen:
-            lines += ["", f"<b>{esc(title)}</b>", _paragraphs(text)]
-    return "\n".join(lines)
+    def commands(items: list[str]) -> list[str]:
+        return ["", "<b>Commands</b>", ""] + "\n\n".join(items).split("\n") if items else []
+
+    full = "\n".join(head + commands(blocks) + hint + [x for title_, text in notes for x in ("", f"<b>{esc(title_)}</b>", _paragraphs(text))])
+    if len(full) <= SINGLE_LIMIT:
+        return full, []
+
+    extra = [(label, f"{page_title.replace('</b>', '')} - {esc(label)}</b>\n\n{_paragraphs(text)}") for label, text in notes]
+    core = "\n".join(head + commands(blocks) + hint)
+    if len(core) <= MAIN_LIMIT:
+        return core, extra
+
+    chunks, current = [], []
+    for block in blocks:
+        if current and len("\n\n".join(current + [block])) > PART_LIMIT:
+            chunks.append(current)
+            current = []
+        current.append(block)
+    if current:
+        chunks.append(current)
+    pages = []
+    for number, chunk in enumerate(chunks, 1):
+        label = "Commands" if len(chunks) == 1 else f"Commands {number}"
+        pages.append((label, f"{page_title.replace('</b>', '')} - {label}</b>\n\n" + "\n\n".join(chunk)))
+    return "\n".join(head + hint), pages + extra
+
+
+def _help_category_text(info: registry.ModuleInfo, role: Role | None, section: int | None = None) -> str:
+    return _help_parts(info, role, section)[0]
 
 
 def _start_keyboard() -> InlineKeyboardMarkup:
@@ -170,18 +218,29 @@ def _help_home_keyboard(role: Role | None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def _more_rows(info: registry.ModuleInfo, role: Role | None, section: int | None) -> list[list[InlineKeyboardButton]]:
+    """The buttons of a page's extra pages (long command lists, notes), two to a row."""
+    where = "-" if section is None else str(section)
+    buttons = [
+        InlineKeyboardButton(text=label, callback_data=f"{CB_HELP_MORE}{info.name}:{where}:{number}")
+        for number, (label, _html) in enumerate(_help_parts(info, role, section)[1])
+    ]
+    return [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
+
+
 def _help_category_keyboard(info: registry.ModuleInfo | None = None, role: Role | None = None, section: int | None = None) -> InlineKeyboardMarkup:
     """Back to the list of categories, or to the module's page from one of its sections."""
     if info is not None and section is not None:
-        return InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="Back", callback_data=f"{CB_HELP_MODULE}{info.name}")]]
-        )
+        rows = _more_rows(info, role, section)
+        rows.append([InlineKeyboardButton(text="Back", callback_data=f"{CB_HELP_MODULE}{info.name}")])
+        return InlineKeyboardMarkup(inline_keyboard=rows)
     rows = []
     if info is not None:
         rows = [
             [InlineKeyboardButton(text=name, callback_data=f"{CB_HELP_SECTION}{info.name}:{number}")]
             for number, name in help_index.visible_sections(info.module, role)
         ]
+        rows += _more_rows(info, role, None)
         rows += [
             [InlineKeyboardButton(text=label, callback_data=f"{CB_HELP_PAGE}{info.name}:{number}:0")]
             for number, label in help_index.pages(info.module)
@@ -353,6 +412,31 @@ async def cb_help_section(callback: CallbackQuery, role: Role | None = None) -> 
             callback.message,
             _help_category_text(info, role, int(number)),
             reply_markup=_help_category_keyboard(info, role, int(number)),
+        )
+
+
+@router.callback_query(F.data.startswith(CB_HELP_MORE))
+async def cb_help_more(callback: CallbackQuery, role: Role | None = None) -> None:
+    name, _, rest = (callback.data or "")[len(CB_HELP_MORE):].partition(":")
+    where, _, number = rest.partition(":")
+    info = registry.get(name)
+    section = int(where) if where.isdigit() else None
+    found = None
+    if info is not None and info.enabled and help_index.entries(info.module, role) and number.isdigit() and (where == "-" or section is not None):
+        extra = _help_parts(info, role, section)[1]
+        if int(number) < len(extra):
+            found = extra[int(number)][1]
+    if found is None:
+        await callback.answer("This page is not available.", show_alert=True)
+        return
+
+    await callback.answer()
+    if isinstance(callback.message, Message):
+        back = f"{CB_HELP_SECTION}{info.name}:{section}" if section is not None else f"{CB_HELP_MODULE}{info.name}"
+        await edit(
+            callback.message,
+            found,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Back", callback_data=back)]]),
         )
 
 
