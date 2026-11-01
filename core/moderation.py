@@ -25,7 +25,7 @@ from typing import Any, Awaitable
 
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import CommandObject
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from core import chatlog, chatsettings, immunity, roles
 from core.helpers import reply
@@ -311,6 +311,51 @@ async def perform(call: Awaitable[Any], rights_message: str = RIGHTS_MESSAGE) ->
 
 
 # --- Wording ------------------------------------------------------------------
+
+CB_UNDO = "undo:"  # undo:<ban|mute>:<user or channel id>, the button under a ban or a mute
+
+
+def undo_keyboard(kind: str, target: Target) -> InlineKeyboardMarkup:
+    """The "Unban" / "Unmute" button under a ban or a mute: no need to look up the id."""
+    text = "Unban" if kind == "ban" else "Unmute"
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=text, callback_data=f"{CB_UNDO}{kind}:{target.user_id}")]])
+
+
+def parse_undo(callback: CallbackQuery, kind: str) -> int | None:
+    """The id in the data of an undo button of this kind, if it is one."""
+    prefix = f"{CB_UNDO}{kind}:"
+    value = (callback.data or "")[len(prefix):]
+    return int(value) if (callback.data or "").startswith(prefix) and value.lstrip("-").isdigit() else None
+
+
+async def authorize_callback(callback: CallbackQuery, role: Role | None) -> tuple[Message, Actor] | None:
+    """The message a button is under and who pressed it, if they may moderate there."""
+    message = callback.message
+    if not isinstance(message, Message):
+        await callback.answer("This message is too old.", show_alert=True)
+        return None
+    try:
+        capacity = await authorize(callback.bot, message.chat, callback.from_user, role)
+    except ModerationError as exc:
+        await callback.answer(str(exc), show_alert=True)
+        return None
+    user = callback.from_user
+    return message, Actor(user.id, user.full_name, staff=capacity == "staff")
+
+
+async def target_by_id(bot, chat_id: int, user_id: int) -> Target:
+    """A target made from an id alone (a button): the name is looked up, a channel when the id says so."""
+    if user_id < 0:
+        title = None
+        try:
+            title = (await bot.get_chat(user_id)).title
+        except TelegramAPIError:
+            pass
+        return Target(user_id, title, kind="channel", title=title)
+    member = await get_member(bot, chat_id, user_id)
+    user = getattr(member, "user", None)
+    return Target(user_id, getattr(user, "full_name", None) if user else None)
+
 
 def who(target: Target) -> str:
     """The target as a link: a user by account, a channel by its public link."""
