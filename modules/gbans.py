@@ -220,11 +220,13 @@ async def _remove_from(bot: Bot, chat_id: int, user_id: int) -> bool:
     return await _enforceable(bot, chat_id, user_id) and await _ban(bot, chat_id, user_id)
 
 
-async def _alert(bot: Bot, chat_id: int, ban: dict, thread_id: int | None) -> None:
+async def _alert(bot: Bot, chat_id: int, ban: dict, thread_id: int | None, name: str | None = None) -> None:
+    # The name they have now, else the one the bot registered when it saw them, else the one from the ban.
+    name = name or await users.name_of(ban["user_id"]) or ban["name"]
     lines = [
         "<b>Alert!</b> Detected globally banned user.",
         "<code>I banned them here!</code>",
-        f"<b>User:</b> {user_ref(ban['user_id'], ban['name'])}",
+        f"<b>User:</b> {user_ref(ban['user_id'], name)}",
         f"<b>Reason:</b> <code>{esc(ban['reason'])}</code>",
     ]
     if settings.APPEAL_CHAT_USERNAME:
@@ -232,14 +234,14 @@ async def _alert(bot: Bot, chat_id: int, ban: dict, thread_id: int | None) -> No
     await _notify(bot, chat_id, "\n".join(lines), thread_id=thread_id)
 
 
-async def _enforce(bot: Bot, chat_id: int, user_id: int, thread_id: int | None) -> None:
+async def _enforce(bot: Bot, chat_id: int, user_id: int, thread_id: int | None, name: str | None = None) -> None:
     ban = await gbans.get(user_id)
     if ban is None or not _first_recently(chat_id, user_id):
         return
     if not await _ban(bot, chat_id, user_id):
         _recent.pop((chat_id, user_id), None)  # try again with their next message
         return
-    await _alert(bot, chat_id, ban, thread_id)
+    await _alert(bot, chat_id, ban, thread_id, name)
 
 
 def _spawn(coroutine) -> None:
@@ -822,7 +824,7 @@ async def _banned_in_message(message: Message, bot: Bot) -> bool:
 async def enforce_on_message(message: Message, bot: Bot) -> None:
     with suppress(TelegramAPIError):
         await message.delete()
-    await _enforce(bot, message.chat.id, message.from_user.id, _thread_of(message))
+    await _enforce(bot, message.chat.id, message.from_user.id, _thread_of(message), message.from_user.full_name)
 
 
 def _moved(event: ChatMemberUpdated) -> bool:
@@ -845,7 +847,7 @@ async def _banned_active(event: ChatMemberUpdated, bot: Bot) -> bool:
 
 @router.chat_member(_banned_active)
 async def enforce_on_member_change(event: ChatMemberUpdated, bot: Bot) -> None:
-    await _enforce(bot, event.chat.id, event.new_chat_member.user.id, None)
+    await _enforce(bot, event.chat.id, event.new_chat_member.user.id, None, event.new_chat_member.user.full_name)
 
 
 async def _banned_reacting(reaction: MessageReactionUpdated, bot: Bot) -> bool:
@@ -857,7 +859,7 @@ async def _banned_reacting(reaction: MessageReactionUpdated, bot: Bot) -> bool:
 
 @router.message_reaction(_banned_reacting)
 async def enforce_on_reaction(reaction: MessageReactionUpdated, bot: Bot) -> None:
-    await _enforce(bot, reaction.chat.id, reaction.user.id, None)
+    await _enforce(bot, reaction.chat.id, reaction.user.id, None, reaction.user.full_name)
 
 
 # --- /info ----------------------------------------------------------------------------------------------------
