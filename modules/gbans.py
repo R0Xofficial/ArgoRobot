@@ -766,12 +766,11 @@ async def cmd_gimport(message: Message, command: CommandObject) -> None:
         await edit(status, "The import failed. Nothing more was imported; see the developer log.")
         raise
 
+    skipped = len(rows) - added + protected
     await edit(
         status,
-        "<b>Import Bans Successful!</b>\n"
-        f"Added <code>{added}</code> new bans to the database.\n"
-        f"Already banned: <code>{len(rows) - added}</code>, "
-        f"protected: <code>{protected}</code>.",
+        f"Imported <b>{added}</b> ban{'s' if added != 1 else ''}."
+        + (f" Skipped <b>{skipped}</b> (already banned, or protected)." if skipped else ""),
     )
     admin = message.from_user
     await logs.role_log(
