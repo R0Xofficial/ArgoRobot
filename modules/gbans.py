@@ -310,7 +310,10 @@ async def _apply_ban(
     origin_id = None
     if origin_chat is not None and origin_chat[1] in GROUP_TYPES:
         origin_id = origin_chat[0]
-        await _remove_from(bot, origin_id, target_id)
+        # Only when they are in the chat: a ban in a chat they never joined (an administrative
+        # group, say) would only add a row to its ban list. Elsewhere it happens when they act.
+        if await moderation.is_in_chat(bot, origin_id, target_id):
+            await _remove_from(bot, origin_id, target_id)
     return old
 
 

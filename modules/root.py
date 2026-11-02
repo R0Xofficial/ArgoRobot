@@ -9,7 +9,7 @@ from aiogram.filters import CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from config import settings
-from core import chats, database, gbans, immunity, info_hooks, logs, registry, roles, speedtest, whitelist
+from core import chats, database, federations, gbans, immunity, info_hooks, logs, registry, roles, speedtest, whitelist
 from core.filters import HasRole, cmd
 from core.helpers import edit, reply
 from core.roles import Role
@@ -40,7 +40,7 @@ HELP = [
     ("/leave", "Make me leave the chat where you send it.", Role.DEVELOPER),
     ("/speedtest", "Measure the ping, download and upload speed of my server.", Role.DEVELOPER),
     ("/staff", "Show who holds each staff role.", Role.SUPPORT),
-    ("/adddev <user>", "Grant the Developer role.", Role.OWNER),
+    ("/adddev <user>", "Grant the Developer role. Not possible for users with a global or federation ban.", Role.OWNER),
     ("/rmdev <user>", "Remove the Developer role.", Role.OWNER),
     ("/addsudo <user>", "Grant the Sudo role.", Role.DEVELOPER),
     ("/rmsudo <user>", "Remove the Sudo role.", Role.DEVELOPER),
@@ -262,6 +262,16 @@ async def cmd_staff_role(message: Message, command: CommandObject, role: Role | 
         if await gbans.is_gbanned(target.user_id):
             await reply(message, f"{who} is globally banned and can't be promoted.")
             return
+        fed_bans = await federations.banned_in(target.user_id)
+        if fed_bans:
+            names = ", ".join(esc(row["name"]) for row in fed_bans[:5])
+            more = f" and {len(fed_bans) - 5} more" if len(fed_bans) > 5 else ""
+            await reply(
+                message,
+                f"{who} is banned in a federation ({names}{more}) and can't be promoted. "
+                "If the ban is bogus, lift it first with /clearfban.",
+            )
+            return
         await roles.set_role(target.user_id, target_role, actor.id, target.name, actor.full_name)
         await reply(message, f"{who} has been promoted to <b>{label}</b>.")
     else:
@@ -389,6 +399,9 @@ async def cmd_whitelist(message: Message, command: CommandObject) -> None:
         return
 
     if adding:
+        if await gbans.is_gbanned(target.user_id):
+            await reply(message, f"{who} is globally banned and can't be whitelisted. Remove the global ban first.")
+            return
         if not await whitelist.add(target.user_id, actor.id, target.name, actor.full_name):
             await reply(message, f"{who} is already whitelisted.")
             return

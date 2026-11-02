@@ -23,13 +23,14 @@ from aiogram.types import (
 )
 
 from core.banfiles import FORMATS, MAX_IMPORT_BYTES, parse_import, render_export, stamp as _stamp
-from core import approvals, federations, immunity, info_hooks, moderation, roles
+from core import approvals, federations, immunity, info_hooks, moderation, roles, users
 from core.federations import FederationError
 from core.help_index import Section
-from core.filters import cmd
+from core.filters import HasRole, cmd
+from core.roles import Role
 from core.helpers import edit, reply
 from core.moderation import GROUP_TYPES, ModerationError
-from core.targets import TargetError, replied_message, resolve_target
+from core.targets import TargetError, replied_message, resolve_target, sender_as_target
 from core.text import esc, user_link, user_ref, SWITCH as _ON_OFF
 
 log = logging.getLogger(__name__)
@@ -62,8 +63,10 @@ HELP = [
     ("/fedimport [overwrite|keep] [csv|minicsv|json|human]", "Reply to a file (or send it with the command) to import bans. Keep, the default, keeps existing ones; overwrite replaces the list. JSON files with one ban per line work too.", S_OWNER, OWNER),
     ("/setfedlog", "Use this chat as the log of your federation.", S_OWNER, OWNER),
     ("/unsetfedlog", "Stop logging your federation in a chat.", S_OWNER, OWNER),
-    ("/fban <user> [reason]", "Ban a user in this chat's federation, and in those subscribed to it. If the user is already banned, you are asked whether to update the reason.", S_ADMIN, FED_ADMINS),
+    ("/fban <user> [reason]", "Ban a user in this chat's federation, and in those subscribed to it. If they are in this chat they are banned at once; in the other chats as soon as they write, join or react. If the user is already banned, you are asked whether to update the reason.", S_ADMIN, FED_ADMINS),
+    ("/dfban <reason>", "Reply to a message: delete it and ban its author in the federation, like /fban.", S_ADMIN, FED_ADMINS),
     ("/unfban <user>", "Lift a federation ban.", S_ADMIN, FED_ADMINS),
+    ("/clearfban <user> [FedID] [reason]", "Bot staff only: lift a user's ban in any federation, also one you don't own. Without a FedID, in every federation that bans them. Give a reason so the owners know why; they are told.", S_ADMIN, Role.DEVELOPER),
     ("/feddemoteme <FedID>", "Give up your admin rights in a federation.", S_ADMIN, FED_ADMINS),
     ("/myfeds", "List the federations you own or administer. Private chat only.", S_ADMIN, FED_ADMINS),
     ("/fedinfo [FedID]", "Show a federation: owner, admins, chats, bans. Without an ID it shows the one you own.", S_USER),
@@ -706,29 +709,58 @@ def _ban_text(title: str, fed: dict[str, Any], admin, target_id: int, target_nam
     return "\n".join(lines)
 
 
-@router.message(cmd("fban"))
+async def _ban_here(message: Message, user_id: int) -> None:
+    """A fban given in a chat takes effect there at once if the person is in it; in the other chats of the federation it does when the person next acts."""
+    # Only when they are in the chat: in an administrative group nobody is a member and a ban
+    # there would only add a row to its ban list.
+    if (
+        message.chat.type in GROUP_TYPES
+        and await moderation.is_in_chat(message.bot, message.chat.id, user_id)
+        and not await _spared(message.bot, message.chat.id, user_id)
+    ):
+        await _ban_in(message.bot, message.chat.id, user_id)
+
+
+@router.message(cmd("fban", "dfban"))
 async def cmd_fban(message: Message, command: CommandObject) -> None:
+    deleting = command.command.lower() == "dfban"
     user = await _person(message)
     if user is None:
         return
     fed = await _fed_to_ban_in(message, user)
     if fed is None:
         return
-    target = await _target(message, command, allow_bots=True)
-    if target is None:
-        return
+    replied = replied_message(message)
+    if deleting:
+        # Like /dgban: the replied-to message names the person, everything typed is the reason.
+        if replied is None:
+            await reply(message, "Reply to the message of the user you want to delete and ban.")
+            return
+        target = sender_as_target(replied)
+        if target.is_chat or target.user_id in users.IGNORED_IDS:
+            await reply(message, "That message was not sent by a regular user.")
+            return
+        target.extra = (command.args or "").strip()
+    else:
+        target = await _target(message, command, allow_bots=True)
+        if target is None:
+            return
     problem = await _protected(message.bot, fed, target)
     if problem:
         await reply(message, problem)
         return
     reason = target.extra.strip()
     if fed["require_reason"] and not reason:
-        await reply(message, "This federation requires a reason: /fban &lt;user&gt; &lt;reason&gt;.")
+        await reply(message, "This federation requires a reason: /dfban &lt;reason&gt;." if deleting else "This federation requires a reason: /fban &lt;user&gt; &lt;reason&gt;.")
         return
+    if deleting:
+        with suppress(TelegramAPIError):  # best effort: the message may be gone already
+            await message.bot.delete_message(message.chat.id, replied.message_id)
     existing = await federations.get_ban(fed["fed_id"], target.user_id)
     if existing is not None:
         who = user_link(target.user_id, target.name)
         if not reason or reason == (existing["reason"] or ""):
+            await _ban_here(message, target.user_id)  # they may still be in this chat
             await reply(message, f"User {who} is already fbanned in {_fed_name(fed)}" + (f", with reason:\n{esc(existing['reason'])}" if existing["reason"] else "."))
             return
         keyboard = InlineKeyboardMarkup(
@@ -752,6 +784,7 @@ async def cmd_fban(message: Message, command: CommandObject) -> None:
         _pending_reasons[(message.chat.id, sent.message_id)] = (target.name, reason, user.id, user.full_name, now)
         return
     await federations.ban(fed["fed_id"], target.user_id, target.name, reason, user.id, user.full_name)
+    await _ban_here(message, target.user_id)
     text = _ban_text("New FedBan", fed, user, target.user_id, target.name, reason, await _own_line(message.bot, fed))
     await reply(message, text)
     await _event(message.bot, fed, text)
@@ -798,10 +831,57 @@ async def cmd_unfban(message: Message, command: CommandObject) -> None:
     if await federations.unban(fed["fed_id"], target.user_id) is None:
         await reply(message, f"{user_link(target.user_id, target.name)} is not banned in {_fed_name(fed)}.")
         return
-    text = _ban_text("FedBan Revoked", fed, user, target.user_id, target.name, None, await _own_line(message.bot, fed))
+    text = _ban_text("Un-FedBan", fed, user, target.user_id, target.name, None, await _own_line(message.bot, fed))
     await reply(message, text)
     await _event(message.bot, fed, text)
     _spawn(_lift(message.bot, fed["fed_id"], target.user_id))
+
+
+@router.message(cmd("clearfban"), HasRole(Role.DEVELOPER))
+async def cmd_clearfban(message: Message, command: CommandObject) -> None:
+    """Staff override: remove a (possibly bogus) ban from federations the staff member doesn't own."""
+    user = await _person(message)
+    if user is None:
+        return
+    tokens = (command.args or "").split()
+    user_part = [] if message.reply_to_message else tokens[:1]
+    rest = tokens[len(user_part):]
+    fed_id = None
+    if rest and re.fullmatch(r"[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", rest[0]):
+        fed_id, rest = rest[0].lower(), rest[1:]
+    reason = " ".join(rest)[:federations.MAX_REASON] or None
+    if fed_id is not None and await federations.get(fed_id) is None:
+        await reply(message, "No federation has that ID.")
+        return
+    try:
+        target = await resolve_target(message, SimpleNamespace(args=" ".join(user_part), command=command.command), allow_bots=True)
+    except TargetError as exc:
+        await reply(message, esc(str(exc)))
+        return
+
+    rows = await federations.banned_in(target.user_id)
+    if fed_id is not None:
+        rows = [row for row in rows if row["fed_id"] == fed_id]
+    if not rows:
+        await reply(message, f"{user_link(target.user_id, target.name)} has no federation ban to clear.")
+        return
+
+    lines = ["<b>Federation bans cleared</b>", _item("User", user_link(target.user_id, target.name))]
+    if reason:
+        lines.append(_item("Reason", f"<code>{esc(reason)}</code>"))
+    for row in rows:
+        if await federations.unban(row["fed_id"], target.user_id) is None:
+            continue
+        fed = await federations.get(row["fed_id"])
+        lines.append(_item("FedName", esc(row["name"])))
+        if fed is not None:
+            await _event(
+                message.bot, fed,
+                _ban_text("Un-FedBan", fed, user, target.user_id, target.name, reason, await _own_line(message.bot, fed))
+                + f"\n\n<i>{moderation.STAFF_NOTE}</i>",
+            )
+        _spawn(_lift(message.bot, row["fed_id"], target.user_id))
+    await reply(message, "\n".join(lines))
 
 
 @router.message(cmd("myfeds"))
