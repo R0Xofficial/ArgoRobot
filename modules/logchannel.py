@@ -11,6 +11,9 @@ from core.helpers import reply
 from core.roles import Role
 from core.text import esc
 
+# The name of this module's button in /help.
+HELP_TITLE = "Log Channel"
+
 ABOUT = """
 Every ban, mute, warn, promotion and lock in this chat is written, with who did it and why, into a log chat you choose: a private group of the admins, or a channel. It keeps a history that outlives the messages in the chat.
 

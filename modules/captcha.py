@@ -21,6 +21,9 @@ log = logging.getLogger(__name__)
 # Joins are looked at before the other modules (welcome messages wait for the captcha).
 PRIORITY = -10
 
+# The name of this module's button in /help.
+HELP_TITLE = "CAPTCHA"
+
 ABOUT = """
 Some chats get a lot of users joining just to spam. They may be trolls, or part of a spam network.
 
