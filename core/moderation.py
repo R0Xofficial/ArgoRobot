@@ -175,6 +175,17 @@ async def get_member(bot, chat_id: int, user_id: int) -> Any | None:
         return None
 
 
+async def is_in_chat(bot, chat_id: int, user_id: int) -> bool:
+    """Whether the person is in the chat right now. False when they are not, or when Telegram can't tell."""
+    member = await get_member(bot, chat_id, user_id)
+    if member is None:
+        return False
+    status = _status(member)
+    if status == "restricted":
+        return getattr(member, "is_member", True) is not False
+    return status in ("creator", "administrator", "member")
+
+
 async def is_chat_admin(bot, chat_id: int, user_id: int) -> bool:
     return await member_status(bot, chat_id, user_id) in ("creator", "administrator")
 
