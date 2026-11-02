@@ -165,9 +165,12 @@ A federation is a ban list shared by many chats.
 | Who | Commands |
 | --- | --- |
 | Owner | `/newfed`, `/renamefed`, `/delfed`, `/fedtransfer`, `/fedpromote` (alias `/fpromote`), `/feddemote` (alias `/fdemote`), `/setfedlog` |
-| Admins | `/fban`, `/unfban`, `/fedreason`, `/fedexport`, `/fedimport` |
+| Admins | `/fban`, `/dfban` (reply to a message: delete it and fban its author), `/unfban`, `/fedreason`, `/fedexport`, `/fedimport` |
 | Chats | `/joinfed`, `/leavefed`, `/quietfed` (chat owner) |
 | Anyone | `/fedinfo`, `/fedadmins`, `/fedstat` (alias `/fbanstat`) |
+| Bot Developers | `/clearfban <user> [FedID] [reason]`: lift a user's ban in any federation (also foreign ones), e.g. a bogus ban blocking a staff role |
+
+People with a global ban or any federation ban can't be given a staff role, and a globally banned user can't be whitelisted.
 
 **Subscriptions.** `/subfed` makes your federation inherit the bans of another one, `/unsubfed` undoes it. `/fedsubs` shows both directions.
 
@@ -181,7 +184,7 @@ SubbedFedID: 5475ba3a-...  Chat ID: -100123...       User ID: 123
 By: Ann [123]              By: Ann [123]
 ```
 
-The titles are New FedChat, Un-FedChat, New FedSubscribed, New FedSubscriber, Un-FedSubscribed, Un-FedSubscriber, New Fed Promotion, New Fed Demotion, New FedOwner (with the previous and the new owner), New FedBans, New FedBan, FedBan Reason Update and FedBan Revoked.
+The titles are New FedChat, Un-FedChat, New FedSubscribed, New FedSubscriber, Un-FedSubscribed, Un-FedSubscriber, New Fed Promotion, New Fed Demotion, New FedOwner (with the previous and the new owner), New FedBans, New FedBan, FedBan Reason Update and Un-FedBan.
 
 **Lost rights.** When the bot loses the right to ban users in a chat, that chat leaves its federation by itself and says so. Give the right back and use `/joinfed` to join again.
 
