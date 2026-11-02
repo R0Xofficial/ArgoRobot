@@ -4,6 +4,7 @@ import logging
 from contextlib import suppress
 
 from aiogram import Router
+from aiogram.filters import CommandObject
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.types import Message
 
@@ -24,7 +25,7 @@ These are for chat admins with the right to delete messages, and I need that rig
 
 HELP = [
     ("/del", "Delete the message you reply to, and your command with it. Alias: /delete.", "admins"),
-    ("/purge", "Delete every message from the one you reply to down to your command. I confirm when it is done.", "admins"),
+    ("/purge [reason]", "Delete every message from the one you reply to down to your command. I confirm when it is done, and say the reason if you gave one.", "admins"),
     ("/spurge", "Like /purge, but silent: nothing is said afterwards.", "admins"),
 ]
 
@@ -33,6 +34,7 @@ router = Router(name="purges")
 RIGHT = "can_delete_messages"
 RIGHTS_REFUSED = "I can't delete messages here. Make me an admin with permission to delete messages."
 MAX_PURGE = 1000       # messages cleared by one command
+MAX_REASON = 500       # characters of a reason that are shown
 BATCH = 100            # Telegram deletes at most this many messages per request
 
 
@@ -62,7 +64,7 @@ async def cmd_del(message: Message, role: Role | None = None) -> None:
         await message.delete()  # the command itself
 
 
-async def _purge(message: Message, role: Role | None, silent: bool) -> None:
+async def _purge(message: Message, role: Role | None, silent: bool, reason: str | None = None) -> None:
     if await _begin(message, role) is None:
         return
     target = await moderation.require_reply(message)
@@ -89,12 +91,16 @@ async def _purge(message: Message, role: Role | None, silent: bool) -> None:
         await reply(message, "I couldn't delete those messages. They may be too old.")
         return
     if not silent:
-        await reply(message, f"Purge complete: up to {count} messages deleted.", quote=False)
+        text = f"Purge complete: up to {count} messages deleted."
+        if reason:
+            text += f"\nReason: <code>{esc(reason[:MAX_REASON])}</code>"
+        await reply(message, text, quote=False)
 
 
 @router.message(cmd("purge"))
-async def cmd_purge(message: Message, role: Role | None = None) -> None:
-    await _purge(message, role, silent=False)
+async def cmd_purge(message: Message, role: Role | None = None, command: CommandObject | None = None) -> None:
+    reason = ((command.args if command else None) or "").strip() or None
+    await _purge(message, role, silent=False, reason=reason)
 
 
 @router.message(cmd("spurge"))
