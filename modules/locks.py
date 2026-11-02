@@ -1,445 +1,452 @@
-"""Lock kinds of messages"""
+"""
+Locks: kinds of messages a chat does not allow (the commands and the action taken are
+in modules/locks.py).
 
-import time
-from contextlib import suppress
-from types import SimpleNamespace
-from typing import Any
+A lock is a name from LOCKS. While it is on, the bot deletes the messages of that kind
+sent by anyone who is not an admin or approved. Some locks can be eased with the
+allowlist: links, forwards, commands, stickers... that are named in it stay allowed.
 
-from aiogram import Bot, F, Router
-from aiogram.exceptions import TelegramAPIError
-from aiogram.filters import CommandObject
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-
-from core import approvals, greetings, immunity, locks, moderation, roles
-from core.filters import cmd
-from core.helpers import edit, reply
-from core.moderation import GROUP_TYPES, ModerationError, perform
-from core.roles import Role
-from core.text import esc, user_link, SWITCH as _ON_OFF
-
-ABOUT = """
-Lock a kind of message and I delete every one of them: stickers, links, forwards, voice messages, a whole alphabet... Locks do not affect chat admins, approved users or the bot's staff, and edited messages are checked too. /locktypes explains every kind.
-
-Locks that catch links, forwards, commands, stickers and the like can be eased with the allowlist: whatever is on it stays allowed, so you can lock all links but let one site through.
-
-By default I just delete. With /lockwarns on, whoever breaks a lock also gets a warn, and is banned at the warn limit.
-
-Everything here is for chat admins with the right to change chat info.
+Every message of every chat passes through find(), so a chat's settings are kept in
+memory and a chat without locks costs nothing.
 """
 
-HELP = [
-    ("/lock <item(s)>", "Lock one or more kinds of message. Now only admins can send them.", "admins"),
-    ("/unlock <item(s)>", "Unlock kinds of message. Everyone can send them again.", "admins"),
-    ("/locks", "Show what is locked in this chat.", "admins"),
-    ("/locktypes", "Show every kind of message that can be locked, and what each one means.", "admins"),
-    ("/lockwarns <on|off>", "Warn people who send a locked item, not only delete it.", "admins"),
-    ("/allowlist <items>", "Allow a link, site, @name, id, command, $cashtag or sticker pack link even when its lock is on. Separate several with spaces. Without items, shows the allowlist.", "admins"),
-    ("/rmallowlist <items>", "Remove items from the allowlist.", "admins"),
-    ("/rmallowlistall", "Empty the allowlist. Asks for confirmation.", "chat owner"),
-]
+import re
+import unicodedata
+from dataclasses import dataclass
+from typing import Any
+from urllib.parse import urlsplit
 
-HELP_NOTES = [
-    (
-        "Good to start with",
-        """
-        /lock invitelink botlink - stops advertising of other groups and bots.
-        /lock forwardchannel - stops forwarded channel posts, a favourite of spammers.
-        /lock cyrillic cjk rtl - for chats that stay in one alphabet.
-        /lock bot - only admins can add bots.
-        """,
-    ),
-    (
-        "The allowlist",
-        """
-        /allowlist example.com - links to that site and its subpages.
-        /allowlist @somechannel - its links and forwards, and writing as that channel.
-        /allowlist -1001234567890 - a chat by id.
-        /allowlist /start - the command.
-        /allowlist $BTC - the cashtag.
-        /allowlist t.me/addstickers/Pack - that sticker pack.
-        """,
-    ),
-]
+from core import database
+from core.users import CACHE_LIMIT
 
-router = Router(name="locks")
+MAX_ALLOWED = 200
+MAX_ENTRY = 200
 
-# After antiflood (-60), before blacklists (-55): a locked message should be gone first.
-PRIORITY = -58
+# name -> (what it catches, can be allowlisted). Grouped for /locktypes.
+GROUPS: dict[str, dict[str, tuple[str, bool]]] = {
+    "Everything": {
+        "all": ("Every message of everyone who is not an admin or approved. Turns the chat into read-only.", False),
+    },
+    "Media": {
+        "photo": ("Photos.", False),
+        "video": ("Videos.", False),
+        "videonote": ("Round video messages.", False),
+        "gif": ("GIFs.", False),
+        "audio": ("Music and other audio files.", False),
+        "voice": ("Voice messages.", False),
+        "document": ("Files, including photos and videos sent uncompressed.", False),
+        "album": ("Photos or files sent together as an album.", False),
+        "sticker": ("All stickers. Allowlist a sticker pack to keep it.", True),
+        "stickeranimated": ("Animated and video stickers.", True),
+        "stickerpremium": ("Premium stickers, the ones with a full-screen effect.", True),
+    },
+    "Content": {
+        "text": ("Anything with text, captions included.", False),
+        "poll": ("Polls and quizzes.", False),
+        "contact": ("Shared contacts.", False),
+        "location": ("Shared locations and venues.", False),
+        "game": ("Games from bots.", False),
+        "emojigame": ("Dice, darts, bowling and the other emoji games.", False),
+        "checklist": ("Telegram checklists.", False),
+        "spoiler": ("Text hidden behind a spoiler.", False),
+        "emojicustom": ("Custom (animated) emoji.", False),
+        "button": ("Messages with buttons under them, usually from inline bots.", False),
+    },
+    "Links and mentions": {
+        "url": ("Any link. Allowlist a site to keep it.", True),
+        "email": ("Email addresses.", False),
+        "phone": ("Phone numbers.", False),
+        "invitelink": ("Links and @names that lead to other groups and channels: the classic advertising spam.", True),
+        "botlink": ("Links and @names that lead to bots.", True),
+        "cashtag": ("Stock and crypto tags in capitals, like $BTC.", True),
+        "command": ("Messages that start with a /command.", True),
+    },
+    "Where it came from": {
+        "forward": ("Every forwarded message.", True),
+        "forwarduser": ("Messages forwarded from a person.", True),
+        "forwardbot": ("Messages forwarded from a bot.", True),
+        "forwardchannel": ("Messages forwarded from a channel.", True),
+        "inline": ("Messages sent through an inline bot, like @gif or @vid.", True),
+        "anonchannel": ("People writing as a channel instead of as themselves. Posts from the chat's linked channel are not touched.", True),
+        "externalreply": ("Replies to a message from another chat.", True),
+        "bot": ("Anyone but an admin adding a bot to the chat. The bot is removed.", False),
+    },
+    "Writing": {
+        "cjk": ("Chinese, Japanese and Korean characters.", False),
+        "cyrillic": ("Cyrillic characters: Russian, Ukrainian, Serbian...", False),
+        "rtl": ("Right-to-left writing: Arabic, Persian, Hebrew...", False),
+        "zalgo": ("Text with piles of stacked marks, Z̷a̶l̸g̵o̷ style, that spills over other messages.", False),
+    },
+}
+LOCKS: dict[str, tuple[str, bool]] = {name: info for group in GROUPS.values() for name, info in group.items()}
 
-RIGHT = "can_change_info"
-LOOK_RIGHT = "can_manage_chat"
-CB_CLEAR = "locks:clear:"  # locks:clear:yes / locks:clear:no
-FAILURE_COOLDOWN = 300.0
-WARN_COOLDOWN = 5.0  # an album or a burst of messages earns one warn
-MAX_TEXT = 3500
+_CJK = re.compile("[぀-ヿ㄰-㆏㐀-䶿一-鿿가-힯豈-﫿]")
+_CYRILLIC = re.compile("[Ѐ-ԯ]")
+_RTL = re.compile("[֐-ࣿיִ-﷿ﹰ-﻿]")
+_STACKED = 4  # combining marks in a row that make text "zalgo"
 
-_complained: dict[int, float] = {}
-_warned_at: dict[tuple[int, int], float] = {}
-_SERVICE = (
-    "new_chat_members", "left_chat_member", "new_chat_title", "new_chat_photo", "delete_chat_photo",
-    "group_chat_created", "supergroup_chat_created", "channel_chat_created", "migrate_to_chat_id",
-    "migrate_from_chat_id", "pinned_message", "forum_topic_created", "forum_topic_edited",
-    "forum_topic_closed", "forum_topic_reopened", "general_forum_topic_hidden", "general_forum_topic_unhidden",
-    "video_chat_started", "video_chat_ended", "video_chat_scheduled", "video_chat_participants_invited",
-    "message_auto_delete_timer_changed", "boost_added",
-)
-
-
-# --- Helpers ----------------------------------------------------------------------------------
-
-async def _admin_only(message: Message, role: Role | None, *, change: bool) -> bool:
-    right = RIGHT if change else LOOK_RIGHT
-    return await moderation.begin_chat_command(message, role, right=right) is not None
-
-
-def _words(text: str | None) -> list[str]:
-    seen: list[str] = []
-    for word in (text or "").replace(",", " ").split():
-        if word not in seen:
-            seen.append(word)
-    return seen
-
-
-def _chunks(lines: list[str]) -> list[str]:
-    """Join lines into messages that fit in one Telegram message."""
-    out, current = [], ""
-    for line in lines:
-        if current and len(current) + len(line) + 1 > MAX_TEXT:
-            out.append(current)
-            current = ""
-        current += ("\n" if current else "") + line
-    if current:
-        out.append(current)
-    return out
+_TELEGRAM_HOSTS = {"t.me", "telegram.me", "telegram.dog"}
+_NOT_CHATS = {
+    "addstickers", "addemoji", "addlist", "addtheme", "share", "proxy", "socks", "setlanguage",
+    "boost", "invoice", "giftcode", "m", "login", "contact", "iv", "bg", "confirmphone",
+}
 
 
-def _yes_no(value: bool) -> str:
-    return "Yes" if value else "No"
+@dataclass(frozen=True)
+class Config:
+    locked: frozenset[str]
+    warn: bool
+    allow: frozenset[str]
 
 
-# --- Commands ---------------------------------------------------------------------------------
-
-@router.message(cmd("lock"))
-async def cmd_lock(message: Message, command: CommandObject, role: Role | None = None) -> None:
-    await _change(message, command, role, lock=True)
+_cache: dict[int, Config] = {}
+_chat_kinds: dict[str, bool] = {}  # "@name" -> leads to a group or channel
 
 
-@router.message(cmd("unlock"))
-async def cmd_unlock(message: Message, command: CommandObject, role: Role | None = None) -> None:
-    await _change(message, command, role, lock=False)
+# --- Storage ----------------------------------------------------------------------------------
 
-
-async def _change(message: Message, command: CommandObject, role: Role | None, *, lock: bool) -> None:
-    verb = "lock" if lock else "unlock"
-    if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
-        return
-    if not await _admin_only(message, role, change=True):
-        return
-    items = [word.lower() for word in _words(command.args)]
-    if not items:
-        await reply(message, f"Use /{verb} &lt;item&gt;. /locktypes lists them.")
-        return
-    unknown = [item for item in items if item not in locks.LOCKS]
-    if unknown:
-        shown = ", ".join(f"<code>{esc(item[:30])}</code>" for item in unknown[:10])
-        await reply(message, f"I don't know {shown}. /locktypes lists everything that can be locked.")
-        return
-    if lock:
-        await locks.lock(message.chat.id, items)
-    else:
-        await locks.unlock(message.chat.id, items)
-    names = ", ".join(f"<code>{item}</code>" for item in items)
-    await moderation.log_action(message, "LOCKED" if lock else "UNLOCKED", moderation.actor_of(message), None, "", ("Items", names))
-    await reply(message, f"{'Locked' if lock else 'Unlocked'} {names}.")
-
-
-@router.message(cmd("locks"))
-async def cmd_locks(message: Message, role: Role | None = None) -> None:
-    if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
-        return
-    if not await _admin_only(message, role, change=False):
-        return
-    cfg = await locks.config(message.chat.id)
-    lines = [
-        f"<b>Locks in {esc(message.chat.title or 'this chat')}</b>",
-        f"• <b>Warn on lock:</b> <code>{_yes_no(cfg.warn)}</code>",
-        f"• <b>Allowlisted:</b> <code>{len(cfg.allow)}</code>",
-        "",
-    ]
-    ordered = [name for name in locks.LOCKS if name in cfg.locked]
-    if ordered:
-        lines.append("Locked:")
-        lines += [f"• <code>{name}</code>" for name in ordered]
-    else:
-        lines.append("Nothing is locked. /locktypes lists what can be.")
-    await reply(message, "\n".join(lines))
-
-
-def _lock_types_pages() -> list[str]:
-    lines = ["<b>Lockable items</b>", "Items marked * can be eased with /allowlist."]
-    for group, items in locks.GROUPS.items():
-        lines += ["", f"<b>{group}</b>"]
-        for name, (text, allowable) in items.items():
-            lines.append(f"• <code>{name}</code>{'*' if allowable else ''} - {esc(text)}")
-    return _chunks(lines)
-
-
-HELP_PAGES = [("Lock types", _lock_types_pages)]
-
-
-@router.message(cmd("locktypes"))
-async def cmd_locktypes(message: Message, role: Role | None = None) -> None:
-    if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
-        return
-    if not await _admin_only(message, role, change=False):
-        return
-    for part in _lock_types_pages():
-        await reply(message, part)
-
-
-@router.message(cmd("lockwarns"))
-async def cmd_lockwarns(message: Message, command: CommandObject, role: Role | None = None) -> None:
-    if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
-        return
-    argument = (command.args or "").strip().lower()
-    if not argument:
-        if not await _admin_only(message, role, change=False):
-            return
-        cfg = await locks.config(message.chat.id)
-        await reply(message, f"Warning on locks is <b>{'on' if cfg.warn else 'off'}</b> in this chat.")
-        return
-    if argument not in _ON_OFF:
-        await reply(message, "Use /lockwarns on or /lockwarns off.")
-        return
-    if not await _admin_only(message, role, change=True):
-        return
-    await locks.set_warn(message.chat.id, _ON_OFF[argument])
-    await reply(message, f"People who send a locked item will {'now be warned' if _ON_OFF[argument] else 'only have it deleted'}.")
-
-
-# --- The allowlist ----------------------------------------------------------------------------
-
-def _entries(text: str | None) -> tuple[list[str], str | None]:
-    """The normalized entries typed, and a sentence about the first bad one."""
-    out: list[str] = []
-    for word in _words(text):
-        try:
-            entry = locks.normalize_entry(word)
-        except ValueError as exc:
-            return out, str(exc)
-        if entry not in out:
-            out.append(entry)
-    return out, None
-
-
-@router.message(cmd("allowlist"))
-async def cmd_allowlist(message: Message, command: CommandObject, role: Role | None = None) -> None:
-    if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
-        return
-    if not (command.args or "").strip():
-        if not await _admin_only(message, role, change=False):
-            return
-        cfg = await locks.config(message.chat.id)
-        if not cfg.allow:
-            await reply(message, "The allowlist is empty. Add to it with /allowlist &lt;items&gt;.")
-            return
-        lines = ["<b>Allowlist</b>"] + [f"• <code>{esc(entry)}</code>" for entry in sorted(cfg.allow)]
-        for part in _chunks(lines):
-            await reply(message, part)
-        return
-    if not await _admin_only(message, role, change=True):
-        return
-    entries, problem = _entries(command.args)
-    if problem:
-        await reply(message, esc(problem))
-        return
-    cfg = await locks.config(message.chat.id)
-    if len(cfg.allow | set(entries)) > locks.MAX_ALLOWED:
-        await reply(message, f"The allowlist is full ({locks.MAX_ALLOWED} items). Remove some with /rmallowlist.")
-        return
-    added = await locks.allow_add(message.chat.id, entries)
-    await reply(message, f"Allowlisted <b>{added}</b> new item{'s' if added != 1 else ''}." if added else "Those were already allowlisted.")
-
-
-@router.message(cmd("rmallowlist"))
-async def cmd_rmallowlist(message: Message, command: CommandObject, role: Role | None = None) -> None:
-    if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
-        return
-    if not await _admin_only(message, role, change=True):
-        return
-    if not (command.args or "").strip():
-        await reply(message, "Use /rmallowlist &lt;items&gt;. /allowlist shows what is on it.")
-        return
-    entries, problem = _entries(command.args)
-    if problem:
-        await reply(message, esc(problem))
-        return
-    removed = await locks.allow_remove(message.chat.id, entries)
-    await reply(message, f"Removed <b>{removed}</b> item{'s' if removed != 1 else ''} from the allowlist." if removed else "None of those were on the allowlist.")
-
-
-@router.message(cmd("rmallowlistall"))
-async def cmd_rmallowlistall(message: Message) -> None:
-    try:
-        await moderation.require_chat_owner(message)
-    except ModerationError as exc:
-        await moderation.deny(message, exc)
-        return
-    count = len((await locks.config(message.chat.id)).allow)
-    if not count:
-        await reply(message, "The allowlist of this chat is empty.")
-        return
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="Remove all", callback_data=f"{CB_CLEAR}yes"),
-                InlineKeyboardButton(text="Cancel", callback_data=f"{CB_CLEAR}no"),
-            ]
-        ]
+async def config(chat_id: int) -> Config:
+    cached = _cache.get(chat_id)
+    if cached is not None:
+        return cached
+    locked = await database.fetch_all("SELECT item FROM locks WHERE chat_id = $1", chat_id)
+    row = await database.fetch_one("SELECT warn FROM lock_settings WHERE chat_id = $1", chat_id)
+    allow = await database.fetch_all("SELECT entry FROM lock_allowlist WHERE chat_id = $1 ORDER BY entry", chat_id)
+    built = Config(
+        frozenset(r["item"] for r in locked),
+        bool(row["warn"]) if row else False,
+        frozenset(r["entry"] for r in allow),
     )
-    await reply(message, f"Remove all <b>{count}</b> items from the allowlist? This can't be undone.", reply_markup=keyboard)
+    if len(_cache) >= CACHE_LIMIT:
+        _cache.clear()
+    _cache[chat_id] = built
+    return built
 
 
-@router.callback_query(F.data.startswith(CB_CLEAR))
-async def cb_rmallowlistall(callback: CallbackQuery) -> None:
-    message = callback.message if isinstance(callback.message, Message) else None
-    if message is None:
-        await callback.answer("This button is no longer valid.", show_alert=True)
-        return
-    if await moderation.member_status(callback.bot, message.chat.id, callback.from_user.id) != "creator":
-        await callback.answer("Only the owner of this chat can do this.", show_alert=True)
-        return
-    if callback.data == f"{CB_CLEAR}yes":
-        removed = await locks.allow_clear(message.chat.id)
-        await callback.answer()
-        await edit(message, f"Done. <b>{removed}</b> items removed.", reply_markup=None)
-    else:
-        await callback.answer()
-        await edit(message, "Cancelled. The allowlist is unchanged.", reply_markup=None)
+def forget(chat_id: int) -> None:
+    _cache.pop(chat_id, None)
 
 
-# --- Enforcement ------------------------------------------------------------------------------
+async def lock(chat_id: int, items: list[str]) -> None:
+    for item in items:
+        await database.execute("INSERT INTO locks (chat_id, item) VALUES ($1, $2) ON CONFLICT DO NOTHING", chat_id, item)
+    forget(chat_id)
 
-async def _exempt(bot: Bot, chat_id: int, user_id: int) -> bool:
-    return (
-        immunity.is_immune(user_id)
-        or await roles.get_role(user_id) is not None  # anybody with a role in the bot
-        or await approvals.is_approved(chat_id, user_id)
-        or await moderation.is_chat_admin(bot, chat_id, user_id)
+
+async def unlock(chat_id: int, items: list[str]) -> None:
+    for item in items:
+        await database.execute("DELETE FROM locks WHERE chat_id = $1 AND item = $2", chat_id, item)
+    forget(chat_id)
+
+
+async def set_warn(chat_id: int, enabled: bool) -> None:
+    await database.execute(
+        "INSERT INTO lock_settings (chat_id, warn) VALUES ($1, $2) ON CONFLICT (chat_id) DO UPDATE SET warn = EXCLUDED.warn",
+        chat_id, enabled,
     )
+    forget(chat_id)
 
 
-async def _locked(message: Message, bot: Bot) -> dict[str, Any] | bool:
-    """A message of a locked kind whose sender is not exempt."""
-    user = message.from_user
-    if (
-        user is None
-        or message.chat.type not in GROUP_TYPES
-        or getattr(message, "is_automatic_forward", None)
-        or any(getattr(message, field, None) for field in _SERVICE)
-    ):
+async def allow_add(chat_id: int, entries: list[str]) -> int:
+    """Add entries to the allowlist. Returns how many were new."""
+    current = (await config(chat_id)).allow
+    added = 0
+    for entry in entries:
+        if entry in current:
+            continue
+        await database.execute("INSERT INTO lock_allowlist (chat_id, entry) VALUES ($1, $2) ON CONFLICT DO NOTHING", chat_id, entry)
+        added += 1
+    forget(chat_id)
+    return added
+
+
+async def allow_remove(chat_id: int, entries: list[str]) -> int:
+    """Remove entries from the allowlist. Returns how many were there."""
+    current = (await config(chat_id)).allow
+    removed = 0
+    for entry in entries:
+        if entry in current:
+            await database.execute("DELETE FROM lock_allowlist WHERE chat_id = $1 AND entry = $2", chat_id, entry)
+            removed += 1
+    forget(chat_id)
+    return removed
+
+
+async def allow_clear(chat_id: int) -> int:
+    rows = await database.fetch_all("DELETE FROM lock_allowlist WHERE chat_id = $1 RETURNING entry", chat_id)
+    forget(chat_id)
+    return len(rows)
+
+
+# --- Allowlist entries ------------------------------------------------------------------------
+
+def _split_url(text: str):
+    return urlsplit(text if "://" in text else "//" + text)
+
+
+def _telegram_target(url: str) -> tuple[str, str] | None:
+    """('chat', 'name'), ('pack', 'name') or ('invite', '') for a Telegram link, else None."""
+    parts = _split_url(url)
+    host = (parts.hostname or "").lower()
+    if host not in _TELEGRAM_HOSTS:
+        return None
+    segments = [s for s in parts.path.split("/") if s]
+    if not segments:
+        return None
+    first = segments[0].lower()
+    if first in ("addstickers", "addemoji") and len(segments) > 1:
+        return "pack", segments[1].lower()
+    if first.startswith("+") or first in ("joinchat", "c"):
+        return "invite", ""
+    if first in _NOT_CHATS:
+        return None
+    return "chat", first
+
+
+def _plain_url(url: str) -> str:
+    """host/path in lowercase, without scheme, www., query or trailing slash."""
+    parts = _split_url(url.strip())
+    host = (parts.hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return (host + parts.path.rstrip("/")).lower()
+
+
+def normalize_entry(token: str) -> str:
+    """The stored form of an allowlist entry typed by a person. Raises ValueError with a sentence."""
+    token = token.strip()
+    if not token or len(token) > MAX_ENTRY:
+        raise ValueError(f"\"{token[:30]}\" is not a valid entry.")
+    if re.fullmatch(r"-?\d+", token):
+        return str(int(token))
+    if token.startswith("@"):
+        name = token[1:].lower()
+        if not re.fullmatch(r"[a-z0-9_]{3,32}", name):
+            raise ValueError(f"\"{token}\" is not a valid @name.")
+        return "@" + name
+    if token.startswith("/"):
+        name = token[1:].split("@", 1)[0].lower()
+        if not re.fullmatch(r"\w{1,32}", name):
+            raise ValueError(f"\"{token}\" is not a valid command.")
+        return "/" + name
+    if token.startswith("$"):
+        tag = token[1:].upper()
+        if not re.fullmatch(r"[A-Z]{1,8}", tag):
+            raise ValueError(f"\"{token}\" is not a valid cashtag.")
+        return "$" + tag
+    target = _telegram_target(token)
+    if target and target[0] == "pack":
+        return "stickerpack:" + target[1]
+    if target and target[0] == "chat":
+        return "@" + target[1]
+    plain = _plain_url(token)
+    if "." not in plain.split("/")[0]:
+        raise ValueError(f"\"{token[:30]}\" is not a link, id, @name, command or cashtag.")
+    return plain
+
+
+def url_allowed(allow: frozenset[str], url: str) -> bool:
+    if not allow:
         return False
-    channel = message.sender_chat is not None and message.sender_chat.id != message.chat.id
-    if message.sender_chat is not None and not channel:
-        return False  # an anonymous admin
-    if user.is_bot and not channel:
-        return False
-    cfg = await locks.config(message.chat.id)
-    if not cfg.locked:
-        return False
-    kind = await locks.find(message, bot, cfg)
-    if kind is None:
-        return False
-    if not channel and await _exempt(bot, message.chat.id, user.id):
-        return False
-    return {"lock_hit": SimpleNamespace(kind=kind, warn=cfg.warn and not channel)}
+    target = _telegram_target(url)
+    if target:
+        kind, name = target
+        if kind == "pack":
+            return "stickerpack:" + name in allow
+        if kind == "chat":
+            return "@" + name in allow or _plain_allowed(allow, url)
+    return _plain_allowed(allow, url)
 
 
-async def _warn(bot: Bot, message: Message, reason: str) -> str:
-    """Warn the sender; at the chat's warn limit, ban them and start the count over."""
-    from modules import warns
-
-    user = message.from_user
-    chat_id = message.chat.id
-    target = SimpleNamespace(user_id=user.id, name=user.full_name)
-    await warns.add_warn(chat_id, target, reason, moderation.Actor(bot.id, "Locks"))
-    count = len(await warns.list_warns(chat_id, user.id))
-    limit = await warns.get_limit(chat_id)
-    if count < limit:
-        return f"warned ({count}/{limit})"
-    await perform(bot.ban_chat_member(chat_id, user.id))
-    await warns.clear_warns(chat_id, user.id)
-    return f"banned after reaching the warn limit ({count}/{limit})"
+def _plain_allowed(allow: frozenset[str], url: str) -> bool:
+    plain = _plain_url(url)
+    host = plain.split("/", 1)[0]
+    for entry in allow:
+        if entry[0] in "@/$-0123456789" or entry.startswith("stickerpack:"):
+            continue
+        if plain == entry or plain.startswith(entry + "/") or host == entry or host.endswith("." + entry):
+            return True
+    return False
 
 
-@router.message(_locked)
-@router.edited_message(_locked)
-async def on_locked(message: Message, bot: Bot, lock_hit: SimpleNamespace) -> None:
-    with suppress(TelegramAPIError):
-        await message.delete()
-    if not lock_hit.warn:
-        return
-    user = message.from_user
-    chat_id = message.chat.id
-    now = time.monotonic()
-    key = (chat_id, user.id)
-    if now - _warned_at.get(key, -WARN_COOLDOWN) < WARN_COOLDOWN:
-        return
-    if len(_warned_at) > 5000:
-        _warned_at.clear()
-    _warned_at[key] = now
+# --- Looking at a message ---------------------------------------------------------------------
+
+def _utf16(text: str, start: int, length: int) -> str:
+    raw = text.encode("utf-16-le")
+    return raw[start * 2 : (start + length) * 2].decode("utf-16-le")
+
+
+def _entities(message) -> tuple[str, list[Any]]:
+    if message.text:
+        return message.text, message.entities or []
+    return message.caption or "", message.caption_entities or []
+
+
+def _origin_keys(origin) -> set[str]:
+    keys: set[str] = set()
+    for field in ("sender_user", "sender_chat", "chat"):
+        who = getattr(origin, field, None)
+        if who is not None:
+            keys.add(str(who.id))
+            if getattr(who, "username", None):
+                keys.add("@" + who.username.lower())
+    return keys
+
+
+def _stacked_marks(text: str) -> bool:
+    run = 0
+    for char in text:
+        if unicodedata.category(char) in ("Mn", "Me"):
+            run += 1
+            if run >= _STACKED:
+                return True
+        else:
+            run = 0
+    return False
+
+
+async def _leads_to_chat(bot, name: str) -> bool:
+    """Whether the public @name belongs to a group or a channel. Remembered for a while."""
+    key = "@" + name
+    known = _chat_kinds.get(key)
+    if known is not None:
+        return known
     try:
-        done = await _warn(bot, message, f"Sent a locked item: {lock_hit.kind}")
-    except ModerationError as exc:
-        if now - _complained.get(chat_id, -FAILURE_COOLDOWN) >= FAILURE_COOLDOWN:
-            _complained[chat_id] = now
-            await reply(message, f"{user_link(user.id, user.full_name)} sent a locked item, but I can't act: {esc(exc)}", quote=False)
-        return
-    await reply(
-        message,
-        f"{user_link(user.id, user.full_name)} has been {done}.\nReason: sent a locked item (<code>{lock_hit.kind}</code>).",
-        quote=False,
-    )
+        found = (await bot.get_chat(key)).type in ("group", "supergroup", "channel")
+    except Exception:
+        found = False
+    if len(_chat_kinds) >= CACHE_LIMIT:
+        _chat_kinds.clear()
+    _chat_kinds[key] = found
+    return found
 
 
-async def _bots_added(message: Message, bot: Bot) -> dict[str, Any] | bool:
-    """Someone who is not exempt added bots to a chat that locks them."""
-    members = message.new_chat_members
-    adder = message.from_user
-    if not members or adder is None or message.chat.type not in GROUP_TYPES:
-        return False
-    bots = [m for m in members if m.is_bot and m.id != bot.id and m.id != adder.id]
-    if not bots:
-        return False
-    if "bot" not in (await locks.config(message.chat.id)).locked:
-        return False
-    if await _exempt(bot, message.chat.id, adder.id):
-        return False
-    return {"added_bots": bots}
+async def find(message, bot, cfg: Config) -> str | None:
+    """The first locked kind this message belongs to, or None."""
+    locked, allow = cfg.locked, cfg.allow
+    if not locked:
+        return None
+    if "all" in locked:
+        return "all"
+
+    text, entities = _entities(message)
+    kinds: dict[str, list[str]] = {}
+    for entity in entities:
+        kinds.setdefault(entity.type, []).append(_utf16(text, entity.offset, entity.length))
+    links = kinds.get("url", []) + [e.url for e in entities if e.type == "text_link" and e.url]
+    sticker = message.sticker
+
+    def has(name: str) -> bool:
+        return name in locked
+
+    if has("text") and text:
+        return "text"
+    for name in ("photo", "video", "audio", "voice", "poll", "contact", "game", "checklist"):
+        if has(name) and getattr(message, name, None):
+            return name
+    if has("videonote") and message.video_note:
+        return "videonote"
+    if has("gif") and message.animation:
+        return "gif"
+    if has("document") and message.document and not message.animation:
+        return "document"
+    if has("album") and message.media_group_id:
+        return "album"
+    if has("location") and (message.location or message.venue):
+        return "location"
+    if has("emojigame") and message.dice:
+        return "emojigame"
+    if sticker is not None:
+        pack = ("stickerpack:" + sticker.set_name.lower()) if getattr(sticker, "set_name", None) else None
+        if not (pack and pack in allow):
+            if has("sticker"):
+                return "sticker"
+            if has("stickeranimated") and (sticker.is_animated or sticker.is_video):
+                return "stickeranimated"
+            if has("stickerpremium") and getattr(sticker, "premium_animation", None):
+                return "stickerpremium"
+    if has("spoiler") and "spoiler" in kinds:
+        return "spoiler"
+    if has("emojicustom") and "custom_emoji" in kinds:
+        return "emojicustom"
+    if has("email") and "email" in kinds:
+        return "email"
+    if has("phone") and "phone_number" in kinds:
+        return "phone"
+    if has("button") and message.reply_markup and message.reply_markup.inline_keyboard:
+        return "button"
+    if has("cashtag") and any(("$" + c.lstrip("$").upper()) not in allow for c in kinds.get("cashtag", [])):
+        return "cashtag"
+    if has("command"):
+        for entity, value in ((e, _utf16(text, e.offset, e.length)) for e in entities if e.type == "bot_command"):
+            if entity.offset == 0 and "/" + value[1:].split("@", 1)[0].lower() not in allow:
+                return "command"
+    if has("url") and any(not url_allowed(allow, link) for link in links):
+        return "url"
+    if has("invitelink") or has("botlink"):
+        found = await _telegram_links(bot, links, kinds.get("mention", []), allow, has("invitelink"))
+        for name in ("invitelink", "botlink"):
+            if has(name) and name in found:
+                return name
+
+    if message.forward_origin is not None and not message.is_automatic_forward:
+        origin = message.forward_origin
+        if not (_origin_keys(origin) & allow):
+            if has("forward"):
+                return "forward"
+            if has("forwardbot") and origin.type == "user" and origin.sender_user.is_bot:
+                return "forwardbot"
+            if has("forwardchannel") and origin.type == "channel":
+                return "forwardchannel"
+            if has("forwarduser") and (origin.type == "hidden_user" or (origin.type == "user" and not origin.sender_user.is_bot)):
+                return "forwarduser"
+    if has("inline") and message.via_bot is not None:
+        if not (_origin_keys(_Bag(sender_user=message.via_bot)) & allow):
+            return "inline"
+    if has("anonchannel") and message.sender_chat is not None and message.sender_chat.id != message.chat.id:
+        if not (_origin_keys(_Bag(sender_chat=message.sender_chat)) & allow):
+            return "anonchannel"
+    if has("externalreply") and message.external_reply is not None:
+        if not (_origin_keys(_Bag(chat=message.external_reply.chat)) & allow if message.external_reply.chat else False):
+            return "externalreply"
+
+    if text:
+        if has("cjk") and _CJK.search(text):
+            return "cjk"
+        if has("cyrillic") and _CYRILLIC.search(text):
+            return "cyrillic"
+        if has("rtl") and _RTL.search(text):
+            return "rtl"
+        if has("zalgo") and _stacked_marks(text):
+            return "zalgo"
+    return None
 
 
-@router.message(_bots_added)
-async def on_bots_added(message: Message, bot: Bot, added_bots: list) -> None:
-    chat_id = message.chat.id
-    try:
-        for member in added_bots:
-            await perform(bot.ban_chat_member(chat_id, member.id))
-            with suppress(TelegramAPIError):
-                await bot.unban_chat_member(chat_id, member.id, only_if_banned=True)
-    except ModerationError as exc:
-        now = time.monotonic()
-        if now - _complained.get(chat_id, -FAILURE_COOLDOWN) >= FAILURE_COOLDOWN:
-            _complained[chat_id] = now
-            await reply(message, f"Bots are locked here, but I can't remove them: {esc(exc)}", quote=False)
-        return
-    names = ", ".join(esc(m.full_name) for m in added_bots)
-    await reply(message, f"Bots are locked in this chat, so {names} was removed. Only admins can add bots.", quote=False)
-    if (await greetings.get(chat_id))["clean_service"]:  # this handler takes the message away from the greetings one
-        with suppress(TelegramAPIError):
-            await message.delete()
+class _Bag:
+    """A tiny stand-in for the objects _origin_keys reads."""
+
+    def __init__(self, **fields: Any) -> None:
+        self.__dict__.update(fields)
+
+
+async def _telegram_links(bot, links: list[str], mentions: list[str], allow: frozenset[str], look_up: bool) -> set[str]:
+    """Which of 'invitelink' and 'botlink' the links and @names of a message contain."""
+    found: set[str] = set()
+    for link in links:
+        target = _telegram_target(link)
+        if target is None or url_allowed(allow, link):
+            continue
+        kind, name = target
+        if kind == "invite" or (kind == "chat" and not name.endswith("bot")):
+            found.add("invitelink")
+        elif kind == "chat":
+            found.add("botlink")
+    for mention in mentions:
+        name = mention.lstrip("@").lower()
+        if "@" + name in allow:
+            continue
+        if name.endswith("bot"):
+            found.add("botlink")
+        elif look_up and "invitelink" not in found and await _leads_to_chat(bot, name):
+            found.add("invitelink")
+    return found
