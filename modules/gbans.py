@@ -82,14 +82,12 @@ def _reply_place(message: Message) -> tuple[int, int | None, int | None]:
 
 
 def _origin_html(message: Message) -> str:
-    """The "Initiated From" line: where the command was given, with a link when there is one."""
+    """The "Initiated From" line: where the command was given, with a link only for public chats."""
     chat = message.chat
     if chat.type == "private":
         place = f"PM with {esc(message.from_user.first_name)}"
     elif chat.username:
         place = f'<a href="https://t.me/{esc(chat.username)}/{message.message_id}">{esc(chat.title)}</a>'
-    elif str(chat.id).startswith("-100"):
-        place = f'<a href="https://t.me/c/{str(chat.id)[4:]}/{message.message_id}">{esc(chat.title)}</a>'
     else:
         place = esc(chat.title)
     return f"{place} [<code>{chat.id}</code>]"
