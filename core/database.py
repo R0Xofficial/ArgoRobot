@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS chat_settings (
 -- More switches of the chat's owner (see core/chatsettings.py).
 ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS gban_enforce BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS admin_errors BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE chat_settings ALTER COLUMN admin_errors SET DEFAULT TRUE;  -- I answer people without rights unless the chat owner turns it off
 ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS anon_admin BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS clean_commands BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS reports BOOLEAN NOT NULL DEFAULT TRUE;
@@ -146,7 +147,7 @@ ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS reports BOOLEAN NOT NULL DEFA
 -- Antiflood settings of a chat (see core/flood.py). flood_limit and timer_count of 0 mean "off".
 CREATE TABLE IF NOT EXISTS flood_settings (
     chat_id       BIGINT PRIMARY KEY,
-    flood_limit   INTEGER NOT NULL DEFAULT 10,   -- more than this many messages in a row
+    flood_limit   INTEGER NOT NULL DEFAULT 0,    -- more than this many messages in a row
     timer_count   INTEGER NOT NULL DEFAULT 0,    -- this many messages ...
     timer_seconds INTEGER NOT NULL DEFAULT 0,    -- ... within this many seconds
     mode          TEXT NOT NULL DEFAULT 'mute',  -- ban / kick / mute / tban / tmute
@@ -154,6 +155,7 @@ CREATE TABLE IF NOT EXISTS flood_settings (
     clear_flood   BOOLEAN NOT NULL DEFAULT FALSE,
     antichannel   BOOLEAN NOT NULL DEFAULT FALSE
 );
+ALTER TABLE flood_settings ALTER COLUMN flood_limit SET DEFAULT 0;  -- flood control starts off; the chat's admins turn it on
 
 -- Blacklisted words of a chat and what happens to who says them (see core/blacklist.py).
 CREATE TABLE IF NOT EXISTS blacklist (

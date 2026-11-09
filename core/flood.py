@@ -5,7 +5,7 @@ action taken are in modules/antiflood.py).
 Two things can trigger flood control, and a chat can use either or both:
 
   * the limit   more than N messages in a row from one person (nobody else wrote
-                in between). On by default, N = 10.
+                in between). Off by default.
   * the timer   N messages from one person within some seconds, whoever else writes.
                 Off by default.
 
@@ -21,7 +21,7 @@ from core.enforce import MODES, TIMED_MODES  # noqa: F401  (used by modules/anti
 from core.users import CACHE_LIMIT
 
 DEFAULTS: dict[str, Any] = {
-    "flood_limit": 10,
+    "flood_limit": 0,
     "timer_count": 0,
     "timer_seconds": 0,
     "mode": "mute",
