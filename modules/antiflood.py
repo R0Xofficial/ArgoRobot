@@ -17,10 +17,10 @@ from core.moderation import GROUP_TYPES, MAX_DURATION, MIN_DURATION, ModerationE
 from core.roles import Role
 from core.text import duration_text, esc, user_link, SWITCH as _ON_OFF, parse_switch
 
-# By default the bot mutes anyone who sends more than 10 messages in a row. Bots are
+# Flood control is off until a chat admin sets a limit with /setflood. Bots are
 # ignored, and so are chat admins and approved users.
 ABOUT = """
-Takes action on people who flood the chat with messages. By default I mute anyone who sends more than 10 messages in a row. Bots, chat admins, approved users and the bot's staff are ignored, and an album of photos counts as one message.
+Takes action on people who flood the chat with messages. It is off until an admin turns it on with /setflood, for example /setflood 10 to act on anyone who sends more than ten messages in a row (a mute by default). Bots, chat admins, approved users and the bot's staff are ignored, and an album of photos counts as one message.
 
 Two rules can run side by side: the limit counts messages in a row from one person, the timer counts messages from one person within a time window, whoever else writes in between.
 
