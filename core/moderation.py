@@ -398,13 +398,13 @@ def staff_note(actor: Actor) -> str:
 
 def admin_ref(actor: Actor) -> str:
     """Who did it, for a log entry: a link and the id (an anonymous admin has none)."""
-    return actor.link if actor.id is None else f"{actor.link} [<code>{actor.id}</code>]"
+    return actor.link if actor.id is None else (f"{actor.link} [<code>{actor.id}</code>]" if actor.link else f"[<code>{actor.id}</code>]")
 
 
 def _user_ref(target: Target) -> str:
     if target.is_chat:
         return who(target)
-    return f"{user_link(target.user_id, target.name)} [<code>{target.user_id}</code>]"
+    return user_ref(target.user_id, target.name)
 
 
 async def log_action(

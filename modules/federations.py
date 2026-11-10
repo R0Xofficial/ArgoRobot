@@ -677,7 +677,7 @@ async def cmd_fedimport(message: Message, command: CommandObject) -> None:
         f"Imported <b>{added}</b> ban{'s' if added != 1 else ''} into {_fed_name(fed)}."
         + (f" Skipped <b>{skipped}</b> (already banned, or protected)." if skipped else ""),
     )
-    await _event(message.bot, fed, f"<b>New FedBans</b>\n{await _own_line(message.bot, fed)}\n{_item('Added', f'<code>{added}</code>')}\n{_item('By', user_ref(user.id, user.full_name))}")
+    await _event(message.bot, fed, f"<b>New FedBans</b>\n{await _own_line(message.bot, fed)}\n{_item('Added', f'<code>{added}</code>')}")
 
 
 # --- Fed admin commands -----------------------------------------------------------------------

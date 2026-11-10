@@ -454,7 +454,7 @@ async def _unmute(bot: Bot, chat_id: int, user_id: int) -> bool:
 
 
 async def _welcome(bot: Bot, row: dict[str, Any], user: User | None) -> None:
-    user = user or User(id=row["user_id"], is_bot=False, first_name=row["name"] or "User")
+    user = user or User(id=row["user_id"], is_bot=False, first_name=row["name"] or "")
     for hook in list(_hooks):
         try:
             await hook(bot, row["chat_id"], user, row["join_message_id"])
