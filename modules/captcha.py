@@ -193,7 +193,7 @@ def _time(seconds: int) -> str:
 
 def _summary(config: dict[str, Any]) -> str:
     mute = "stay muted until solved" if not config["mute_seconds"] else f"unmuted after {_time(config['mute_seconds'])}"
-    button = esc(config["button_text"]) if config["button_text"] else f"{captchas.DEFAULT_BUTTON} (default)"
+    button = f"<code>{esc(config['button_text'])}</code>" if config["button_text"] else f"<code>{esc(captchas.DEFAULT_BUTTON)}</code> (default)"
     return (
         "<b>Captcha</b>\n"
         f"• <b>Enabled:</b> <code>{_on_off(config['enabled'])}</code>\n"

@@ -175,8 +175,8 @@ def _fed_name(fed: dict[str, Any]) -> str:
 
 
 async def _own_line(bot: Bot, fed: dict[str, Any]) -> str:
-    """FedName: the name as its owner set it (a @tag in it is theirs; nothing is added)."""
-    return _item("FedName", esc(fed["name"]))
+    """Fed: the name as its owner set it (a @tag in it is theirs; nothing is added)."""
+    return _item("Fed", esc(fed["name"]))
 
 
 async def _other_lines(bot: Bot, label: str, fed: dict[str, Any] | None, fed_id: str | None = None) -> str:
@@ -698,7 +698,7 @@ async def _protected(bot: Bot, fed: dict[str, Any], target) -> str | None:
 def _ban_text(title: str, fed: dict[str, Any], admin, target_id: int, target_name: str | None, reason: str | None, fed_line: str | None = None) -> str:
     lines = [
         f"<b>{title}</b>",
-        fed_line or _item("FedName", esc(fed['name'])),
+        fed_line or _item("Fed", esc(fed['name'])),
         _item("FedAdmin", user_ref(admin.id, admin.full_name)),
         _item("User", user_link(target_id, target_name)),
         _item("User ID", f"<code>{target_id}</code>"),
@@ -872,7 +872,7 @@ async def cmd_clearfban(message: Message, command: CommandObject) -> None:
         if await federations.unban(row["fed_id"], target.user_id) is None:
             continue
         fed = await federations.get(row["fed_id"])
-        lines.append(_item("FedName", esc(row["name"])))
+        lines.append(_item("Fed", esc(row["name"])))
         if fed is not None:
             await _event(
                 message.bot, fed,
