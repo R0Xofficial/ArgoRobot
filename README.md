@@ -174,11 +174,11 @@ People with a global ban or any federation ban can't be given a staff role, and 
 
 **Subscriptions.** `/subfed` makes your federation inherit the bans of another one, `/unsubfed` undoes it. `/fedsubs` shows both directions.
 
-**Log events.** Every change goes to the federation's log chat (`/setfedlog`; the owner gets them privately without one). Each event has a title and the same readable lines: the federation as `FedName: Name` (exactly as its owner named it; nothing is added), people as a mention with their `[id]`, and `By` for who did it (not for promotions and demotions: that is always the owner).
+**Log events.** Every change goes to the federation's log chat (`/setfedlog`; the owner gets them privately without one). Each event has a title and the same readable lines: the federation as `Fed: Name` (exactly as its owner named it; nothing is added), people as a mention with their `[id]`, and `By` for who did it (not for promotions and demotions: that is always the owner).
 
 ```
 New FedSubscribed          New FedChat               New Fed Promotion
-FedName: Knox              FedName: Knox             FedName: Knox
+Fed: Knox              Fed: Knox             Fed: Knox
 SubbedFed: ALT-F4          Chat: Group (link)        Promoted FedAdmin: Ann
 SubbedFedID: 5475ba3a-...  Chat ID: -100123...       User ID: 123
 By: Ann [123]              By: Ann [123]
