@@ -6,9 +6,9 @@ import json
 import logging
 import time
 from contextlib import suppress
-from typing import Any
+from typing import Any, Awaitable, Callable
 
-from aiogram import Bot, F, Router
+from aiogram import BaseMiddleware, Bot, F, Router
 from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter
 from aiogram.filters import CommandObject
 from aiogram.types import (
@@ -24,7 +24,7 @@ from aiogram.types import (
 )
 
 from config import settings
-from core import approvals, banfiles, chats, chatsettings, gbans, immunity, info_hooks, logs, moderation, roles, users, whitelist
+from core import approvals, banfiles, gbanguard, chats, chatsettings, gbans, immunity, info_hooks, logs, moderation, roles, users, whitelist
 from core.filters import HasRole, cmd
 from core.helpers import edit, reply
 from core.moderation import GROUP_TYPES, ModerationError
@@ -196,7 +196,7 @@ async def _ban(bot: Bot, chat_id: int, user_id: int) -> bool:
             await asyncio.sleep(exc.retry_after)
             continue
         except TelegramAPIError as exc:
-            log.debug("Could not ban %s in %s: %s", user_id, chat_id, exc)
+            log.warning("Could not ban %s in %s: %s", user_id, chat_id, exc)
             return False
         await gbans.record_ban(user_id, chat_id)
         return True
@@ -205,13 +205,7 @@ async def _ban(bot: Bot, chat_id: int, user_id: int) -> bool:
 
 async def _enforceable(bot: Bot, chat_id: int, user_id: int) -> bool:
     """Whether a globally banned user is to be removed from this chat right now."""
-    if not await chatsettings.gban_enforce(chat_id):
-        return False
-    if await whitelist.is_protected(user_id) or await roles.get_role(user_id) is not None:
-        return False
-    if await approvals.is_approved(chat_id, user_id):
-        return False
-    return not await moderation.is_chat_admin(bot, chat_id, user_id)
+    return await gbanguard.removable(bot, chat_id, user_id)
 
 
 async def _remove_from(bot: Bot, chat_id: int, user_id: int) -> bool:
@@ -232,14 +226,18 @@ async def _alert(bot: Bot, chat_id: int, ban: dict, thread_id: int | None, name:
     await _notify(bot, chat_id, "\n".join(lines), thread_id=thread_id)
 
 
-async def _enforce(bot: Bot, chat_id: int, user_id: int, thread_id: int | None, name: str | None = None) -> None:
+async def _enforce(bot: Bot, chat_id: int, user_id: int, thread_id: int | None, name: str | None = None) -> bool:
+    """Remove them and say so. False when that failed (the bot is probably not allowed to ban here)."""
     ban = await gbans.get(user_id)
-    if ban is None or not _first_recently(chat_id, user_id):
-        return
+    if ban is None:
+        return False
+    if not _first_recently(chat_id, user_id):
+        return True  # another update of theirs is dealing with it
     if not await _ban(bot, chat_id, user_id):
         _recent.pop((chat_id, user_id), None)  # try again with their next message
-        return
+        return False
     await _alert(bot, chat_id, ban, thread_id, name)
+    return True
 
 
 def _spawn(coroutine) -> None:
@@ -843,6 +841,38 @@ async def _banned_active(event: ChatMemberUpdated, bot: Bot) -> bool:
     if not await gbans.is_gbanned(user.id):
         return False
     return await _enforceable(bot, event.chat.id, user.id)
+
+
+class JoinMiddleware(BaseMiddleware):
+    """
+    The "X joined" service message: globally banned newcomers are removed from it too, so that a
+    chat in which member updates do not reach the bot (they come only when the bot is an admin
+    that can see them) still gets them removed. When nobody but banned users joined, the message
+    goes no further, so there is no welcome or captcha for them.
+    """
+
+    async def __call__(self, handler: Callable[[Any, dict[str, Any]], Awaitable[Any]], event: Any, data: dict[str, Any]) -> Any:
+        members = getattr(event, "new_chat_members", None)
+        if members and getattr(event.chat, "type", None) in GROUP_TYPES:
+            bot = data.get("bot") or event.bot
+            removed = 0
+            try:
+                for user in members:
+                    if user.id == bot.id or not await gbans.is_gbanned(user.id):
+                        continue
+                    if await _enforceable(bot, event.chat.id, user.id):
+                        if await _enforce(bot, event.chat.id, user.id, _thread_of(event), user.full_name):
+                            removed += 1
+                    else:
+                        log.info("Globally banned user %s joined %s and was left alone", user.id, event.chat.id)
+            except Exception:
+                log.exception("Handling a join for global bans failed")
+            if removed and removed == len(members):
+                return None
+        return await handler(event, data)
+
+
+router.message.outer_middleware(JoinMiddleware())
 
 
 @router.chat_member(_banned_active)

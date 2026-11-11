@@ -127,7 +127,7 @@ def _first_sight(chat_id: int, user_id: int) -> bool:
 
 
 async def _exempt(bot, chat_id: int, user) -> bool:
-    from core import moderation
+    from core import gbanguard, moderation
 
     return (
         user.is_bot
@@ -136,6 +136,7 @@ async def _exempt(bot, chat_id: int, user) -> bool:
         or await roles.get_role(user.id) is not None
         or await approvals.is_approved(chat_id, user.id)
         or await moderation.is_chat_admin(bot, chat_id, user.id)
+        or await gbanguard.applies(bot, chat_id, user.id)  # being banned: a mute now would undo the ban
     )
 
 
