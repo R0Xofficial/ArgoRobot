@@ -30,7 +30,7 @@ from aiogram.enums import ParseMode
 
 import modules
 from config import settings
-from core import captchas, chats, database, logs, registry, users
+from core import captchas, chats, database, logreport, logs, nightmode, registry, users
 from core.errors import setup_error_handling
 from core.middlewares import CleanCommandsMiddleware, ConnectionMiddleware, LoggingMiddleware, RolesMiddleware, UsersMiddleware
 from core.text import esc
@@ -49,6 +49,9 @@ def setup_logging() -> None:
     # Usage logging is done by our own middleware, so silence the per-update
     # "Update id=... is handled" lines coming from aiogram.
     logging.getLogger("aiogram.event").setLevel(logging.WARNING)
+    # The same lines are kept for the scheduled report to the developer log (core/logreport.py).
+    if settings.LOG_REPORT_HOURS > 0:
+        logreport.install()
 
 
 def discover_modules(dp: Dispatcher) -> None:
@@ -122,11 +125,19 @@ async def on_startup(bot: Bot) -> None:
     # Kicks and unmutes of people who did not solve their captcha in time (core/captchas.py).
     captchas.start_sweeper(bot)
 
+    # Closes and opens the chats that use nightmode (core/nightmode.py).
+    nightmode.start_sweeper(bot)
+
+    # Sends the collected log to the developer log as a file, every LOG_REPORT_HOURS hours.
+    logreport.start_schedule(bot, settings.LOG_REPORT_HOURS)
+
 
 async def on_shutdown(bot: Bot) -> None:
     log.info("Shutting down")
     await chats.stop_cleanup_schedule()
     await captchas.stop_sweeper()
+    await nightmode.stop_sweeper()
+    await logreport.stop_schedule(bot)   # the last report, with everything since the previous one
     await logs.dev_log(bot, "Bot stopped.")
     try:
         await database.close()

@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from typing import Any, Iterator
 
 from core import database
+from core.moderation import MAX_DURATION, MIN_DURATION, parse_duration
 from core.users import CACHE_LIMIT
 
 MAX_TRIGGERS = 500
@@ -259,3 +260,24 @@ async def update_settings(chat_id: int, **fields: Any) -> dict[str, Any]:
 def forget(chat_id: int) -> None:
     _triggers.pop(chat_id, None)
     _settings.pop(chat_id, None)
+
+
+def parse_action(spec: str, *, allow_off: bool = False) -> tuple[str, int]:
+    """'ban', 'delete', 'tmute 30m' -> ('ban', 0), ('del', 0), ('tmute', 1800)."""
+    words = spec.lower().split()
+    if not words:
+        raise TriggerError("The action is empty.")
+    name = ALIASES.get(words[0], words[0])
+    if name == "off" and not allow_off:
+        name = ""
+    if name not in ACTIONS and not (allow_off and name == "off"):
+        options = "delete, ban, mute, kick, warn, tban <time>, tmute <time>"
+        raise TriggerError(f"Unknown action \"{words[0]}\". Use one of: {options}.")
+    if name in TIMED:
+        duration = parse_duration(words[1]) if len(words) == 2 else None
+        if duration is None or not MIN_DURATION <= duration <= MAX_DURATION:
+            raise TriggerError(f"{name} needs a duration, like 30m, 2h, 3d or 1w (from 1 minute to 365 days).")
+        return name, int(duration.total_seconds())
+    if len(words) > 1:
+        raise TriggerError(f"{name} doesn't take a duration. Use tban or tmute for a temporary action.")
+    return name, 0

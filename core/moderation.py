@@ -339,14 +339,14 @@ def parse_undo(callback: CallbackQuery, kind: str) -> int | None:
     return int(value) if (callback.data or "").startswith(prefix) and value.lstrip("-").isdigit() else None
 
 
-async def authorize_callback(callback: CallbackQuery, role: Role | None) -> tuple[Message, Actor] | None:
+async def authorize_callback(callback: CallbackQuery, role: Role | None, right: str = "can_restrict_members") -> tuple[Message, Actor] | None:
     """The message a button is under and who pressed it, if they may moderate there."""
     message = callback.message
     if not isinstance(message, Message):
         await callback.answer("This message is too old.", show_alert=True)
         return None
     try:
-        capacity = await authorize(callback.bot, message.chat, callback.from_user, role)
+        capacity = await authorize(callback.bot, message.chat, callback.from_user, role, right=right)
     except ModerationError as exc:
         await callback.answer(str(exc), show_alert=True)
         return None

@@ -112,27 +112,6 @@ def _trigger_line(trigger: blacklist.Trigger) -> str:
     return line
 
 
-def parse_action(spec: str, *, allow_off: bool = False) -> tuple[str, int]:
-    """'ban', 'delete', 'tmute 30m' -> ('ban', 0), ('del', 0), ('tmute', 1800)."""
-    words = spec.lower().split()
-    if not words:
-        raise TriggerError("The action is empty.")
-    name = blacklist.ALIASES.get(words[0], words[0])
-    if name == "off" and not allow_off:
-        name = ""
-    if name not in blacklist.ACTIONS and not (allow_off and name == "off"):
-        options = "delete, ban, mute, kick, warn, tban <time>, tmute <time>"
-        raise TriggerError(f"Unknown action \"{words[0]}\". Use one of: {options}.")
-    if name in blacklist.TIMED:
-        duration = parse_duration(words[1]) if len(words) == 2 else None
-        if duration is None or not MIN_DURATION <= duration <= MAX_DURATION:
-            raise TriggerError(f"{name} needs a duration, like 30m, 2h, 3d or 1w (from 1 minute to 365 days).")
-        return name, int(duration.total_seconds())
-    if len(words) > 1:
-        raise TriggerError(f"{name} doesn't take a duration. Use tban or tmute for a temporary action.")
-    return name, 0
-
-
 def split_action(text: str) -> tuple[str, str | None]:
     """'trigger {ban}' -> ('trigger', 'ban')."""
     match = _ACTION_SUFFIX.search(text)
@@ -221,7 +200,7 @@ async def cmd_addblacklist(message: Message, command: CommandObject, role: Role 
     for text, spec, reason in entries:
         try:
             pattern = blacklist.check(text)
-            action, seconds = parse_action(spec) if spec else (None, 0)
+            action, seconds = blacklist.parse_action(spec) if spec else (None, 0)
             if reason and len(reason) > 200:
                 reason = truncate(reason, 200)
             outcome = await blacklist.add(message.chat.id, pattern, action, seconds, reason, message.from_user.id)
@@ -317,7 +296,7 @@ async def cmd_setblacklistmode(message: Message, command: CommandObject, role: R
         await reply(message, usage)
         return
     try:
-        mode, seconds = parse_action(spec, allow_off=True)
+        mode, seconds = blacklist.parse_action(spec, allow_off=True)
     except TriggerError as exc:
         await reply(message, f"{esc(exc)}\n{usage}")
         return

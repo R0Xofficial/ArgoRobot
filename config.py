@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     LOG_CHAT_ID: int | None = None
     LOG_THREAD_ID: int | None = None       # topic id, if LOG_CHAT_ID is a forum group
 
+    # How often (in hours) the bot sends its log to the developer log as a .txt file
+    # (what happened and when, in UTC). 0 turns the reports off.
+    LOG_REPORT_HOURS: float = 6
+
     # --- Housekeeping -----------------------------------------------------
     # How often the bot checks which stored chats it has been removed from, in
     # hours. 0 turns the scheduled check off (/cleanchats still works).

@@ -1,6 +1,7 @@
 """Core bot commands"""
 
 import asyncio
+import platform
 import time
 
 from aiogram import F, Router
@@ -14,7 +15,7 @@ from core.filters import HasRole, cmd
 from core.helpers import edit, reply
 from core.roles import Role
 from core.targets import TargetError, display_name, resolve_target
-from core.text import esc, user_link, user_ref
+from core.text import duration_text, esc, user_link, user_ref
 
 # Protected modules cannot be disabled with /module, so the commands in this
 # file (including /module itself) are always available.
@@ -37,6 +38,7 @@ HELP = [
     ("/module <enable|disable> <name>", "Turn a module on or off. A disabled module stops answering and disappears from /help. Core modules can't be disabled.", Role.DEVELOPER),
     ("/cleanchats", "Forget the chats I have been removed from and report how many were dropped.", Role.DEVELOPER),
     ("/stats", "Show what I know: users, chats, bans and more.", Role.DEVELOPER),
+    ("/status", "Show how I am doing: uptime, Telegram and database latency, memory use and versions.", Role.DEVELOPER),
     ("/leave", "Make me leave the chat where you send it.", Role.DEVELOPER),
     ("/speedtest", "Measure the ping, download and upload speed of my server.", Role.DEVELOPER),
     ("/staff", "Show who holds each staff role.", Role.SUPPORT),
@@ -167,6 +169,61 @@ async def cmd_stats(message: Message) -> None:
         f"• <b>Approved Users:</b> <code>{approved['total']}</code>",
         f"• <b>Staff:</b> <code>{staff['total'] + 1}</code> (including the owner)",
         f"• <b>Modules:</b> <code>{registry.count_enabled()}</code> of <code>{registry.count_loaded()}</code> enabled",
+    ]
+    await reply(message, "\n".join(lines))
+
+
+_STARTED = time.monotonic()  # when this module was loaded: the bot's start
+
+
+def _memory_mb() -> float | None:
+    """The memory the bot process uses, from /proc (Linux); None elsewhere."""
+    try:
+        with open("/proc/self/status", encoding="utf-8") as status:
+            for line in status:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) / 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+@router.message(cmd("status"), HasRole(Role.DEVELOPER))
+async def cmd_status(message: Message) -> None:
+    """How the bot is doing right now."""
+    started = time.perf_counter()
+    telegram = None
+    try:
+        await message.bot.get_me()
+        telegram = (time.perf_counter() - started) * 1000
+    except TelegramAPIError:
+        pass
+
+    started = time.perf_counter()
+    try:
+        await database.fetch_one("SELECT 1 AS ok")
+        db_text = f"<code>{(time.perf_counter() - started) * 1000:.0f}</code> ms"
+    except Exception:
+        db_text = "<b>not reachable</b>"
+
+    try:
+        import aiogram
+
+        aiogram_version = aiogram.__version__
+    except Exception:
+        aiogram_version = "unknown"
+
+    memory = _memory_mb()
+    lines = [
+        "<b>Bot Status:</b>",
+        "",
+        f"• <b>Uptime:</b> <code>{duration_text(int(time.monotonic() - _STARTED))}</code>",
+        f"• <b>Telegram:</b> " + (f"<code>{telegram:.0f}</code> ms" if telegram is not None else "<b>not reachable</b>"),
+        f"• <b>Database:</b> {db_text}",
+        f"• <b>Memory:</b> " + (f"<code>{memory:.0f}</code> MB" if memory is not None else "<code>unknown</code>"),
+        f"• <b>Modules:</b> <code>{registry.count_enabled()}</code> of <code>{registry.count_loaded()}</code> enabled",
+        f"• <b>Python:</b> <code>{platform.python_version()}</code>",
+        f"• <b>aiogram:</b> <code>{esc(aiogram_version)}</code>",
     ]
     await reply(message, "\n".join(lines))
 

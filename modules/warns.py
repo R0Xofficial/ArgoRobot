@@ -7,17 +7,17 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from core import blacklist, database, moderation
+from core import blacklist, database, enforce, moderation
 from core.filters import cmd
 from core.helpers import edit, reply
 from core.moderation import ModerationError, perform
 from core.roles import Role
-from core.text import esc, parse_switch, truncate, user_link
+from core.text import duration_text, esc, parse_switch, truncate, user_link
 
 # Usable by chat admins (with the right to ban users) and by the bot's Owner,
 # Developers and Sudo users. See core/moderation.py.
 ABOUT = """
-Warns are strikes. Each one is saved with its reason, and a user who reaches the chat's warn limit (3 by default) is banned, or kicked if /strongwarn is off; the count then starts again from zero.
+Warns are strikes. Each one is saved with its reason, and a user who reaches the chat's warn limit (3 by default) gets what /warnmode says (a ban unless the chat chose otherwise); the count then starts again from zero.
 
 These commands are for chat admins with the right to ban users. My staff (Sudo and up) can use them too, unless the chat owner turned that off with /staffhelp.
 
@@ -33,15 +33,16 @@ Warn filters give a warn to whoever writes a word or phrase: /addwarn spam "free
 HELP_WHO = "admins"
 
 HELP = [
-    ("/warn <user> [reason]", "Give a user a warn. Reaching the limit bans them (or kicks them, see /strongwarn)."),
+    ("/warn <user> [reason]", "Give a user a warn. Reaching the limit bans them, or does what /warnmode says."),
     ("/dwarn <reply> [reason]", "Reply to a message: warn its author and delete that message."),
     ("/unwarn <user>", "Remove the latest warn of a user."),
     ("/warns <user>", "List a user's warns with their reasons and who gave them, with a button to remove each."),
     ("/rmwarn <id>", "Remove one warn by its ID."),
     ("/resetwarns <user>", "Remove every warn of a user. Alias: /resetwarn."),
-    ("/warnlimit", "Show how many warns get a user banned in this chat."),
+    ("/warnlimit", "Show how many warns it takes to reach the limit in this chat."),
     ("/setwarnlimit <1-10>", "Set the warn limit of this chat. Default: 3."),
-    ("/strongwarn [on|off]", "On (default): reaching the limit bans. Off: it only kicks, and the user can come back. Without an answer it shows the setting."),
+    ("/warnmode <ban|kick|mute|tban|tmute> [time]", "What reaching the warn limit does. Default: ban. tban and tmute need a duration, like 30m, 2h or 3d. Without an answer it shows the setting."),
+    ("/strongwarn [on|off]", "The short form of /warnmode: on = ban, off = kick."),
     ("/addwarn <word or \"phrase\"> [reason]", "Warn everyone who writes that word or phrase. The reason can also come from a message you reply to."),
     ("/nowarn <word or \"phrase\">", "Remove a warn filter. Alias: /stopwarn."),
     ("/warnlist", "List the warn filters of this chat."),
@@ -72,28 +73,34 @@ async def set_limit(chat_id: int, limit: int) -> None:
     )
 
 
-async def get_strong(chat_id: int) -> bool:
-    row = await database.fetch_one("SELECT strong FROM warn_settings WHERE chat_id = $1", chat_id)
-    return row["strong"] if row else True
+async def get_mode(chat_id: int) -> tuple[str, int]:
+    """What reaching the warn limit does: (mode, seconds) with mode ban (default), kick, mute, tban or tmute."""
+    row = await database.fetch_one("SELECT limit_mode, limit_seconds FROM warn_settings WHERE chat_id = $1", chat_id)
+    return (row["limit_mode"], row["limit_seconds"]) if row else ("ban", 0)
 
 
-async def set_strong(chat_id: int, strong: bool) -> None:
+async def set_mode(chat_id: int, mode: str, seconds: int = 0) -> None:
     await database.execute(
-        "INSERT INTO warn_settings (chat_id, warn_limit, strong) VALUES ($1, $2, $3) "
-        "ON CONFLICT (chat_id) DO UPDATE SET strong = EXCLUDED.strong",
+        "INSERT INTO warn_settings (chat_id, warn_limit, strong, limit_mode, limit_seconds) VALUES ($1, $2, $3, $4, $5) "
+        "ON CONFLICT (chat_id) DO UPDATE SET strong = EXCLUDED.strong, limit_mode = EXCLUDED.limit_mode, "
+        "limit_seconds = EXCLUDED.limit_seconds",
         chat_id,
         DEFAULT_LIMIT,
-        strong,
+        mode != "kick",
+        mode,
+        seconds,
     )
 
 
+def mode_text(mode: str, seconds: int) -> str:
+    """'ban', 'tmute for 2 hours'."""
+    return f"{mode} for {duration_text(seconds)}" if mode in enforce.TIMED_MODES else mode
+
+
 async def limit_action(bot, chat_id: int, user_id: int) -> str:
-    """What reaching the warn limit does: ban (strong warns, the default) or kick. Returns "banned" or "kicked"."""
-    await perform(bot.ban_chat_member(chat_id, user_id))
-    if await get_strong(chat_id):
-        return "banned"
-    await perform(bot.unban_chat_member(chat_id, user_id, only_if_banned=True))
-    return "kicked"
+    """What reaching the warn limit does, as the chat chose with /warnmode. Returns what was done: 'banned', 'muted for 1 hour'..."""
+    mode, seconds = await get_mode(chat_id)
+    return await enforce.punish(bot, chat_id, user_id, mode, seconds)
 
 
 async def add_warn(chat_id: int, target, reason: str, actor: moderation.Actor) -> int:
@@ -202,7 +209,7 @@ async def cmd_warn(message: Message, command: CommandObject, role: Role | None =
         # The warns stay, so the situation is not lost; the button still works.
         await reply(
             message,
-            f"{text}\nThe limit is reached, but I couldn't remove them: {esc(exc)}",
+            f"{text}\nThe limit is reached, but I couldn't act: {esc(exc)}",
             reply_markup=_undo_keyboard(warn_id),
         )
         return
@@ -378,6 +385,7 @@ async def cmd_setwarnlimit(message: Message, command: CommandObject, role: Role 
 
 @router.message(cmd("strongwarn"))
 async def cmd_strongwarn(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    """The old switch: on = ban at the limit, off = kick. /warnmode has the rest of the choices."""
     if await moderation.begin_chat_command(message, role) is None:
         return
 
@@ -388,16 +396,40 @@ async def cmd_strongwarn(message: Message, command: CommandObject, role: Role | 
         if wanted is None:
             await reply(message, "Use /strongwarn on or /strongwarn off.")
             return
-        if await get_strong(chat_id) == wanted:
-            await reply(message, f"Strong warns are already <b>{'on' if wanted else 'off'}</b>.")
+        await set_mode(chat_id, "ban" if wanted else "kick")
+    mode, seconds = await get_mode(chat_id)
+    await reply(message, f"A user who reaches the warn limit gets: <b>{esc(mode_text(mode, seconds))}</b>. Change it with /warnmode.")
+
+
+@router.message(cmd("warnmode"))
+async def cmd_warnmode(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    if await moderation.begin_chat_command(message, role) is None:
+        return
+
+    spec = (command.args or "").strip()
+    chat_id = message.chat.id
+    if spec:
+        try:
+            mode, seconds = blacklist.parse_action(spec)
+        except blacklist.TriggerError as exc:
+            await reply(message, f"{esc(exc)}\n{WARNMODE_USAGE}")
             return
-        await set_strong(chat_id, wanted)
-    strong = await get_strong(chat_id)
+        if mode not in enforce.MODES:  # delete and warn make no sense at the limit
+            await reply(message, WARNMODE_USAGE)
+            return
+        await set_mode(chat_id, mode, seconds)
+        await reply(message, f"A user who reaches the warn limit now gets: <b>{esc(mode_text(mode, seconds))}</b>.")
+        return
+    mode, seconds = await get_mode(chat_id)
     await reply(
         message,
-        f"Strong warns are <b>{'on' if strong else 'off'}</b>: a user who reaches the warn limit is "
-        + ("banned." if strong else "kicked, and can come back."),
+        f"A user who reaches the warn limit gets: <b>{esc(mode_text(mode, seconds))}</b>.\n{WARNMODE_USAGE}",
     )
+
+
+WARNMODE_USAGE = (
+    "Use /warnmode &lt;ban|kick|mute|tban|tmute&gt;. tban and tmute need a duration, like 30m, 2h, 3d or 1w."
+)
 
 
 # --- Warn filters -----------------------------------------------------------------

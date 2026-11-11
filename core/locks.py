@@ -97,6 +97,13 @@ class Config:
     locked: frozenset[str]
     warn: bool
     allow: frozenset[str]
+    mode: str = "del"  # what breaking a lock does besides deleting the message
+    seconds: int = 0  # the length of a tban or tmute
+
+    @property
+    def action(self) -> str:
+        """del, warn, ban, kick, mute, tban or tmute."""
+        return self.mode if self.mode != "del" else ("warn" if self.warn else "del")
 
 
 _cache: dict[int, Config] = {}
@@ -110,12 +117,14 @@ async def config(chat_id: int) -> Config:
     if cached is not None:
         return cached
     locked = await database.fetch_all("SELECT item FROM locks WHERE chat_id = $1", chat_id)
-    row = await database.fetch_one("SELECT warn FROM lock_settings WHERE chat_id = $1", chat_id)
+    row = await database.fetch_one("SELECT warn, mode, mode_seconds FROM lock_settings WHERE chat_id = $1", chat_id)
     allow = await database.fetch_all("SELECT entry FROM lock_allowlist WHERE chat_id = $1 ORDER BY entry", chat_id)
     built = Config(
         frozenset(r["item"] for r in locked),
         bool(row["warn"]) if row else False,
         frozenset(r["entry"] for r in allow),
+        (row.get("mode") or "del") if row else "del",
+        (row.get("mode_seconds") or 0) if row else 0,
     )
     if len(_cache) >= CACHE_LIMIT:
         _cache.clear()
@@ -140,9 +149,15 @@ async def unlock(chat_id: int, items: list[str]) -> None:
 
 
 async def set_warn(chat_id: int, enabled: bool) -> None:
+    await set_mode(chat_id, "warn" if enabled else "del")
+
+
+async def set_mode(chat_id: int, mode: str, seconds: int = 0) -> None:
+    """What breaking a lock does besides deleting: del, warn, ban, kick, mute, tban or tmute."""
     await database.execute(
-        "INSERT INTO lock_settings (chat_id, warn) VALUES ($1, $2) ON CONFLICT (chat_id) DO UPDATE SET warn = EXCLUDED.warn",
-        chat_id, enabled,
+        "INSERT INTO lock_settings (chat_id, warn, mode, mode_seconds) VALUES ($1, $2, $3, $4) ON CONFLICT (chat_id) "
+        "DO UPDATE SET warn = EXCLUDED.warn, mode = EXCLUDED.mode, mode_seconds = EXCLUDED.mode_seconds",
+        chat_id, mode == "warn", mode, seconds,
     )
     forget(chat_id)
 

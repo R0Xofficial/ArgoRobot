@@ -35,7 +35,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import BufferedInputFile, ChatPermissions, InlineKeyboardButton, InlineKeyboardMarkup, User
 
-from core import approvals, database, disabled, immunity, markup, registry, roles, rulestore
+from core import antiraid, approvals, database, disabled, immunity, markup, registry, roles, rulestore
 from core import greetings as welcome_store
 from core.text import duration_text, esc, user_link
 
@@ -575,6 +575,8 @@ async def hold(bot: Bot, chat, user: User, join_message_id: int | None, index: i
     config = await active(chat.id)
     if config is None or not await welcome_available(chat.id) or await _exempt(bot, chat.id, user):
         return False
+    if antiraid.was_removed(chat.id, user.id):
+        return False  # a raid took them away: nobody to test
     old = await find(chat.id, user.id)
     status, _member = await _status_of(bot, chat.id, user.id)
     if status != "member" and not (status == "restricted" and old is not None):

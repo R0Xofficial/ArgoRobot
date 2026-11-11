@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
-from aiogram.types import LinkPreviewOptions
+from aiogram.types import BufferedInputFile, LinkPreviewOptions
 
 from config import settings
 from core.text import user_ref
@@ -58,6 +58,22 @@ async def _send(
 async def dev_log(bot: Bot, text: str) -> bool:
     """Send a message to the developer log."""
     return await _send(bot, dev_target(), text, "developer log message")
+
+
+async def dev_file(bot: Bot, filename: str, content: bytes, caption: str) -> bool:
+    """Send a text file with a caption to the developer log."""
+    chat_id, thread_id = dev_target()
+    try:
+        await bot.send_document(
+            chat_id,
+            BufferedInputFile(content, filename=filename),
+            caption=caption,
+            message_thread_id=thread_id,
+        )
+        return True
+    except TelegramAPIError as exc:
+        log.warning("Could not send developer log file to %s: %s", chat_id, exc)
+        return False
 
 
 async def role_log(bot: Bot, text: str, reply_markup=None) -> bool:

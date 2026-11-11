@@ -20,15 +20,16 @@ Repository: <https://github.com/R0Xofficial/ArgoRobot>
 10. [Switching commands off](#10-switching-commands-and-modules-off)
 11. [Logs](#11-logs)
 12. [Project layout and adding modules](#12-project-layout-and-adding-modules)
-13. [Good to know](#13-good-to-know)
+13. [Antiraid and nightmode](#13-antiraid-and-nightmode)
+14. [Good to know](#14-good-to-know)
 
 ## 1. What it does
 
 | Area | Features |
 | --- | --- |
-| **Moderation** | Bans, temporary bans, kicks, mutes, temporary mutes, warnings with a limit and an action, silent and "delete the message too" variants (`/sban`, `/smute`, `/dban`, `/dwarn` ...), `/kickme`, removing zombies (deleted accounts) with `/zombies`, bulk deleting messages (`/purge`). |
-| **Automatic protection** | Captchas for newcomers (button, math, scrambled code, picture), antiflood, locks (urls, media, forwards ...), blacklisted words and phrases, warn filters, join blacklists (names, usernames, bios, channels), approved users that automatic measures skip, user reports to the admins. |
-| **Chat tools** | Welcome and goodbye messages (with media and buttons), rules, notes, filters, Unban and Unmute buttons under every ban and mute, promote/demote with custom titles, pins, invite links, AFK, backups of a chat's data, sticker tools, light commands for fun. |
+| **Moderation** | Bans, temporary bans, kicks, mutes, temporary mutes, warnings with a limit and an action (`/warnmode`: ban, kick, mute or timed), silent and "delete the message too" variants (`/sban`, `/smute`, `/dban`, `/dwarn` ...), `/kickme`, removing zombies (deleted accounts) with `/zombies`, bulk deleting messages (`/purge [reason]`). |
+| **Automatic protection** | Captchas for newcomers (button, math, scrambled code, picture), antiraid (a flood of new accounts), antiflood, locks (urls, media, forwards ... with a punishment of your choice: `/lockmode`), blacklisted words and phrases, warn filters, join blacklists (names, usernames, bios, channels), approved users that automatic measures skip, user reports to the admins. |
+| **Chat tools** | Welcome and goodbye messages (with media and buttons), rules, notes, filters, Unban and Unmute buttons under every ban and mute, promote/demote with custom titles, pins (`/unpinall`), nightmode (the chat closes for the night, with hours of your choice), invite links, AFK, backups of a chat's data, sticker tools, light commands for fun. |
 | **Bans across chats** | Federations (one ban list for many chats, with subscriptions) and global bans (`/gban`) decided by the bot's staff. |
 | **Housekeeping** | A log chat for moderation actions, per-chat switches, switching single commands or whole modules off, managing a group from a private chat (`/connect`). |
 
@@ -92,6 +93,7 @@ Settings come from environment variables or from a `.env` file next to `config.p
 | `LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. Default `INFO`. |
 | `DEV_LOG_CHAT` | Chat for start/stop messages and error reports. Empty: sent to the owner privately. |
 | `DEV_LOG_THREAD_ID` | Topic id, if that chat has topics. |
+| `LOG_REPORT_HOURS` | How often the bot sends its log to the developer log as a `.txt` file. Default `6`, `0` turns it off. |
 | `LOG_CHAT_ID` | Public log: promotions, demotions and other information everyone may read. Empty: falls back to the developer log. |
 | `LOG_THREAD_ID` | Topic id, if that chat has topics. |
 | `CHAT_CLEANUP_HOURS` | How often the bot forgets chats it was removed from. Default `24`, `0` turns it off (`/cleanchats` still works). |
@@ -224,7 +226,7 @@ Bot-wide, the owner and developers can turn whole modules on and off for every c
 ## 11. Logs
 
 - **Console / container log:** one line per command or button press (never message text), plus warnings and errors.
-- **Developer log** (`DEV_LOG_CHAT`): start and stop messages and error reports with the traceback as a file.
+- **Developer log** (`DEV_LOG_CHAT`): start and stop messages, error reports with the traceback as a file, and every `LOG_REPORT_HOURS` hours a log report: a message with the period it covers (from, to, number of entries) and a `.txt` file with a time, a level and what happened on every line (UTC). One more is sent when the bot stops. A report that could not be delivered is sent with the next one.
 - **Public log** (`LOG_CHAT_ID`): staff changes and other public notices.
 - **Chat log:** `/setlog <chat id | @username | reply to a forwarded channel post>` makes the bot copy that chat's moderation actions (bans, mutes, warns, locks, promotions ...) to a chat of the admins' choice. `/unsetlog` and `/logchannel` manage it.
 
@@ -253,7 +255,19 @@ Drop a new file into `modules/` and restart: no other file needs to change. A mo
 
 All text the bot writes is in English.
 
-## 13. Good to know
+## 13. Antiraid and nightmode
+
+Both are **off** until a chat admin turns them on.
+
+**Antiraid.** `/antiraid on`. When 10 accounts join within a minute (`/raidlimit <joins> <time>`), the chat is in a raid for an hour (`/raidtime`) and every newcomer is muted until it ends, kicked or banned (`/raidmode mute|kick|ban`). The people who made it a raid are dealt with too. Chat admins, approved users, bots and the bot's staff are never touched.
+
+**Nightmode.** `/nightmode on` closes the chat from 23:00 to 07:00 (UTC by default). `/nighthours 22:00 06:30` sets the hours, `/nighttz Europe/Warsaw` (or `UTC+1`) the time zone. The bot saves the chat's permissions, takes away the right to write, and puts everything back in the morning. Both are announced in the chat. The bot needs the right to restrict members.
+
+**Punishments.** `/warnmode <ban|kick|mute|tban|tmute> [time]` is what reaching the warn limit does. `/lockmode <del|warn|ban|kick|mute|tban|tmute> [time]` is what happens to someone who sends a locked item, besides the message being deleted. Blacklists have the same choice (`/setblacklistmode`).
+
+**For the bot's developers.** `/status` shows the uptime, the latency of Telegram and of the database, memory use and versions.
+
+## 14. Good to know
 
 - Telegram does not let bots list a group's members. Features that sweep a chat (`/zombies`, global bans reaching old members) work on people the bot has seen.
 - Reactions and member changes reach the bot only in chats where it is an admin.

@@ -10,19 +10,19 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from core import approvals, greetings, immunity, locks, moderation, roles
+from core import approvals, blacklist, enforce, greetings, immunity, locks, moderation, roles
 from core.filters import cmd
 from core.helpers import edit, reply
 from core.moderation import GROUP_TYPES, ModerationError, perform
 from core.roles import Role
-from core.text import esc, user_link, SWITCH as _ON_OFF
+from core.text import duration_text, esc, user_link, SWITCH as _ON_OFF
 
 ABOUT = """
 Lock a kind of message and I delete every one of them: stickers, links, forwards, voice messages, a whole alphabet... Locks do not affect chat admins, approved users or the bot's staff, and edited messages are checked too. /locktypes explains every kind.
 
 Locks that catch links, forwards, commands, stickers and the like can be eased with the allowlist: whatever is on it stays allowed, so you can lock all links but let one site through.
 
-By default I just delete. With /lockwarns on, whoever breaks a lock also gets a warn, and is banned at the warn limit.
+By default I just delete. With /lockwarns on, whoever breaks a lock also gets a warn, and is punished at the warn limit (see /warnmode). With /lockmode you can pick a punishment instead: mute, ban, kick, or a timed mute or ban.
 
 Everything here is for chat admins with the right to change chat info.
 """
@@ -33,6 +33,7 @@ HELP = [
     ("/locks", "Show what is locked in this chat.", "admins"),
     ("/locktypes", "Show every kind of message that can be locked, and what each one means.", "admins"),
     ("/lockwarns <on|off>", "Warn people who send a locked item, not only delete it.", "admins"),
+    ("/lockmode <del|warn|ban|kick|mute|tban|tmute> [time]", "What happens to someone who sends a locked item, besides the message being deleted. Default: del. tban and tmute need a duration, like 30m, 2h or 3d. Without an answer it shows the setting.", "admins"),
     ("/allowlist <items>", "Allow a link, site, @name, id, command, $cashtag or sticker pack link even when its lock is on. Separate several with spaces. Without items, shows the allowlist.", "admins"),
     ("/rmallowlist <items>", "Remove items from the allowlist.", "admins"),
     ("/rmallowlistall", "Empty the allowlist. Asks for confirmation.", "chat owner"),
@@ -221,6 +222,36 @@ async def cmd_lockwarns(message: Message, command: CommandObject, role: Role | N
     await reply(message, f"People who send a locked item will {'now be warned' if _ON_OFF[argument] else 'only have it deleted'}.")
 
 
+@router.message(cmd("lockmode"))
+async def cmd_lockmode(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    if message.chat.type not in GROUP_TYPES:
+        await reply(message, "This command only works in groups.")
+        return
+    spec = (command.args or "").strip()
+    usage = "Use /lockmode &lt;del|warn|ban|kick|mute|tban|tmute&gt;. tban and tmute need a duration, like 30m, 2h, 3d or 1w."
+    if not spec:
+        if not await _admin_only(message, role, change=False):
+            return
+        cfg = await locks.config(message.chat.id)
+        await reply(message, f"Someone who sends a locked item gets: <b>{esc(_mode_text(cfg.action, cfg.seconds))}</b>.\n{usage}")
+        return
+    if not await _admin_only(message, role, change=True):
+        return
+    try:
+        mode, seconds = blacklist.parse_action(spec)
+    except blacklist.TriggerError as exc:
+        await reply(message, f"{esc(exc)}\n{usage}")
+        return
+    await locks.set_mode(message.chat.id, mode, seconds)
+    await reply(message, f"Someone who sends a locked item now gets: <b>{esc(_mode_text(mode, seconds))}</b>.")
+
+
+def _mode_text(mode: str, seconds: int) -> str:
+    if mode == "del":
+        return "the message deleted"
+    return f"{mode} for {duration_text(seconds)}" if mode in enforce.TIMED_MODES else mode
+
+
 # --- The allowlist ----------------------------------------------------------------------------
 
 def _entries(text: str | None) -> tuple[list[str], str | None]:
@@ -358,7 +389,8 @@ async def _locked(message: Message, bot: Bot) -> dict[str, Any] | bool:
         return False
     if not channel and await _exempt(bot, message.chat.id, user.id):
         return False
-    return {"lock_hit": SimpleNamespace(kind=kind, warn=cfg.warn and not channel)}
+    action = "del" if channel else cfg.action  # a channel can't be warned or muted as a user
+    return {"lock_hit": SimpleNamespace(kind=kind, action=action, seconds=cfg.seconds, warn=action != "del")}
 
 
 async def _warn(bot: Bot, message: Message, reason: str) -> str:
@@ -373,9 +405,9 @@ async def _warn(bot: Bot, message: Message, reason: str) -> str:
     limit = await warns.get_limit(chat_id)
     if count < limit:
         return f"warned ({count}/{limit})"
-    await perform(bot.ban_chat_member(chat_id, user.id))
+    done = await warns.limit_action(bot, chat_id, user.id)
     await warns.clear_warns(chat_id, user.id)
-    return f"banned after reaching the warn limit ({count}/{limit})"
+    return f"{done} after reaching the warn limit ({count}/{limit})"
 
 
 @router.message(_locked)
@@ -383,7 +415,7 @@ async def _warn(bot: Bot, message: Message, reason: str) -> str:
 async def on_locked(message: Message, bot: Bot, lock_hit: SimpleNamespace) -> None:
     with suppress(TelegramAPIError):
         await message.delete()
-    if not lock_hit.warn:
+    if lock_hit.action == "del":
         return
     user = message.from_user
     chat_id = message.chat.id
@@ -395,7 +427,10 @@ async def on_locked(message: Message, bot: Bot, lock_hit: SimpleNamespace) -> No
         _warned_at.clear()
     _warned_at[key] = now
     try:
-        done = await _warn(bot, message, f"Sent a locked item: {lock_hit.kind}")
+        if lock_hit.action == "warn":
+            done = await _warn(bot, message, f"Sent a locked item: {lock_hit.kind}")
+        else:
+            done = await enforce.punish(bot, chat_id, user.id, lock_hit.action, lock_hit.seconds)
     except ModerationError as exc:
         if now - _complained.get(chat_id, -FAILURE_COOLDOWN) >= FAILURE_COOLDOWN:
             _complained[chat_id] = now

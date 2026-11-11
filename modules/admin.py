@@ -2,14 +2,14 @@
 
 from typing import Awaitable, Callable
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.filters import CommandObject
-from aiogram.types import LinkPreviewOptions, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions, Message
 
 from core import chatsettings, moderation
 from core.filters import cmd
-from core.helpers import reply
+from core.helpers import edit, reply
 from core.moderation import ModerationError, perform
 from core.roles import Role
 from core.targets import replied_message
@@ -26,6 +26,7 @@ HELP = [
     ("/gtitle <new title>", "Change the chat's title (up to 128 characters). Needs the right to change chat info.", "admins"),
     ("/adminlist", "List the admins of this chat."),
     ("/pin [loud]", "Reply to a message to pin it. People are not notified unless you add loud (or notify). Needs the right to pin messages.", "admins"),
+    ("/unpinall", "Unpin every pinned message of the chat. Asks for confirmation. Needs the right to pin messages.", "admins"),
     ("/unpin", "Reply to a pinned message to unpin it. Without a reply, the most recent pinned message is unpinned. Needs the right to pin messages.", "admins"),
     ("/cleanbluetext [on|off]", "Delete commands after I have dealt with them, so only my answers stay in the chat. Off by default. I need the right to delete messages; commands meant for other bots are left alone. Needs the right to change chat info.", "admins"),
     ("/adminerror [on|off]", "Choose whether I answer people who try admin commands without being admins. On by default; off makes me ignore them silently.", "chat owner"),
@@ -387,6 +388,46 @@ async def cmd_unpin(message: Message, role: Role | None = None) -> None:
         return
     what = "The message" if target else "The most recent pinned message"
     await reply(message, f"{what} was unpinned{moderation.by(actor)}.")
+
+
+CB_UNPINALL = "unpinall:"  # unpinall:yes / unpinall:no
+
+
+@router.message(cmd("unpinall"))
+async def cmd_unpinall(message: Message, role: Role | None = None) -> None:
+    if await moderation.begin_chat_command(message, role, right=PIN_RIGHT) is None:
+        return
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Unpin all", callback_data=f"{CB_UNPINALL}yes"),
+                InlineKeyboardButton(text="Cancel", callback_data=f"{CB_UNPINALL}no"),
+            ]
+        ]
+    )
+    await reply(message, "Unpin <b>every</b> pinned message of this chat? This can't be undone.", reply_markup=keyboard)
+
+
+@router.callback_query(F.data.startswith(CB_UNPINALL))
+async def cb_unpinall(callback: CallbackQuery, role: Role | None = None) -> None:
+    allowed = await moderation.authorize_callback(callback, role, right=PIN_RIGHT)
+    if allowed is None:
+        return
+    message, actor = allowed
+    if callback.data == f"{CB_UNPINALL}no":
+        await callback.answer()
+        await edit(message, "Cancelled. Nothing was unpinned.")
+        return
+    try:
+        await perform(callback.bot.unpin_all_chat_messages(message.chat.id), PIN_REFUSED)
+    except ModerationError as exc:
+        await callback.answer(str(exc), show_alert=True)
+        return
+    except TelegramBadRequest as exc:
+        await callback.answer(_pin_problem(exc, "unpin"), show_alert=True)
+        return
+    await callback.answer()
+    await edit(message, f"Every pinned message was unpinned{moderation.by(actor)}.{moderation.staff_note(actor)}")
 
 
 def _pin_problem(exc: Exception, action: str) -> str:

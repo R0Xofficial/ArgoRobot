@@ -9,7 +9,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
 from aiogram.types import Chat, ChatMemberUpdated, ChatPermissions, Message
 
-from core import approvals, captchas, disabled, gbans, greetings, immunity, memberevents, moderation, registry, roles, sender, staffgreet
+from core import antiraid, approvals, captchas, disabled, gbans, greetings, immunity, memberevents, moderation, registry, roles, sender, staffgreet
 from core.filters import cmd
 from core.help_index import Section
 from core.helpers import reply
@@ -393,8 +393,8 @@ async def on_join(message: Message) -> None:
         memberevents.mark("join", message.chat.id, user.id)
     people = []
     for user in message.new_chat_members:
-        if user.is_bot or user.id == bot_id or await gbans.is_gbanned(user.id):
-            continue  # bots are not greeted, and a globally banned user is about to be removed
+        if user.is_bot or user.id == bot_id or await gbans.is_gbanned(user.id) or antiraid.was_removed(message.chat.id, user.id):
+            continue  # bots are not greeted, and a globally banned user (or one a raid took away) is about to be removed
         people.append(user)
     people = people[:MAX_GREETED]
 
@@ -506,6 +506,8 @@ async def on_member_joined(event: ChatMemberUpdated, bot: Bot) -> None:
     if not await memberevents.no_service_message("join", event.chat.id, user.id):
         return  # the service message came and has done it
     if await gbans.is_gbanned(user.id):
+        return
+    if antiraid.was_removed(event.chat.id, user.id):
         return
     try:
         await captchas.hold(bot, event.chat, user, None, 0)

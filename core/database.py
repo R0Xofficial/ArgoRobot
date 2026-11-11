@@ -69,7 +69,10 @@ CREATE TABLE IF NOT EXISTS warn_settings (
     chat_id    BIGINT PRIMARY KEY,
     warn_limit SMALLINT NOT NULL
 );
-ALTER TABLE warn_settings ADD COLUMN IF NOT EXISTS strong BOOLEAN NOT NULL DEFAULT TRUE;  -- ban at the limit (TRUE) or kick (FALSE)
+ALTER TABLE warn_settings ADD COLUMN IF NOT EXISTS strong BOOLEAN NOT NULL DEFAULT TRUE;  -- legacy: ban at the limit (TRUE) or kick (FALSE)
+ALTER TABLE warn_settings ADD COLUMN IF NOT EXISTS limit_mode TEXT NOT NULL DEFAULT 'ban';  -- what reaching the limit does: ban, kick, mute, tban, tmute
+ALTER TABLE warn_settings ADD COLUMN IF NOT EXISTS limit_seconds INTEGER NOT NULL DEFAULT 0;  -- the length of a tban or tmute
+UPDATE warn_settings SET limit_mode = 'kick' WHERE strong = FALSE AND limit_mode = 'ban';  -- chats that had strong warns off (the mode keeps `strong` in step)
 
 -- Where a chat's moderation actions are logged (see core/chatlog.py).
 CREATE TABLE IF NOT EXISTS chat_logs (
@@ -241,6 +244,28 @@ CREATE TABLE IF NOT EXISTS fed_applied (
     PRIMARY KEY (chat_id, user_id)
 );
 
+-- Antiraid (see core/antiraid.py): off by default.
+CREATE TABLE IF NOT EXISTS antiraid (
+    chat_id          BIGINT PRIMARY KEY,
+    enabled          BOOLEAN NOT NULL DEFAULT FALSE,
+    joins            INTEGER NOT NULL DEFAULT 10,       -- this many joins...
+    window_seconds   INTEGER NOT NULL DEFAULT 60,       -- ...within this many seconds make a raid
+    duration_seconds INTEGER NOT NULL DEFAULT 3600,     -- how long a raid lasts
+    mode             TEXT NOT NULL DEFAULT 'mute',      -- what happens to newcomers: mute, kick or ban
+    raid_until       TIMESTAMPTZ                        -- when the running raid ends
+);
+
+-- Nightmode (see core/nightmode.py): off by default.
+CREATE TABLE IF NOT EXISTS nightmode (
+    chat_id      BIGINT PRIMARY KEY,
+    enabled      BOOLEAN NOT NULL DEFAULT FALSE,
+    start_minute INTEGER NOT NULL DEFAULT 1380,   -- the night starts at this minute of the day (23:00)
+    end_minute   INTEGER NOT NULL DEFAULT 420,    -- and ends at this one (07:00)
+    zone         TEXT NOT NULL DEFAULT 'UTC',     -- the time zone the hours are in
+    active       BOOLEAN NOT NULL DEFAULT FALSE,  -- the bot has closed the chat and not opened it yet
+    saved        TEXT                             -- the chat's permissions from before the night (JSON)
+);
+
 -- Locks: kinds of messages a chat does not allow (see core/locks.py).
 CREATE TABLE IF NOT EXISTS locks (
     chat_id BIGINT NOT NULL,
@@ -251,6 +276,9 @@ CREATE TABLE IF NOT EXISTS lock_settings (
     chat_id BIGINT PRIMARY KEY,
     warn    BOOLEAN NOT NULL DEFAULT FALSE
 );
+ALTER TABLE lock_settings ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'del';  -- what breaking a lock does besides deleting: del, warn, ban, kick, mute, tban, tmute
+ALTER TABLE lock_settings ADD COLUMN IF NOT EXISTS mode_seconds INTEGER NOT NULL DEFAULT 0;
+UPDATE lock_settings SET mode = 'warn' WHERE warn = TRUE AND mode = 'del';  -- chats that had /lockwarns on (the mode keeps `warn` in step)
 CREATE TABLE IF NOT EXISTS lock_allowlist (
     chat_id BIGINT NOT NULL,
     entry   TEXT NOT NULL,
