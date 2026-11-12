@@ -51,9 +51,9 @@ def truncate(text: str, limit: int, suffix: str = "...") -> str:
 
 
 def user_link(user_id: int, name: str | None) -> str:
-    """Clickable mention that opens the user's profile. Without a known name there is nothing to click: an empty string."""
+    """Clickable mention that opens the user's profile. Without a known name there is nothing to click: plain user[id]."""
     if not (name or "").strip():
-        return ""
+        return f"user[{int(user_id)}]"
     return f'<a href="tg://user?id={int(user_id)}">{esc(name)}</a>'
 
 
@@ -64,9 +64,10 @@ def at_name(username: str | None) -> str:
 
 
 def user_ref(user_id: int, name: str | None) -> str:
-    """Profile link followed by the id: Name [123456789]. Without a known name just the id."""
-    link = user_link(user_id, name)
-    return f"{link} [<code>{int(user_id)}</code>]" if link else f"[<code>{int(user_id)}</code>]"
+    """Profile link followed by the id: Name [123456789]. Without a known name plain user[123456789]."""
+    if not (name or "").strip():
+        return user_link(user_id, name)
+    return f"{user_link(user_id, name)} [<code>{int(user_id)}</code>]"
 
 
 def duration_text(seconds: int) -> str:

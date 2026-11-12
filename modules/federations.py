@@ -695,7 +695,8 @@ async def _protected(bot: Bot, fed: dict[str, Any], target) -> str | None:
     return None
 
 
-def _ban_text(title: str, fed: dict[str, Any], admin, target_id: int, target_name: str | None, reason: str | None, fed_line: str | None = None) -> str:
+def _ban_text(title: str, fed: dict[str, Any], admin, target_id: int, target_name: str | None, reason: str | None, fed_line: str | None = None, *, previous: tuple[str | None] | None = None) -> str:
+    """`previous` is given when a reason is being replaced: a one-item tuple with the old reason (None when there was none)."""
     lines = [
         f"<b>{title}</b>",
         fed_line or _item("Fed", esc(fed['name'])),
@@ -703,8 +704,10 @@ def _ban_text(title: str, fed: dict[str, Any], admin, target_id: int, target_nam
         _item("User", user_link(target_id, target_name)),
         _item("User ID", f"<code>{target_id}</code>"),
     ]
+    if previous is not None:
+        lines.append(_item("Previous Reason", f"<code>{esc(previous[0])}</code>" if previous[0] else "<i>none</i>"))
     if reason:
-        lines.append(_item("Reason", f"<code>{esc(reason)}</code>"))
+        lines.append(_item("New Reason" if previous is not None else "Reason", f"<code>{esc(reason)}</code>"))
     return "\n".join(lines)
 
 
@@ -810,8 +813,9 @@ async def cb_fedreason_update(callback: CallbackQuery) -> None:
         await edit(message, "This request has expired. Send /fban again.", reply_markup=None)
         return
     name, reason, by_id, by_name, _ = pending
-    await federations.ban(fed_id, int(user_id), name, reason, by_id, by_name)
-    text = _ban_text("FedBan Reason Update", fed, SimpleNamespace(id=by_id, full_name=by_name), int(user_id), name, reason, await _own_line(callback.bot, fed))
+    old = await federations.ban(fed_id, int(user_id), name, reason, by_id, by_name)
+    previous = ((old or {}).get("reason") or None,)  # what the reason was until now: nobody should have to wonder
+    text = _ban_text("FedBan Reason Update", fed, SimpleNamespace(id=by_id, full_name=by_name), int(user_id), name, reason, await _own_line(callback.bot, fed), previous=previous)
     await edit(message, text, reply_markup=None)
     await _event(callback.bot, fed, text)
 
