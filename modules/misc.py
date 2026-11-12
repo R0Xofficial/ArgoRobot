@@ -42,7 +42,7 @@ HELP = [
     ("/start", "Say hello. In a group I only point you to a private chat, where I can show you what I do."),
     ("/help [topic]", "Open this panel, or go straight to a page: /help notes, or the name of any command. In a group you get a button that opens it in a private chat."),
     ("/id [user]", "Show your Telegram ID, plus the chat's ID when you use it in a group. Give a user, group or channel to see their ID instead."),
-    ("/info [user]", "Show what I know about a user, bot, group or channel. Users get a User Info section (name, username, ID and, in a group, their status: Owner, Admin, Member, Muted or Banned, with Approved added, or Muted (No Captcha) while a captcha is unsolved) and an Argo Info section (bot role and Yes/No flags like Globally Banned, FedBanned, Whitelisted, Immune and AFK). People with a role show no flags. If I have no data on someone, I say so: they have to message me first, or I have to see them in a chat I am in."),
+    ("/info [user]", "Show what I know about a user, bot, group or channel. Users get a User Info section (name, username, ID and, in a group, their status: Owner, Admin, Member, Muted or Banned, with Approved added, or Muted (No Captcha) while a captcha is unsolved) and an Argo Info section (bot role and Yes/No flags: Globally Banned, Whitelisted and Immune). People with a role show no flags. In a chat that belongs to a federation, a sentence at the end says whether they are fbanned (with the reason) or a fed admin. If I have no data on someone, I say so: they have to message me first, or I have to see them in a chat I am in."),
     ("/tr [language] <text>", "Translate text into a language (default: English). Give a language code like pl, de or es first, or reply to a message to translate it."),
     ("/dict <word>", "Look up an English word: how it is pronounced and what it means."),
     ("/time <place or timezone>", "Show the current time and date in a city or a timezone, like Tokyo or Europe/Warsaw."),
@@ -559,7 +559,7 @@ def _chat_status(member) -> str:
 
 # The order of the yes/no flags of the bot's own section in /info. Flags from modules this list
 # doesn't know come last.
-FLAG_ORDER = ("Globally Banned", "FedBanned", "Whitelisted", "Immune", "AFK", "FedAdmin")
+FLAG_ORDER = ("Globally Banned", "Whitelisted", "Immune")
 
 
 def _standing(member, approved: bool, captcha: bool = False) -> str | None:
@@ -648,6 +648,9 @@ async def _user_info(bot, chat, target: Target) -> list[str]:
     about.extend(_flag_lines(flags))
     if about:
         lines += ["", "<b>Argo Info</b>"] + about
+    # Sentences the modules write themselves (a federation ban with its reason ...) close the message.
+    for note in await info_hooks.notes_for(bot, target.user_id, chat_id):
+        lines += ["", note]
     return lines
 
 

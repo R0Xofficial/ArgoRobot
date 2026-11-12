@@ -1335,20 +1335,25 @@ async def on_my_rights_changed(event: ChatMemberUpdated, bot: Bot) -> None:
 
 # --- /info ------------------------------------------------------------------------------------
 
-async def _info_banned(bot: Bot, user_id: int, chat_id: int | None) -> list[tuple[str, bool]]:
-    if chat_id is None or await federations.chat_fed_id(chat_id) is None:
-        return []
-    return [("FedBanned", await federations.effective_ban(chat_id, user_id) is not None)]
-
-
-async def _info_admin(bot: Bot, user_id: int, chat_id: int | None) -> list[tuple[str, bool]]:
+async def _info_notes(bot: Bot, user_id: int, chat_id: int | None) -> list[str]:
+    """What /info says about a person in a chat that belongs to a federation."""
     if chat_id is None:
         return []
     fed = await federations.chat_fed(chat_id)
     if fed is None:
         return []
-    return [("FedAdmin", await federations.is_admin(fed, user_id))]
+    if await federations.is_admin(fed, user_id):
+        return [f"This user is a fed admin in the current federation, {_fed_name(fed)}."]
+    if await roles.get_role(user_id) is not None or await moderation.is_chat_admin(bot, chat_id, user_id):
+        return []  # staff and admins are not touched by federation bans: nothing to say
+    found = await federations.effective_ban(chat_id, user_id)
+    if found is None:
+        return ["This user is not fbanned in the current federation."]
+    banned_in, ban = found
+    text = f"This user has been fbanned in the current fed, {_fed_name(banned_in)}."
+    if ban["reason"]:
+        text += f"\nReason: {esc(ban['reason'])}"
+    return [text]
 
 
-info_hooks.register("federations", _info_banned)
-info_hooks.register("federations", _info_admin, always=True)
+info_hooks.register_notes("federations", _info_notes)
