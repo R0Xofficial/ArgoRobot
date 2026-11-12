@@ -90,13 +90,17 @@ def _display_name(message: Message) -> str:
 
 
 def _start_text(name: str) -> str:
-    return (
+    text = (
         f"Hello, <b>{esc(name)}</b>! I'm <b>Argo</b>.\n\n"
         "I'm a group administration bot: moderation, role management and general "
-        "crowd control, delivered with a questionable amount of sass.\n\n"
+        "crowd control.\n\n"
         "Add me to your group, give me admin rights and I'll keep things functional. "
         "Tap <b>Help</b> below to see what I can do."
     )
+    support = at_name(settings.SUPPORT_CHAT_USERNAME)
+    if support:
+        text += f"\n\nQuestions, bugs or appeals? Join the support chat: {esc(support)}"
+    return text
 
 
 def _group_start_text(name: str, username: str) -> str:
