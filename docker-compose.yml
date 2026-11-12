@@ -21,6 +21,7 @@ services:
       SUPPORT_CHAT_USERNAME: ${SUPPORT_CHAT_USERNAME:-@ArgoRobotSupport}
       COMMAND_PREFIXES: ${COMMAND_PREFIXES:-/!}
       GITHUB_URL: ${GITHUB_URL:-}
+      LOG_REPORT_HOURS: ${LOG_REPORT_HOURS:-6}
     networks:
       - default             # outbound access to the Telegram API
       - postgres-internal   # access to the PostgreSQL container
