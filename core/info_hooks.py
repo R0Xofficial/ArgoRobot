@@ -33,7 +33,12 @@ log = logging.getLogger(__name__)
 
 Provider = Callable[[Bot, int, int | None], Awaitable[list[tuple[str, bool]]]]
 
+# A note is a sentence the module writes itself, shown at the end of /info (it may need more than a
+# yes or a no: a reason, a name).
+NotesProvider = Callable[[Bot, int, int | None], Awaitable[list[str]]]
+
 _providers: list[tuple[str, Provider, bool]] = []
+_notes: list[tuple[str, NotesProvider]] = []
 
 
 def register(module_name: str, provider: Provider, *, always: bool = False) -> None:
@@ -60,3 +65,21 @@ async def flags_for(bot: Bot, user_id: int, chat_id: int | None = None, *, alway
         except Exception:
             log.exception("Info provider of '%s' failed", module_name)
     return flags
+
+
+def register_notes(module_name: str, provider: NotesProvider) -> None:
+    """Add a provider of sentences (HTML) that /info shows at its end. It decides for itself who gets one."""
+    _notes.append((module_name, provider))
+
+
+async def notes_for(bot: Bot, user_id: int, chat_id: int | None = None) -> list[str]:
+    notes: list[str] = []
+    for module_name, provider in _notes:
+        info = registry.get(module_name)
+        if info is not None and not info.enabled:
+            continue
+        try:
+            notes.extend(await provider(bot, user_id, chat_id))
+        except Exception:
+            log.exception("Info notes of '%s' failed", module_name)
+    return notes
