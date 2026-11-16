@@ -30,7 +30,7 @@ from aiogram.enums import ParseMode
 
 import modules
 from config import settings
-from core import captchas, chats, database, logreport, logs, nightmode, registry, users
+from core import captchas, chats, database, logreport, logs, mtproto, nightmode, registry, users
 from core.errors import setup_error_handling
 from core.middlewares import CleanCommandsMiddleware, ConnectionMiddleware, LoggingMiddleware, RolesMiddleware, UsersMiddleware
 from core.text import esc
@@ -137,6 +137,7 @@ async def on_shutdown(bot: Bot) -> None:
     await chats.stop_cleanup_schedule()
     await captchas.stop_sweeper()
     await nightmode.stop_sweeper()
+    await mtproto.stop()
     await logreport.stop_schedule(bot)   # the last report, with everything since the previous one
     await logs.dev_log(bot, "Bot stopped.")
     try:

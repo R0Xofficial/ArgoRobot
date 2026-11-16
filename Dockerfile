@@ -13,6 +13,7 @@ RUN pip install -r requirements.txt
 
 # Run as an unprivileged user.
 RUN useradd --create-home --uid 1000 argo \
+    && mkdir -p /app/data \
     && chown -R argo:argo /app
 
 COPY --chown=argo:argo . .

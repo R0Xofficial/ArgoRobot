@@ -22,6 +22,10 @@ services:
       SUPPORT_CHAT_USERNAME: ${SUPPORT_CHAT_USERNAME:-@ArgoRobotSupport}
       COMMAND_PREFIXES: ${COMMAND_PREFIXES:-/!}
       GITHUB_URL: ${GITHUB_URL:-}
+      API_ID: ${API_ID:-}
+      API_HASH: ${API_HASH:-}
+    volumes:
+      - argo-data:/app/data   # the MTProto session (see API_ID)
     networks:
       - default             # outbound access to the Telegram API
       - postgres-internal   # access to the PostgreSQL container
@@ -30,6 +34,9 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  argo-data:
 
 networks:
   # Created by the PostgreSQL compose project; the bot only joins it.

@@ -94,6 +94,7 @@ Settings come from environment variables or from a `.env` file next to `config.p
 | `DEV_LOG_CHAT` | Chat for start/stop messages and error reports. Empty: sent to the owner privately. |
 | `DEV_LOG_THREAD_ID` | Topic id, if that chat has topics. |
 | `LOG_REPORT_HOURS` | How often the bot sends its log to the developer log as a `.txt` file. Default `6`, `0` turns it off. |
+| `API_ID`, `API_HASH` | Optional. From my.telegram.org. Lets `/zombies` list every member of a chat (through Telethon) instead of only people the bot has seen. The session is kept in the `argo-data` volume. Empty: off. |
 | `LOG_CHAT_ID` | Public log: promotions, demotions and other information everyone may read. Empty: falls back to the developer log. |
 | `LOG_THREAD_ID` | Topic id, if that chat has topics. |
 | `CHAT_CLEANUP_HOURS` | How often the bot forgets chats it was removed from. Default `24`, `0` turns it off (`/cleanchats` still works). |
@@ -226,7 +227,7 @@ Bot-wide, the owner and developers can turn whole modules on and off for every c
 ## 11. Logs
 
 - **Console / container log:** one line per command or button press (never message text), plus warnings and errors.
-- **Developer log** (`DEV_LOG_CHAT`): start and stop messages, error reports with the traceback as a file, and every `LOG_REPORT_HOURS` hours a log report: a message with the period it covers (from, to, number of entries) and a `.txt` file with a time, a level and what happened on every line (UTC). One more is sent when the bot stops. A report that could not be delivered is sent with the next one.
+- **Developer log** (`DEV_LOG_CHAT`): start and stop messages, notices when the bot is added to or removed from a chat (`#NEWGROUP`, `#LEFTGROUP`) and about federations (`#NEWFED`, `#DELFED`, `#RENAMEFED`, `#FEDTRANSFER`), error reports with the traceback as a file, and every `LOG_REPORT_HOURS` hours a log report: a message with the period it covers (from, to, number of entries) and a `.txt` file with a time, a level and what happened on every line (UTC). One more is sent when the bot stops. A report that could not be delivered is sent with the next one.
 - **Public log** (`LOG_CHAT_ID`): staff changes and other public notices.
 - **Chat log:** `/setlog <chat id | @username | reply to a forwarded channel post>` makes the bot copy that chat's moderation actions (bans, mutes, warns, locks, promotions ...) to a chat of the admins' choice. `/unsetlog` and `/logchannel` manage it.
 

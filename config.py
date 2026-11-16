@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     # (what happened and when, in UTC). 0 turns the reports off.
     LOG_REPORT_HOURS: float = 6
 
+    # --- MTProto (optional) -----------------------------------------------
+    # From my.telegram.org (API development tools). With both set, /zombies can list every
+    # member of a chat instead of only the people the bot has seen. Without them it still works.
+    API_ID: int | None = None
+    API_HASH: str | None = None
+
     # --- Housekeeping -----------------------------------------------------
     # How often the bot checks which stored chats it has been removed from, in
     # hours. 0 turns the scheduled check off (/cleanchats still works).
