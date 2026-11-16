@@ -23,7 +23,7 @@ from aiogram.types import (
 )
 
 from core.banfiles import FORMATS, MAX_IMPORT_BYTES, parse_import, render_export, stamp as _stamp
-from core import approvals, banguard, federations, immunity, info_hooks, moderation, roles, users
+from core import approvals, banguard, devnotify, federations, immunity, info_hooks, moderation, roles, users
 from core.federations import FederationError
 from core.help_index import Section
 from core.filters import HasRole, cmd
@@ -290,6 +290,7 @@ async def cmd_newfed(message: Message, command: CommandObject) -> None:
         + "\n".join([_item("Name", f"<code>{esc(fed['name'])}</code>"), _item("ID", f"<code>{fed['fed_id']}</code>")])
         + "\n\nJoin a chat to it with /joinfed &lt;ID&gt; sent by the chat's owner.",
     )
+    devnotify.fed_created(message.bot, fed, user.id, user.full_name)
 
 
 @router.message(cmd("renamefed"))
@@ -306,6 +307,7 @@ async def cmd_renamefed(message: Message, command: CommandObject) -> None:
     except FederationError as exc:
         await reply(message, esc(exc))
         return
+    devnotify.fed_renamed(message.bot, fed, name, message.from_user.id, message.from_user.full_name)
     await reply(message, f"Your federation is now called <b>{esc(name)}</b>.")
 
 
@@ -345,6 +347,7 @@ async def cb_delfed(callback: CallbackQuery) -> None:
         return
     await federations.delete(fed["fed_id"])
     await edit(message, f"The federation {_fed_name(fed)} is deleted.", reply_markup=None)
+    devnotify.fed_deleted(callback.bot, fed, callback.from_user.id, callback.from_user.full_name)
 
 
 @router.message(cmd("fedtransfer"))
@@ -403,6 +406,7 @@ async def cb_fedtransfer(callback: CallbackQuery) -> None:
         await edit(message, esc(exc), reply_markup=None)
         return
     await edit(message, f"The federation {_fed_name(fed)} now belongs to {user_link(callback.from_user.id, callback.from_user.full_name)}.", reply_markup=None)
+    devnotify.fed_transferred(callback.bot, fed, callback.from_user.id, callback.from_user.full_name)
     await _event(
         callback.bot,
         {**fed, "owner_id": callback.from_user.id},
