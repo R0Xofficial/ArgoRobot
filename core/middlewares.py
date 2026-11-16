@@ -17,7 +17,7 @@ from aiogram.types import Update
 
 from config import settings
 from core.text import esc
-from core import chatsettings, chats, connection, registry, roles, users
+from core import chatsettings, chats, connection, devnotify, registry, roles, users
 
 log = logging.getLogger("usage")
 
@@ -104,7 +104,13 @@ class UsersMiddleware(BaseMiddleware):
         bot = data.get("bot")
         if bot is not None:
             # Just added to (or promoted in) a group: look at its admins right away.
-            joined = getattr(event, "my_chat_member", None) is not None
+            change = getattr(event, "my_chat_member", None)
+            joined = change is not None
+            if change is not None:
+                try:
+                    devnotify.chat_event(bot, change)
+                except Exception:
+                    users.log.exception("Could not announce a chat change")
             for chat_id in users.group_chats(event):
                 users.schedule_admin_refresh(bot, chat_id, force=joined)
         return await handler(event, data)
