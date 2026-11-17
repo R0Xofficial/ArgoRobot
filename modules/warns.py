@@ -13,39 +13,28 @@ from core.helpers import edit, reply
 from core.moderation import ModerationError, perform
 from core.roles import Role
 from core.text import duration_text, esc, parse_switch, truncate, user_link
+from core.i18n import tr, word
 
 # Usable by chat admins (with the right to ban users) and by the bot's Owner,
 # Developers and Sudo users. See core/moderation.py.
-ABOUT = """
-Warns are strikes. Each one is saved with its reason, and a user who reaches the chat's warn limit (3 by default) gets what /warnmode says (a ban unless the chat chose otherwise); the count then starts again from zero.
+ABOUT = "warns.about"
 
-These commands are for chat admins with the right to ban users. My staff (Sudo and up) can use them too, unless the chat owner turned that off with /staffhelp.
-
-Name the target by replying to their message, or with a @username or a numeric ID. Anything after it is the reason, which is shown in the answer.
-
-I won't act against chat admins, my own staff or protected accounts, and I need the right to restrict users myself.
-
-Every warn has an ID. A fresh warning comes with a button to undo it, and /warns lists a user's warns with buttons to remove each one.
-
-Warn filters give a warn to whoever writes a word or phrase: /addwarn spam "free money" and the reason. They are blacklist triggers with the warn action, so they follow the blacklist rules (wildcards, whether the message is deleted).
-"""
-
-HELP_WHO = "admins"
+HELP_WHO = "common.admins"
 
 HELP = [
-    ("/warn <user> [reason]", "Give a user a warn. Reaching the limit bans them, or does what /warnmode says."),
-    ("/dwarn <reply> [reason]", "Reply to a message: warn its author and delete that message."),
-    ("/unwarn <user>", "Remove the latest warn of a user."),
-    ("/warns <user>", "List a user's warns with their reasons and who gave them, with a button to remove each."),
-    ("/rmwarn <id>", "Remove one warn by its ID."),
-    ("/resetwarns <user>", "Remove every warn of a user. Alias: /resetwarn."),
-    ("/warnlimit", "Show how many warns it takes to reach the limit in this chat."),
-    ("/setwarnlimit <1-10>", "Set the warn limit of this chat. Default: 3."),
-    ("/warnmode <ban|kick|mute|tban|tmute> [time]", "What reaching the warn limit does. Default: ban. tban and tmute need a duration, like 30m, 2h or 3d. Without an answer it shows the setting."),
-    ("/strongwarn [on|off]", "The short form of /warnmode: on = ban, off = kick."),
-    ("/addwarn <word or \"phrase\"> [reason]", "Warn everyone who writes that word or phrase. The reason can also come from a message you reply to."),
-    ("/nowarn <word or \"phrase\">", "Remove a warn filter. Alias: /stopwarn."),
-    ("/warnlist", "List the warn filters of this chat."),
+    ("/warn <user> [reason]", "warns.help.give_a_user_a_warn"),
+    ("/dwarn <reply> [reason]", "warns.help.reply_to_a_message_warn"),
+    ("/unwarn <user>", "warns.help.remove_the_latest_warn_of"),
+    ("/warns <user>", "warns.help.list_a_user_s_warns"),
+    ("/rmwarn <id>", "warns.help.remove_one_warn_by_its"),
+    ("/resetwarns <user>", "warns.help.remove_every_warn_of_a"),
+    ("/warnlimit", "warns.help.show_how_many_warns_it"),
+    ("/setwarnlimit <1-10>", "warns.help.set_the_warn_limit_of"),
+    ("/warnmode <ban|kick|mute|tban|tmute> [time]", "warns.help.what_reaching_the_warn_limit"),
+    ("/strongwarn [on|off]", "warns.help.the_short_form_of_warnmode"),
+    ("/addwarn <word or \"phrase\"> [reason]", "warns.help.warn_everyone_who_writes_that"),
+    ("/nowarn <word or \"phrase\">", "warns.help.remove_a_warn_filter_alias"),
+    ("/warnlist", "warns.help.list_the_warn_filters_of"),
 ]
 
 router = Router(name="warns")
@@ -94,7 +83,7 @@ async def set_mode(chat_id: int, mode: str, seconds: int = 0) -> None:
 
 def mode_text(mode: str, seconds: int) -> str:
     """'ban', 'tmute for 2 hours'."""
-    return f"{mode} for {duration_text(seconds)}" if mode in enforce.TIMED_MODES else mode
+    return tr("common.for", mode=word(mode), duration_text=duration_text(seconds)) if mode in enforce.TIMED_MODES else word(mode)
 
 
 async def limit_action(bot, chat_id: int, user_id: int) -> str:
@@ -146,25 +135,25 @@ async def clear_warns(chat_id: int, user_id: int) -> int:
 # --- Wording ------------------------------------------------------------------
 
 def _undo_keyboard(warn_id: int) -> InlineKeyboardMarkup:
-    button = InlineKeyboardButton(text="Remove warn", callback_data=f"{CB_UNDO}{warn_id}")
+    button = InlineKeyboardButton(text=tr("warns.remove_warn"), callback_data=f"{CB_UNDO}{warn_id}")
     return InlineKeyboardMarkup(inline_keyboard=[[button]])
 
 
 def _warns_view(who: str, warns: list[dict], limit: int) -> tuple[str, InlineKeyboardMarkup | None]:
     if not warns:
-        return f"{who} has no warns.", None
+        return tr("warns.has_no_warns", who=who), None
 
-    lines = [f"{who} has {len(warns)}/{limit} warns.", ""]
+    lines = [tr("warns.has_warns", who=who, warns=len(warns), limit=limit), ""]
     for warn in warns:
-        reason = esc(truncate(warn["reason"], 100)) if warn["reason"] else "No reason given"
+        reason = esc(truncate(warn["reason"], 100)) if warn["reason"] else tr("warns.no_reason_given")
         lines.append(f"<code>#{warn['id']}</code> {reason}")
-        by = esc(warn["warned_by_name"] or "Unknown")
+        by = esc(warn["warned_by_name"] or tr("common.unknown"))
         if warn["warned_by_staff"]:
-            by += " (bot staff)"
+            by += tr("warns.bot_staff")
         lines.append(f"By {by} on {warn['created_at']:%Y-%m-%d}")
 
     buttons = [
-        InlineKeyboardButton(text=f"Remove #{warn['id']}", callback_data=f"{CB_DELETE}{warn['id']}")
+        InlineKeyboardButton(text=tr("warns.remove", id=warn['id']), callback_data=f"{CB_DELETE}{warn['id']}")
         for warn in warns
     ]
     rows = [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
@@ -195,8 +184,8 @@ async def cmd_warn(message: Message, command: CommandObject, role: Role | None =
     count = len(await list_warns(chat_id, target.user_id))
     limit = await get_limit(chat_id)
     who = moderation.who(target)
-    await moderation.log_action(message, "WARNED", actor, target, reason, ("Warns", f"<code>{count}/{limit}</code>"))
-    text = f"{who} was warned ({count}/{limit}){moderation.by(actor)}{moderation.reason_line(reason)}{moderation.staff_note(actor)}"
+    await moderation.log_action(message, "WARNED", actor, target, reason, (tr("warns.warns"), f"<code>{count}/{limit}</code>"))
+    text = tr("warns.was_warned", who=who, count=count, limit=limit, by=moderation.by(actor), reason_line=moderation.reason_line(reason), staff_note=moderation.staff_note(actor))
 
     if count < limit:
         await reply(message, text, reply_markup=_undo_keyboard(warn_id))
@@ -209,17 +198,16 @@ async def cmd_warn(message: Message, command: CommandObject, role: Role | None =
         # The warns stay, so the situation is not lost; the button still works.
         await reply(
             message,
-            f"{text}\nThe limit is reached, but I couldn't act: {esc(exc)}",
+            tr("warns.the_limit_is_reached_but_i", text=text, exc=esc(exc)),
             reply_markup=_undo_keyboard(warn_id),
         )
         return
 
     await clear_warns(chat_id, target.user_id)
-    await moderation.log_action(message, "WARNLIMIT", actor, target, reason, ("Result", done))
+    await moderation.log_action(message, "WARNLIMIT", actor, target, reason, (tr("warns.result"), done))
     await reply(
         message,
-        f"{who} reached the warn limit ({count}/{limit}) and was {done}{moderation.by(actor)}"
-        f"{moderation.reason_line(reason)}{moderation.staff_note(actor)}",
+        tr("warns.reached_the_warn_limit_and_was", who=who, count=count, limit=limit, done=done, by=moderation.by(actor), reason_line=moderation.reason_line(reason), staff_note=moderation.staff_note(actor)),
     )
 
 
@@ -253,12 +241,12 @@ async def cb_undo(callback: CallbackQuery, role: Role | None = None) -> None:
         return
     message, actor = allowed
     if warn_id is None:
-        await callback.answer("This button is not valid.", show_alert=True)
+        await callback.answer(tr("common.this_button_is_not_valid"), show_alert=True)
         return
 
     removed = await delete_warn(message.chat.id, warn_id)
     if removed is None:
-        await callback.answer("This warn no longer exists.", show_alert=True)
+        await callback.answer(tr("warns.this_warn_no_longer_exists"), show_alert=True)
         with suppress(TelegramAPIError):
             await message.edit_reply_markup(reply_markup=None)
         return
@@ -267,7 +255,7 @@ async def cb_undo(callback: CallbackQuery, role: Role | None = None) -> None:
     who = user_link(removed["user_id"], removed["user_name"])
     await edit(
         message,
-        f"The warn <code>#{removed['id']}</code> of {who} was removed{moderation.by(actor)}{moderation.staff_note(actor)}",
+        tr("warns.the_warn_of_was_removed", id=removed['id'], who=who, by=moderation.by(actor), staff_note=moderation.staff_note(actor)),
         reply_markup=None,
     )
 
@@ -280,15 +268,15 @@ async def cb_delete(callback: CallbackQuery, role: Role | None = None) -> None:
         return
     message, _actor = allowed
     if warn_id is None:
-        await callback.answer("This button is not valid.", show_alert=True)
+        await callback.answer(tr("common.this_button_is_not_valid"), show_alert=True)
         return
 
     removed = await delete_warn(message.chat.id, warn_id)
     if removed is None:
-        await callback.answer("This warn no longer exists.", show_alert=True)
+        await callback.answer(tr("warns.this_warn_no_longer_exists"), show_alert=True)
         return
 
-    await callback.answer(f"Warn #{removed['id']} removed.")
+    await callback.answer(tr("warns.warn_removed", id=removed['id']))
     who = user_link(removed["user_id"], removed["user_name"])
     warns = await list_warns(message.chat.id, removed["user_id"])
     text, keyboard = _warns_view(who, warns, await get_limit(message.chat.id))
@@ -305,17 +293,17 @@ async def cmd_rmwarn(message: Message, command: CommandObject, role: Role | None
 
     argument = (command.args or "").strip().lstrip("#")
     if not argument.isdigit():
-        await reply(message, "Give the ID of the warn, for example: /rmwarn 12")
+        await reply(message, tr("warns.give_the_id_of_the_warn"))
         return
 
     removed = await delete_warn(message.chat.id, int(argument))
     if removed is None:
-        await reply(message, "There is no warn with that ID in this chat.")
+        await reply(message, tr("warns.there_is_no_warn_with_that"))
         return
     who = user_link(removed["user_id"], removed["user_name"])
     await reply(
         message,
-        f"The warn <code>#{removed['id']}</code> of {who} was removed{moderation.by(actor)}{moderation.staff_note(actor)}",
+        tr("warns.the_warn_of_was_removed", id=removed['id'], who=who, by=moderation.by(actor), staff_note=moderation.staff_note(actor)),
     )
 
 
@@ -329,10 +317,10 @@ async def cmd_resetwarns(message: Message, command: CommandObject, role: Role | 
     removed = await clear_warns(message.chat.id, target.user_id)
     who = moderation.who(target)
     if removed == 0:
-        await reply(message, f"{who} has no warns.")
+        await reply(message, tr("warns.has_no_warns", who=who))
     else:
-        await moderation.log_action(message, "WARNSRESET", actor, target, "", ("Removed", f"<code>{removed}</code>"))
-        await reply(message, f"All warns of {who} were removed ({removed}){moderation.by(actor)}{moderation.staff_note(actor)}")
+        await moderation.log_action(message, "WARNSRESET", actor, target, "", (tr("warns.removed"), f"<code>{removed}</code>"))
+        await reply(message, tr("warns.all_warns_of_were_removed", who=who, removed=removed, by=moderation.by(actor), staff_note=moderation.staff_note(actor)))
 
 
 # --- /unwarn ------------------------------------------------------------------
@@ -347,15 +335,14 @@ async def cmd_unwarn(message: Message, command: CommandObject, role: Role | None
     warns = await list_warns(message.chat.id, target.user_id)
     who = moderation.who(target)
     if not warns:
-        await reply(message, f"{who} has no warns.")
+        await reply(message, tr("warns.has_no_warns", who=who))
         return
     await delete_warn(message.chat.id, warns[-1]["id"])
     limit = await get_limit(message.chat.id)
-    await moderation.log_action(message, "UNWARNED", actor, target, "", ("Warns", f"<code>{len(warns) - 1}/{limit}</code>"))
+    await moderation.log_action(message, "UNWARNED", actor, target, "", (tr("warns.warns"), f"<code>{len(warns) - 1}/{limit}</code>"))
     await reply(
         message,
-        f"The latest warn of {who} was removed{moderation.by(actor)} ({len(warns) - 1}/{limit} left)"
-        f"{moderation.staff_note(actor)}",
+        tr("warns.the_latest_warn_of_was_removed", who=who, by=moderation.by(actor), v=len(warns) - 1, limit=limit, staff_note=moderation.staff_note(actor)),
     )
 
 
@@ -366,7 +353,7 @@ async def cmd_warnlimit(message: Message, command: CommandObject, role: Role | N
     if await moderation.begin_chat_command(message, role) is None:
         return
     limit = await get_limit(message.chat.id)
-    await reply(message, f"The warn limit in this chat is <b>{limit}</b>.")
+    await reply(message, tr("warns.the_warn_limit_in_this_chat", limit=limit))
 
 
 @router.message(cmd("setwarnlimit"))
@@ -376,11 +363,11 @@ async def cmd_setwarnlimit(message: Message, command: CommandObject, role: Role 
 
     argument = (command.args or "").strip()
     if not argument.isdigit() or not 1 <= int(argument) <= MAX_LIMIT:
-        await reply(message, f"Give a number from 1 to {MAX_LIMIT}, for example: /setwarnlimit 5")
+        await reply(message, tr("warns.give_a_number_from_1_to", MAX_LIMIT=MAX_LIMIT))
         return
 
     await set_limit(message.chat.id, int(argument))
-    await reply(message, f"The warn limit in this chat is now <b>{int(argument)}</b>.")
+    await reply(message, tr("warns.the_warn_limit_in_this_chat_2", argument=int(argument)))
 
 
 @router.message(cmd("strongwarn"))
@@ -394,11 +381,11 @@ async def cmd_strongwarn(message: Message, command: CommandObject, role: Role | 
     if argument:
         wanted = parse_switch(argument)
         if wanted is None:
-            await reply(message, "Use /strongwarn on or /strongwarn off.")
+            await reply(message, tr("warns.use_strongwarn_on_or_strongwarn_off"))
             return
         await set_mode(chat_id, "ban" if wanted else "kick")
     mode, seconds = await get_mode(chat_id)
-    await reply(message, f"A user who reaches the warn limit gets: <b>{esc(mode_text(mode, seconds))}</b>. Change it with /warnmode.")
+    await reply(message, tr("warns.a_user_who_reaches_the_warn", mode_text=esc(mode_text(mode, seconds))))
 
 
 @router.message(cmd("warnmode"))
@@ -412,23 +399,23 @@ async def cmd_warnmode(message: Message, command: CommandObject, role: Role | No
         try:
             mode, seconds = blacklist.parse_action(spec)
         except blacklist.TriggerError as exc:
-            await reply(message, f"{esc(exc)}\n{WARNMODE_USAGE}")
+            await reply(message, f"{esc(exc)}\n{tr(WARNMODE_USAGE)}")
             return
         if mode not in enforce.MODES:  # delete and warn make no sense at the limit
-            await reply(message, WARNMODE_USAGE)
+            await reply(message, tr(WARNMODE_USAGE))
             return
         await set_mode(chat_id, mode, seconds)
-        await reply(message, f"A user who reaches the warn limit now gets: <b>{esc(mode_text(mode, seconds))}</b>.")
+        await reply(message, tr("warns.a_user_who_reaches_the_warn_2", mode_text=esc(mode_text(mode, seconds))))
         return
     mode, seconds = await get_mode(chat_id)
     await reply(
         message,
-        f"A user who reaches the warn limit gets: <b>{esc(mode_text(mode, seconds))}</b>.\n{WARNMODE_USAGE}",
+        tr("warns.a_user_who_reaches_the_warn_3", mode_text=esc(mode_text(mode, seconds)), WARNMODE_USAGE=tr(WARNMODE_USAGE)),
     )
 
 
 WARNMODE_USAGE = (
-    "Use /warnmode &lt;ban|kick|mute|tban|tmute&gt;. tban and tmute need a duration, like 30m, 2h, 3d or 1w."
+    "warns.warnmode_usage"
 )
 
 
@@ -467,7 +454,7 @@ async def cmd_addwarn(message: Message, command: CommandObject, role: Role | Non
     if not reason and replied is not None:
         reason = " ".join((replied.text or replied.caption or "").split())
     if not keyword:
-        await reply(message, "Give a word or a phrase in quotes, then a reason: /addwarn spam \"No advertising here\"")
+        await reply(message, tr("warns.give_a_word_or_a_phrase"))
         return
     try:
         pattern = blacklist.check(keyword)
@@ -476,11 +463,11 @@ async def cmd_addwarn(message: Message, command: CommandObject, role: Role | Non
         await reply(message, esc(exc))
         return
     if outcome is None:
-        await reply(message, f"The blacklist is full ({blacklist.MAX_TRIGGERS} triggers).")
+        await reply(message, tr("common.the_blacklist_is_full_triggers", MAX_TRIGGERS=blacklist.MAX_TRIGGERS))
         return
     await reply(
         message,
-        f"Anyone who writes <code>{esc(pattern)}</code> gets a warn. The filter was {'added' if outcome else 'updated'}{moderation.by(actor)}{moderation.staff_note(actor)}",
+        tr("warns.anyone_who_writes_gets_a_warn", pattern=esc(pattern), opt=tr("warns.added") if outcome else tr("warns.updated"), by=moderation.by(actor), staff_note=moderation.staff_note(actor)),
     )
 
 
@@ -492,7 +479,7 @@ async def cmd_nowarn(message: Message, command: CommandObject, role: Role | None
 
     keyword, _ = _split_keyword(command.args or "")
     if not keyword:
-        await reply(message, "Give the word or phrase of the filter: /nowarn spam")
+        await reply(message, tr("warns.give_the_word_or_phrase_of"))
         return
     try:
         pattern = blacklist.check(keyword)
@@ -500,9 +487,9 @@ async def cmd_nowarn(message: Message, command: CommandObject, role: Role | None
         await reply(message, esc(exc))
         return
     if not any(t.pattern == pattern for t in await _warn_triggers(message.chat.id)) or not await blacklist.remove(message.chat.id, pattern):
-        await reply(message, "There is no warn filter like that in this chat. /warnlist shows them.")
+        await reply(message, tr("warns.there_is_no_warn_filter_like"))
         return
-    await reply(message, f"The warn filter <code>{esc(pattern)}</code> was removed{moderation.by(actor)}{moderation.staff_note(actor)}")
+    await reply(message, tr("warns.the_warn_filter_was_removed", pattern=esc(pattern), by=moderation.by(actor), staff_note=moderation.staff_note(actor)))
 
 
 @router.message(cmd("warnlist"))
@@ -511,9 +498,9 @@ async def cmd_warnlist(message: Message, command: CommandObject, role: Role | No
         return
     found = await _warn_triggers(message.chat.id)
     if not found:
-        await reply(message, "There are no warn filters in this chat. Add one with /addwarn.")
+        await reply(message, tr("warns.there_are_no_warn_filters_in"))
         return
-    lines = ["<b>Warn filters</b>"]
+    lines = [tr("warns.warn_filters")]
     for trigger in found[:80]:
         line = f"• <code>{esc(trigger.pattern)}</code>"
         if trigger.reason:

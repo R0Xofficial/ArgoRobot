@@ -28,39 +28,27 @@ from core.targets import (
     sender_as_target,
 )
 from core.text import at_name, esc
+from core.i18n import tr, tr_or
 
 # Commands shown in /help (see core/help_index.py).
-ABOUT = """
-The basics: get to know me, find your way around, and look people up.
-
-/id and /info accept a user, a bot, a group or a channel. Reply to one of their messages, or give a @username or a numeric ID. Without a target they describe you.
-
-/tr, /dict, /time, /weather and /cash look things up on free public services, so they can be slow or unavailable now and then. Each person can use them once every few seconds.
-"""
+ABOUT = "misc.about"
 
 HELP = [
-    ("/start", "Say hello. In a group I only point you to a private chat, where I can show you what I do."),
-    ("/help [topic]", "Open this panel, or go straight to a page: /help notes, or the name of any command. In a group you get a button that opens it in a private chat."),
-    ("/id [user]", "Show your Telegram ID, plus the chat's ID when you use it in a group. Give a user, group or channel to see their ID instead."),
-    ("/info [user]", "Show what I know about a user, bot, group or channel. Users get a User Info section (name, username, ID and, in a group, their status: Owner, Admin, Member, Muted or Banned, with Approved added, or Muted (No Captcha) while a captcha is unsolved) and an Argo Info section (bot role and Yes/No flags: Globally Banned, Whitelisted and Immune). People with a role show no flags. In a chat that belongs to a federation, a sentence at the end says whether they are fbanned (with the reason) or a fed admin. If I have no data on someone, I say so: they have to message me first, or I have to see them in a chat I am in."),
-    ("/tr [language] <text>", "Translate text into a language (default: English). Give a language code like pl, de or es first, or reply to a message to translate it."),
-    ("/dict <word>", "Look up an English word: how it is pronounced and what it means."),
-    ("/time <place or timezone>", "Show the current time and date in a city or a timezone, like Tokyo or Europe/Warsaw."),
-    ("/weather <place>", "Show the current weather in a city."),
-    ("/cash <amount> <from> <to>", "Convert money between currencies, like /cash 100 usd pln."),
+    ("/start", "misc.help.say_hello_in_a_group"),
+    ("/help [topic]", "misc.help.open_this_panel_or_go"),
+    ("/id [user]", "misc.help.show_your_telegram_id_plus"),
+    ("/info [user]", "misc.help.show_what_i_know_about"),
+    ("/tr [language] <text>", "misc.help.translate_text_into_a_language"),
+    ("/dict <word>", "misc.help.look_up_an_english_word"),
+    ("/time <place or timezone>", "misc.help.show_the_current_time_and"),
+    ("/weather <place>", "misc.help.show_the_current_weather_in"),
+    ("/cash <amount> <from> <to>", "misc.help.convert_money_between_currencies_like"),
 ]
 
 HELP_NOTES = [
     (
-        "Examples",
-        """
-        /tr pl good morning - translate into Polish.
-        /tr - reply to a message to get it in English.
-        /tr en no way - a language code at the start always counts as the target, so to translate a text that starts with one (no, it, is, hi...) name the target first.
-        /time Tokyo - the time in Tokyo.
-        /weather Warsaw, Poland - the weather in Warsaw.
-        /cash 100 usd pln - one hundred US dollars in zloty.
-        """,
+        "common.examples",
+        "misc.note.tr_pl_good_morning_translate",
     ),
 ]
 
@@ -86,49 +74,43 @@ NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 # --- Texts and keyboards ----------------------------------------------------
 
 def _display_name(message: Message) -> str:
-    return message.from_user.full_name if message.from_user else "there"
+    return message.from_user.full_name if message.from_user else tr("misc.there")
 
 
 def _start_text(name: str) -> str:
     text = (
-        f"Hello, <b>{esc(name)}</b>! I'm <b>Argo</b>.\n\n"
-        "I'm a group administration bot: moderation, role management and general "
-        "crowd control.\n\n"
-        "Add me to your group, give me admin rights and I'll keep things functional. "
-        "Tap <b>Help</b> below to see what I can do."
+        tr("misc.hello_i_m_argo_i_m", name=esc(name))
     )
     support = at_name(settings.SUPPORT_CHAT_USERNAME)
     if support:
-        text += f"\n\nQuestions, bugs or appeals? Join the support chat: {esc(support)}"
+        text += tr("misc.questions_bugs_or_appeals_join_the", support=esc(support))
     return text
 
 
 def _group_start_text(name: str, username: str) -> str:
     return (
-        f"Hello, <b>{esc(name)}</b>! I'm <b>Argo</b>.\n\n"
-        "I'd rather not discuss the details in front of everyone. "
-        f"Message me in private to see what I can do: @{esc(username)}"
+        tr("misc.hello_i_m_argo_i_d", name=esc(name), username=esc(username))
     )
 
 
 def _support_line() -> str:
     name = at_name(settings.SUPPORT_CHAT_USERNAME)
-    return f"Found a bug, or something doesn't work as it should? Report it in the support chat: {esc(name)}" if name else ""
+    return tr("misc.found_a_bug_or_something_doesn", name=esc(name)) if name else ""
 
 
 def _help_home_text(role: Role | None = None) -> str:
     prefixes = " ".join(f"<code>{esc(p)}</code>" for p in settings.COMMAND_PREFIXES)
     lines = [
-        "<b>Help</b>",
+        tr("misc.help"),
         "",
-        "Pick a category below to see what it does and how to use its commands.",
+        tr("misc.pick_a_category_below_to_see"),
         "",
-        "<b>Useful commands</b>",
-        "/start - say hello. In a private chat it opens the main menu, in a group it only points you to me.",
-        "/help - open this panel. <code>/help notes</code> (or the name of any command) goes straight to a page. In a group you get a button that opens it in a private chat.",
+        tr("misc.useful_commands"),
+        tr("misc.start_say_hello_in_a_private"),
+        tr("misc.help_open_this_panel_help_notes"),
         "",
-        "Settings that take on or off also understand yes and no.",
-        f"Commands can start with: {prefixes}",
+        tr("misc.settings_that_take_on_or_off"),
+        tr("misc.commands_can_start_with", prefixes=prefixes),
     ]
     support = _support_line()
     if support:
@@ -138,7 +120,8 @@ def _help_home_text(role: Role | None = None) -> str:
 
 def _help_title(info: registry.ModuleInfo) -> str:
     """Name of a module in /help: its HELP_TITLE if it has one (AFK), else the capitalized name."""
-    return getattr(info.module, "HELP_TITLE", None) or info.name.capitalize()
+    title = getattr(info.module, "HELP_TITLE", None)
+    return tr(title) if title else tr_or(f"help.title.{info.name}", info.name.capitalize())
 
 
 def _paragraphs(text: str) -> str:
@@ -156,24 +139,24 @@ def _help_parts(info: registry.ModuleInfo, role: Role | None, section: int | Non
     names = help_index.sections(info.module)
     chosen = names[section] if section is not None and 0 <= section < len(names) else None
     title = _help_title(info)
-    page_title = f"<b>{esc(title)}</b>" if chosen is None else f"<b>{esc(title)} - {esc(chosen)}</b>"
+    page_title = f"<b>{esc(title)}</b>" if chosen is None else f"<b>{esc(title)} - {esc(tr(chosen))}</b>"
     head = [page_title]
     if chosen is None:
         if info.description:
-            head.append(f"<i>{esc(info.description)}</i>")
+            head.append(f"<i>{esc(tr_or(f'help.description.{info.name}', info.description))}</i>")
         about = getattr(info.module, "ABOUT", None)
         if about:
-            head += ["", _paragraphs(about)]
+            head += ["", _paragraphs(tr(about))]
 
     blocks = []
     for usage, description, who in help_index.detailed(info.module, role, chosen):
-        line = f"<code>{esc(usage)}</code>" + (f"  <i>({esc(who)})</i>" if who else "")
-        blocks.append(f"{line}\n{esc(description)}")
-    hint = ["", "Pick a section below for the commands."] if chosen is None and help_index.visible_sections(info.module, role) else []
-    notes = [(note[0], note[1]) for note in getattr(info.module, "HELP_NOTES", ()) if (str(note[2]) if len(note) > 2 else None) == chosen]
+        line = f"<code>{esc(usage)}</code>" + (f"  <i>({esc(tr(who))})</i>" if who else "")
+        blocks.append(f"{line}\n{esc(tr(description))}")
+    hint = ["", tr("misc.pick_a_section_below_for_the")] if chosen is None and help_index.visible_sections(info.module, role) else []
+    notes = [(tr(note[0]), tr(note[1])) for note in getattr(info.module, "HELP_NOTES", ()) if (str(note[2]) if len(note) > 2 else None) == chosen]
 
     def commands(items: list[str]) -> list[str]:
-        return ["", "<b>Commands</b>", ""] + "\n\n".join(items).split("\n") if items else []
+        return ["", f"<b>{tr("misc.commands")}</b>", ""] + "\n\n".join(items).split("\n") if items else []
 
     full = "\n".join(head + commands(blocks) + hint + [x for title_, text in notes for x in ("", f"<b>{esc(title_)}</b>", _paragraphs(text))])
     if len(full) <= SINGLE_LIMIT:
@@ -194,7 +177,7 @@ def _help_parts(info: registry.ModuleInfo, role: Role | None, section: int | Non
         chunks.append(current)
     pages = []
     for number, chunk in enumerate(chunks, 1):
-        label = "Commands" if len(chunks) == 1 else f"Commands {number}"
+        label = tr("misc.commands") if len(chunks) == 1 else tr("misc.commands_2", number=number)
         pages.append((label, f"{page_title.replace('</b>', '')} - {label}</b>\n\n" + "\n\n".join(chunk)))
     return "\n".join(head + hint), pages + extra
 
@@ -206,8 +189,8 @@ def _help_category_text(info: registry.ModuleInfo, role: Role | None, section: i
 def _start_keyboard() -> InlineKeyboardMarkup:
     row = []
     if settings.GITHUB_URL:
-        row.append(InlineKeyboardButton(text="GitHub", url=settings.GITHUB_URL))
-    row.append(InlineKeyboardButton(text="Help", callback_data=CB_HELP))
+        row.append(InlineKeyboardButton(text=tr("misc.github"), url=settings.GITHUB_URL))
+    row.append(InlineKeyboardButton(text=tr("misc.help_2"), callback_data=CB_HELP))
     return InlineKeyboardMarkup(inline_keyboard=[row])
 
 
@@ -218,7 +201,7 @@ def _help_home_keyboard(role: Role | None) -> InlineKeyboardMarkup:
     ]
     # Three to a row. A last row of two or one is stretched over the whole width by Telegram.
     rows = [buttons[i : i + 3] for i in range(0, len(buttons), 3)]
-    rows.append([InlineKeyboardButton(text="Back", callback_data=CB_START)])
+    rows.append([InlineKeyboardButton(text=tr("common.back"), callback_data=CB_START)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -236,20 +219,20 @@ def _help_category_keyboard(info: registry.ModuleInfo | None = None, role: Role 
     """Back to the list of categories, or to the module's page from one of its sections."""
     if info is not None and section is not None:
         rows = _more_rows(info, role, section)
-        rows.append([InlineKeyboardButton(text="Back", callback_data=f"{CB_HELP_MODULE}{info.name}")])
+        rows.append([InlineKeyboardButton(text=tr("common.back"), callback_data=f"{CB_HELP_MODULE}{info.name}")])
         return InlineKeyboardMarkup(inline_keyboard=rows)
     rows = []
     if info is not None:
         rows = [
-            [InlineKeyboardButton(text=name, callback_data=f"{CB_HELP_SECTION}{info.name}:{number}")]
+            [InlineKeyboardButton(text=tr(name), callback_data=f"{CB_HELP_SECTION}{info.name}:{number}")]
             for number, name in help_index.visible_sections(info.module, role)
         ]
         rows += _more_rows(info, role, None)
         rows += [
-            [InlineKeyboardButton(text=label, callback_data=f"{CB_HELP_PAGE}{info.name}:{number}:0")]
+            [InlineKeyboardButton(text=tr(label), callback_data=f"{CB_HELP_PAGE}{info.name}:{number}:0")]
             for number, label in help_index.pages(info.module)
         ]
-    rows.append([InlineKeyboardButton(text="Back", callback_data=CB_HELP)])
+    rows.append([InlineKeyboardButton(text=tr("common.back"), callback_data=CB_HELP)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -258,11 +241,11 @@ def _help_page_keyboard(info: registry.ModuleInfo, number: int, part: int, total
     if total > 1:
         move = []
         if part > 0:
-            move.append(InlineKeyboardButton(text="Previous", callback_data=f"{CB_HELP_PAGE}{info.name}:{number}:{part - 1}"))
+            move.append(InlineKeyboardButton(text=tr("misc.previous"), callback_data=f"{CB_HELP_PAGE}{info.name}:{number}:{part - 1}"))
         if part < total - 1:
-            move.append(InlineKeyboardButton(text="Next", callback_data=f"{CB_HELP_PAGE}{info.name}:{number}:{part + 1}"))
+            move.append(InlineKeyboardButton(text=tr("misc.next"), callback_data=f"{CB_HELP_PAGE}{info.name}:{number}:{part + 1}"))
         rows.append(move)
-    rows.append([InlineKeyboardButton(text="Back", callback_data=f"{CB_HELP_MODULE}{info.name}")])
+    rows.append([InlineKeyboardButton(text=tr("common.back"), callback_data=f"{CB_HELP_MODULE}{info.name}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -350,7 +333,7 @@ async def cmd_help(message: Message, command: CommandObject, role: Role | None =
     topic = (command.args or "").strip()
     info = _help_topic(topic, role) if topic else None
     if topic and info is None:
-        await reply(message, f"I have no help page for <b>{esc(topic[:40])}</b>. Use /help to see the categories.")
+        await reply(message, tr("misc.i_have_no_help_page_for", v=esc(topic[:40])))
         return
 
     if message.chat.type != "private":
@@ -359,12 +342,12 @@ async def cmd_help(message: Message, command: CommandObject, role: Role | None =
         suffix = f"help_{info.name}" if info is not None else "help"
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="Help", url=f"https://t.me/{me.username}?start={suffix}")]
+                [InlineKeyboardButton(text=tr("misc.help_2"), url=f"https://t.me/{me.username}?start={suffix}")]
             ]
         )
         await reply(
             message,
-            "Click the button below to see the available commands.",
+            tr("misc.click_the_button_below_to_see"),
             reply_markup=keyboard,
         )
         return
@@ -389,7 +372,7 @@ async def cb_help_category(callback: CallbackQuery, role: Role | None = None) ->
 
     # Buttons on old messages can point to a module that is disabled now.
     if info is None or not info.enabled or not help_index.entries(info.module, role):
-        await callback.answer("This category is not available.", show_alert=True)
+        await callback.answer(tr("misc.this_category_is_not_available"), show_alert=True)
         return
 
     await callback.answer()
@@ -407,7 +390,7 @@ async def cb_help_section(callback: CallbackQuery, role: Role | None = None) -> 
     info = registry.get(name)
     shown = dict(help_index.visible_sections(info.module, role)) if info is not None and info.enabled else {}
     if not number.isdigit() or int(number) not in shown:
-        await callback.answer("This section is not available.", show_alert=True)
+        await callback.answer(tr("misc.this_section_is_not_available"), show_alert=True)
         return
 
     await callback.answer()
@@ -431,7 +414,7 @@ async def cb_help_more(callback: CallbackQuery, role: Role | None = None) -> Non
         if int(number) < len(extra):
             found = extra[int(number)][1]
     if found is None:
-        await callback.answer("This page is not available.", show_alert=True)
+        await callback.answer(tr("misc.this_page_is_not_available"), show_alert=True)
         return
 
     await callback.answer()
@@ -440,7 +423,7 @@ async def cb_help_more(callback: CallbackQuery, role: Role | None = None) -> Non
         await edit(
             callback.message,
             found,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Back", callback_data=back)]]),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=tr("common.back"), callback_data=back)]]),
         )
 
 
@@ -453,7 +436,7 @@ async def cb_help_page(callback: CallbackQuery, role: Role | None = None) -> Non
     if info is not None and info.enabled and help_index.entries(info.module, role) and number.isdigit() and part.isdigit():
         texts = help_index.page_texts(info.module, int(number))
     if not texts or int(part) >= len(texts):
-        await callback.answer("This page is not available.", show_alert=True)
+        await callback.answer(tr("misc.this_page_is_not_available"), show_alert=True)
         return
 
     await callback.answer()
@@ -473,11 +456,11 @@ async def cb_help_page(callback: CallbackQuery, role: Role | None = None) -> Non
 # that channel).
 
 KIND_LABELS = {
-    "user": "User",
-    "bot": "Bot",
-    "group": "Group",
-    "supergroup": "Supergroup",
-    "channel": "Channel",
+    "user": "common.user",
+    "bot": "misc.kind_labels.bot",
+    "group": "misc.kind_labels.group",
+    "supergroup": "misc.kind_labels.supergroup",
+    "channel": "common.channel",
 }
 
 
@@ -494,8 +477,7 @@ async def _subject(message: Message, command: CommandObject) -> tuple[Target, bo
 
 
 UNKNOWN_USER = (
-    "I don't know this user. They have to message me first, "
-    "or I have to see them in a chat I'm in."
+    "misc.unknown_user"
 )
 
 
@@ -516,18 +498,18 @@ async def cmd_id(message: Message, command: CommandObject) -> None:
         await reply(message, esc(str(exc)))
         return
 
-    kind = KIND_LABELS[target.kind]
+    kind = tr(KIND_LABELS[target.kind])
     if explicit:
-        label = f"{kind} ID"
+        label = tr("misc.id", kind=kind)
     else:
-        label = "Your ID" if not target.is_chat else f"{kind} ID"
+        label = tr("misc.your_id") if not target.is_chat else tr("misc.id", kind=kind)
     lines = [_line(label, f"<code>{target.user_id}</code>")]
 
     # Handy for filling in log chat settings.
     if not explicit and message.chat.type != "private":
-        lines.append(_line("Chat ID", f"<code>{message.chat.id}</code>"))
+        lines.append(_line(tr("common.chat_id"), f"<code>{message.chat.id}</code>"))
         if message.is_topic_message and message.message_thread_id:
-            lines.append(_line("Topic ID", f"<code>{message.message_thread_id}</code>"))
+            lines.append(_line(tr("misc.topic_id"), f"<code>{message.message_thread_id}</code>"))
 
     await reply(message, "\n".join(lines))
 
@@ -539,7 +521,7 @@ async def _chat_member(bot, chat_id: int, user_id: int):
     except TelegramBadRequest as exc:
         problem = str(exc).lower()
         if "user not found" in problem or "participant_id_invalid" in problem:
-            return "gone"
+            return tr("misc.gone")
         return None  # e.g. "member list is inaccessible": better to say nothing
     except TelegramAPIError:
         return None
@@ -548,17 +530,17 @@ async def _chat_member(bot, chat_id: int, user_id: int):
 def _chat_status(member) -> str:
     """The user's standing in a chat, from their membership."""
     if member == "gone":
-        return "Not in chat"
+        return tr("misc.not_in_chat")
     status = getattr(member.status, "value", member.status)
     if status == "creator":
-        return "Owner"
+        return tr("common.owner")
     if status == "administrator":
-        return "Admin"
+        return tr("common.admin")
     if status == "member":
-        return "Member"
+        return tr("misc.member")
     if status == "restricted":
-        return "Member" if getattr(member, "is_member", True) else "Not in chat"
-    return "Not in chat"  # left or kicked
+        return tr("misc.member") if getattr(member, "is_member", True) else tr("misc.not_in_chat")
+    return tr("misc.not_in_chat")  # left or kicked
 
 
 # The order of the yes/no flags of the bot's own section in /info. Flags from modules this list
@@ -577,13 +559,13 @@ def _standing(member, approved: bool, captcha: bool = False) -> str | None:
     if member != "gone":
         status = getattr(member.status, "value", member.status)
         if status == "kicked":
-            return "Banned"
+            return tr("misc.banned")
         if status == "restricted" and getattr(member, "is_member", True) and not getattr(member, "can_send_messages", True):
-            text = "Muted"
+            text = tr("misc.muted")
     if approved and text in ("Member", "Muted"):
-        text += " (Approved)"
+        text += tr("misc.approved")
     elif captcha and text == "Muted":
-        text = "Muted (No Captcha)"  # muted until the captcha is solved (modules/captcha.py)
+        text = tr("misc.muted_no_captcha")  # muted until the captcha is solved (modules/captcha.py)
     return text
 
 
@@ -591,7 +573,7 @@ def _flag_lines(flags: list[tuple[str, bool]]) -> list[str]:
     def rank(flag: tuple[str, bool]) -> int:
         return FLAG_ORDER.index(flag[0]) if flag[0] in FLAG_ORDER else len(FLAG_ORDER)
 
-    return [_item(name, f"<code>{'Yes' if value else 'No'}</code>") for name, value in sorted(flags, key=rank)]
+    return [_item(name, f"<code>{tr("common.yes") if value else tr("common.no")}</code>") for name, value in sorted(flags, key=rank)]
 
 
 async def _refresh_user(bot, target: Target) -> None:
@@ -616,14 +598,14 @@ async def _refresh_user(bot, target: Target) -> None:
 async def _user_info(bot, chat, target: Target) -> list[str]:
     await _refresh_user(bot, target)
 
-    lines = ["<b>User Info</b>", _item("ID", f"<code>{target.user_id}</code>")]
+    lines = [tr("misc.user_info"), _item(tr("common.id"), f"<code>{target.user_id}</code>")]
     if target.first_name:
-        lines.append(_item("First Name", esc(target.first_name)))
+        lines.append(_item(tr("misc.first_name"), esc(target.first_name)))
     if target.last_name:
-        lines.append(_item("Last Name", esc(target.last_name)))
+        lines.append(_item(tr("misc.last_name"), esc(target.last_name)))
     if target.username:
-        lines.append(_item("Username", f"@{esc(target.username)}"))
-    lines.append(_item("User link", f'<a href="tg://user?id={target.user_id}">link</a>'))
+        lines.append(_item(tr("misc.username"), f"@{esc(target.username)}"))
+    lines.append(_item(tr("misc.user_link"), f'<a href="tg://user?id={target.user_id}">link</a>'))
 
     in_group = chat.type in ("group", "supergroup")
     chat_id = chat.id if in_group else None
@@ -644,14 +626,14 @@ async def _user_info(bot, chat, target: Target) -> list[str]:
 
     standing = _standing(member, approved, captcha)
     if standing is not None:
-        lines.append(_item("Status", f"<code>{standing}</code>"))
+        lines.append(_item(tr("misc.status"), f"<code>{standing}</code>"))
 
     about = []
     if role is not None:
-        about.append(_item("Bot Role", f"<code>{roles.label(role)}</code>"))
+        about.append(_item(tr("misc.bot_role"), f"<code>{roles.label(role)}</code>"))
     about.extend(_flag_lines(flags))
     if about:
-        lines += ["", "<b>Argo Info</b>"] + about
+        lines += ["", tr("misc.argo_info")] + about
     # Sentences the modules write themselves (a federation ban with its reason ...) close the message.
     for note in await info_hooks.notes_for(bot, target.user_id, chat_id):
         lines += ["", note]
@@ -659,19 +641,19 @@ async def _user_info(bot, chat, target: Target) -> list[str]:
 
 
 async def _chat_info(bot, target: Target) -> list[str]:
-    lines = ["<b>Chat Info</b>", _item("ID", f"<code>{target.user_id}</code>")]
+    lines = [tr("misc.chat_info"), _item(tr("common.id"), f"<code>{target.user_id}</code>")]
     if target.title:
-        lines.append(_item("Title", esc(target.title)))
-    lines.append(_item("Type", f"<code>{KIND_LABELS[target.kind]}</code>"))
+        lines.append(_item(tr("common.title"), esc(target.title)))
+    lines.append(_item(tr("misc.type"), f"<code>{tr(KIND_LABELS[target.kind])}</code>"))
     if target.username:
-        lines.append(_item("Username", f"@{esc(target.username)}"))
-        lines.append(_item("Link", f'<a href="https://t.me/{esc(target.username)}">link</a>'))
+        lines.append(_item(tr("misc.username"), f"@{esc(target.username)}"))
+        lines.append(_item(tr("misc.link"), f'<a href="https://t.me/{esc(target.username)}">link</a>'))
     try:
         members = await bot.get_chat_member_count(target.user_id)
     except TelegramAPIError:
         members = None
     if members is not None:
-        lines.append(_item("Members", f"<code>{members}</code>"))
+        lines.append(_item(tr("misc.members"), f"<code>{members}</code>"))
     return lines
 
 
@@ -680,14 +662,14 @@ async def cmd_info(message: Message, command: CommandObject) -> None:
     try:
         target, _ = await _subject(message, command)
     except UnknownUserError:
-        await reply(message, UNKNOWN_USER)
+        await reply(message, tr(UNKNOWN_USER))
         return
     except TargetError as exc:
         await reply(message, esc(str(exc)))
         return
 
     if not target.is_known:
-        await reply(message, UNKNOWN_USER)
+        await reply(message, tr(UNKNOWN_USER))
         return
 
     if target.is_chat:
@@ -719,7 +701,7 @@ def _too_fast(message: Message) -> bool:
 async def _lookup(message: Message, work) -> None:
     """Run one lookup (a coroutine function) and send its text, or the reason it failed."""
     if _too_fast(message):
-        await reply(message, "Slow down a little and try again in a few seconds.")
+        await reply(message, tr("common.slow_down_a_little_and_try"))
         return
     try:
         text = await work()
@@ -741,7 +723,7 @@ async def cmd_tr(message: Message, command: CommandObject) -> None:
         replied = replied_message(message)
         text = ((replied.text or replied.caption or "") if replied else "").strip()
     if not text:
-        await reply(message, "Use /tr [language] &lt;text&gt;, or reply to a message with /tr.")
+        await reply(message, tr("misc.use_tr_language_lt_text_gt"))
         return
     await _lookup(message, lambda: lookup.translate(text, target))
 
@@ -750,10 +732,10 @@ async def cmd_tr(message: Message, command: CommandObject) -> None:
 async def cmd_dict(message: Message, command: CommandObject) -> None:
     word = (command.args or "").strip()
     if not word:
-        await reply(message, "Use /dict &lt;word&gt;.")
+        await reply(message, tr("misc.use_dict_lt_word_gt"))
         return
     if len(word) > 60:
-        await reply(message, "That is too long for a word.")
+        await reply(message, tr("misc.that_is_too_long_for_a"))
         return
     await _lookup(message, lambda: lookup.dictionary(word))
 
@@ -762,7 +744,7 @@ async def cmd_dict(message: Message, command: CommandObject) -> None:
 async def cmd_time(message: Message, command: CommandObject) -> None:
     query = (command.args or "").strip()
     if not query:
-        await reply(message, "Use /time &lt;place or timezone&gt;, like /time Tokyo or /time Europe/Warsaw.")
+        await reply(message, tr("misc.use_time_lt_place_or_timezone"))
         return
     await _lookup(message, lambda: lookup.time_in(query[:100]))
 
@@ -771,14 +753,14 @@ async def cmd_time(message: Message, command: CommandObject) -> None:
 async def cmd_weather(message: Message, command: CommandObject) -> None:
     query = (command.args or "").strip()
     if not query:
-        await reply(message, "Use /weather &lt;place&gt;, like /weather Warsaw.")
+        await reply(message, tr("misc.use_weather_lt_place_gt_like"))
         return
     await _lookup(message, lambda: lookup.weather(query[:100]))
 
 
 @router.message(cmd("cash"))
 async def cmd_cash(message: Message, command: CommandObject) -> None:
-    usage = "Use /cash &lt;amount&gt; &lt;from&gt; &lt;to&gt;, like /cash 100 usd pln."
+    usage = tr("misc.use_cash_lt_amount_gt_lt")
     words = (command.args or "").split()
     if len(words) == 2 and all(w.isalpha() for w in words):
         words = ["1"] + words  # /cash usd pln

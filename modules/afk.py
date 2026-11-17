@@ -17,25 +17,20 @@ from core.filters import cmd
 from core.helpers import reply
 from core.moderation import GROUP_TYPES, format_duration
 from core.text import esc, truncate, user_link
+from core.i18n import tr
 
 # The name of this module's button in /help ("Afk" would look wrong).
-HELP_TITLE = "AFK"
+HELP_TITLE = "afk.title"
 
 # Mark yourself away from keyboard. Anyone who mentions or replies to you while you're
 # AFK gets a notice with your reason and the time you went AFK. To add a photo, GIF or
 # video, send it with /afk <reason> as the caption, or reply to it with /afk. It is
 # shown with your AFK notice.
-ABOUT = """
-Mark yourself away from keyboard. Anyone who mentions or replies to you while you're AFK gets a notice with your reason and the time you went AFK, so nobody waits for an answer that isn't coming.
-
-Your next message ends your AFK and I tell you how long you were away. The same person is told about you at most once a minute per chat, so the chat doesn't fill with notices. AFK follows you into every chat I share with you.
-
-To add a photo, GIF or video, send it with /afk <reason> as the caption, or reply to it with /afk. It is shown with your AFK notice.
-"""
+ABOUT = "afk.about"
 
 HELP = [
-    ("/afk [reason]", "Mark yourself AFK, with an optional reason (up to 200 characters)."),
-    ("brb [reason]", "Plain-text trigger, no slash needed: same as /afk. Write it at the start of a message."),
+    ("/afk [reason]", "afk.help.mark_yourself_afk_with_an"),
+    ("brb [reason]", "afk.help.plain_text_trigger_no_slash"),
 ]
 
 router = Router(name="afk")
@@ -94,7 +89,7 @@ def _media_of(message: Message | None) -> tuple[str, str] | None:
 
 def _ago(since: datetime) -> str:
     text = format_duration(datetime.now(timezone.utc) - since)
-    return text or "less than a minute"
+    return text or tr("afk.less_than_a_minute")
 
 
 def _since_text(since: datetime) -> str:
@@ -139,7 +134,7 @@ async def _go_afk(message: Message, reason: str | None) -> None:
     user = _sender(message)
     if user is None:
         if message.chat.type != "private":
-            await reply(message, "Anonymous senders and channels can't go AFK. Write as yourself first.")
+            await reply(message, tr("afk.anonymous_senders_and_channels_can_t"))
         return
     media = _media_of(message) or _media_of(message.reply_to_message)
     reason = _clean_reason(reason)
@@ -151,9 +146,9 @@ async def _go_afk(message: Message, reason: str | None) -> None:
         media[0] if media else None,
         media[1] if media else None,
     )
-    text = f"{user_link(user.id, user.full_name)} is now <b>AFK</b>!"
+    text = tr("afk.is_now_afk", id=user_link(user.id, user.full_name))
     if reason:
-        text += f"\nReason: {esc(reason)}"
+        text += tr("common.reason", reason=esc(reason))
     await reply(message, text, link_preview_options=NO_PREVIEW)
 
 
@@ -214,10 +209,10 @@ def _recently_announced(chat_id: int, user_id: int) -> bool:
 
 
 def _notice(record: dict[str, Any]) -> str:
-    text = f"{user_link(record['user_id'], record['name'])} is <b>AFK</b>!"
+    text = tr("afk.is_afk", user_id=user_link(record['user_id'], record['name']))
     if record["reason"]:
-        text += f"\nReason: {esc(record['reason'])}"
-    text += f"\nAway since: {_since_text(record['since'])} ({_ago(record['since'])} ago)"
+        text += tr("common.reason", reason=esc(record['reason']))
+    text += tr("afk.away_since_ago", since_text=_since_text(record['since']), ago=_ago(record['since']))
     return text
 
 
@@ -238,8 +233,7 @@ async def _watch(message: Message) -> bool:
             if back is not None:
                 await reply(
                     message,
-                    f"{user_link(user.id, user.full_name)} is no longer <b>AFK</b>! "
-                    f"You were away for {_ago(back['since'])}.",
+                    tr("afk.is_no_longer_afk_you_were", id=user_link(user.id, user.full_name), ago=_ago(back['since'])),
                     link_preview_options=NO_PREVIEW,
                 )
 

@@ -18,85 +18,54 @@ from core.moderation import GROUP_TYPES
 from core.roles import Role
 from core.targets import replied_message
 from core.text import esc, SWITCH as _ANSWERS
+from core.i18n import tr
 
 log = logging.getLogger(__name__)
 
-ABOUT = """
-Greet people when they join the chat and say goodbye when they leave. Welcomes and goodbyes are both on by default. Until you set your own, I use a default message for each.
+ABOUT = "greetings.about"
 
-A message can be written after the command or taken from a message you reply to, media included. It can be formatted, address people by name, carry buttons and vary at random, as described below. Everything that changes these settings is for chat admins with the right to change chat info.
-
-Welcomes are sent when I see someone join, and goodbyes only when someone leaves on their own: people who are removed get none. Bots are not greeted.
-
-My staff (Support, Sudo, Developer, Owner) are different: they are always welcomed when they join and seen off when they leave, with a message of their role, whatever the chat's settings are. They are not welcome-muted or tested with a captcha.
-"""
-
-S_WELCOME, S_GOODBYE = Section("Welcome Commands"), Section("Goodbye Commands")
+S_WELCOME, S_GOODBYE = Section("greetings.sections"), Section("greetings.sections_2")
 
 HELP = [
-    ("/welcome", "Show whether welcomes are on and the current welcome message.", "admins", S_WELCOME),
-    ("/welcome noformat", "Show the welcome message exactly as it was written, without formatting.", "admins", S_WELCOME),
-    ("/welcome <on|off>", "Turn welcomes on or off.", "admins", S_WELCOME),
-    ("/setwelcome <reply or text>", "Set a custom welcome message. Reply to a message to use it, media included.", "admins", S_WELCOME),
-    ("/resetwelcome", "Go back to the default welcome message.", "admins", S_WELCOME),
-    ("/goodbye", "Show whether goodbyes are on and the current goodbye message.", "admins", S_GOODBYE),
-    ("/goodbye noformat", "Show the goodbye message exactly as it was written, without formatting.", "admins", S_GOODBYE),
-    ("/goodbye <on|off>", "Turn goodbyes on or off.", "admins", S_GOODBYE),
-    ("/setgoodbye <reply or text>", "Set a custom goodbye message. Reply to a message to use it, media included.", "admins", S_GOODBYE),
-    ("/resetgoodbye", "Go back to the default goodbye message.", "admins", S_GOODBYE),
-    ("/welcomemute <on|off>", "Stop new members from sending media, stickers and polls for their first 24 hours. They can still write. Needs the right to restrict users. Approved users are skipped.", "admins", S_WELCOME),
-    ("/cleanwelcome <on|off>", "Delete my previous welcome message each time I send a new one.", "admins", S_WELCOME),
-    ("/cleanservice <on|off>", "Delete the \"joined\" and \"left\" service messages. I need the right to delete messages.", "admins", S_WELCOME),
+    ("/welcome", "greetings.help.show_whether_welcomes_are_on", "common.admins", S_WELCOME),
+    ("/welcome noformat", "greetings.help.show_the_welcome_message_exactly", "common.admins", S_WELCOME),
+    ("/welcome <on|off>", "greetings.help.turn_welcomes_on_or_off", "common.admins", S_WELCOME),
+    ("/setwelcome <reply or text>", "greetings.help.set_a_custom_welcome_message", "common.admins", S_WELCOME),
+    ("/resetwelcome", "greetings.help.go_back_to_the_default", "common.admins", S_WELCOME),
+    ("/goodbye", "greetings.help.show_whether_goodbyes_are_on", "common.admins", S_GOODBYE),
+    ("/goodbye noformat", "greetings.help.show_the_goodbye_message_exactly", "common.admins", S_GOODBYE),
+    ("/goodbye <on|off>", "greetings.help.turn_goodbyes_on_or_off", "common.admins", S_GOODBYE),
+    ("/setgoodbye <reply or text>", "greetings.help.set_a_custom_goodbye_message", "common.admins", S_GOODBYE),
+    ("/resetgoodbye", "greetings.help.go_back_to_the_default_2", "common.admins", S_GOODBYE),
+    ("/welcomemute <on|off>", "greetings.help.stop_new_members_from_sending", "common.admins", S_WELCOME),
+    ("/cleanwelcome <on|off>", "greetings.help.delete_my_previous_welcome_message", "common.admins", S_WELCOME),
+    ("/cleanservice <on|off>", "greetings.help.delete_the_joined_and_left", "common.admins", S_WELCOME),
 ]
 
 HELP_NOTES = [
     (
-        "Formatting",
-        """
-        <b>bold</b>  <i>italic</i>  <u>underline</u>  <s>strike</s>  <tg-spoiler>spoiler</tg-spoiler>
-        <code>code</code>  <pre>pre</pre>  <blockquote>quote</blockquote>  <a href="https://link">text</a>
-        The formatting menu of Telegram works as well: select the text and pick Bold, Italic, Link...
-        Anything that is not one of these tags is shown as typed.
-        """,
+        "common.formatting",
+        "common.bold_italic_underline_strike_spoiler_code",
     ),
     (
-        "Fillings",
-        """
-        Replaced by facts about the person who joined or left:
-        {first} {last} {fullname} {username} {mention} {id} {chatname} {count}
-        {username} falls back to a mention for people without one. {count} is the number of members.
-        """,
+        "common.fillings",
+        "greetings.note.replaced_by_facts_about_the",
     ),
     (
-        "Options",
-        """
-        Put these anywhere in the text; they are removed and change how the message is sent:
-        {preview} - show link previews.
-        {protect} - forbid forwarding and saving.
-        {nonotif} - send silently.
-        {mediaspoiler} - hide a photo, GIF or video behind a spoiler.
-        """,
+        "common.options",
+        "greetings.note.put_these_anywhere_in_the",
     ),
     (
-        "Buttons",
-        """
-        [Text](buttonurl://example.com) - a button under the message, on its own row.
-        [Text](buttonurl://example.com:same) - a button on the row of the previous one.
-        """,
+        "common.buttons",
+        "common.text_buttonurl_example_com_a_button",
     ),
     (
-        "Random content",
-        """
-        Separate variants with %%% and I send one of them at random each time.
-        """,
+        "common.random_content",
+        "common.separate_variants_with_and_i_send",
     ),
     (
-        "Examples",
-        """
-        /setwelcome Hello {mention}, welcome to {chatname}! [Rules](buttonurl://example.com/rules)
-        /setgoodbye {first} left. We have {count} members now.
-        /welcomemute on
-        """,
+        "common.examples",
+        "greetings.note.setwelcome_hello_welcome_to_rules",
     ),
 ]
 
@@ -124,7 +93,7 @@ _NO_MEDIA = ChatPermissions(
 
 
 def _yes_no(value: bool) -> str:
-    return "Yes" if value else "No"
+    return tr("common.yes") if value else tr("common.no")
 
 
 async def _begin(message: Message, role: Role | None, *, change: bool) -> bool:
@@ -143,14 +112,14 @@ async def _show(message: Message, role: Role | None, kind: str, argument: str) -
     custom = settings[f"{kind}_content"] is not None or settings[f"{kind}_media_type"] is not None
     head = [
         f"<b>{kind.capitalize()}</b>",
-        f"• <b>Enabled:</b> <code>{_yes_no(settings[f'{kind}_on'])}</code>",
-        f"• <b>Message:</b> <code>{'Custom' if custom else 'Default'}</code>",
+        tr("greetings.enabled", yes_no=_yes_no(settings[f'{kind}_on'])),
+        tr("greetings.message", opt=tr("greetings.custom") if custom else tr("greetings.default")),
     ]
     if kind == "welcome":
         head += [
-            f"• <b>Welcome mute:</b> <code>{_yes_no(settings['welcome_mute'])}</code>",
-            f"• <b>Clean welcome:</b> <code>{_yes_no(settings['clean_welcome'])}</code>",
-            f"• <b>Clean service:</b> <code>{_yes_no(settings['clean_service'])}</code>",
+            tr("greetings.welcome_mute", yes_no=_yes_no(settings['welcome_mute'])),
+            tr("greetings.clean_welcome", yes_no=_yes_no(settings['clean_welcome'])),
+            tr("greetings.clean_service", yes_no=_yes_no(settings['clean_service'])),
         ]
     await reply(message, "\n".join(head))
     await sender.send(message, message.from_user, content, media_type, file_id, raw=argument == "noformat", label=kind)
@@ -158,29 +127,29 @@ async def _show(message: Message, role: Role | None, kind: str, argument: str) -
 
 async def _command(message: Message, command: CommandObject, role: Role | None, kind: str) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     argument = (command.args or "").strip().lower()
     if not argument or argument == "noformat":
         await _show(message, role, kind, argument)
         return
     if argument not in _ANSWERS:
-        await reply(message, f"Use /{kind}, /{kind} noformat or /{kind} on|off.")
+        await reply(message, tr("greetings.use_noformat_or_on_off", kind=kind))
         return
     if not await _begin(message, role, change=True):
         return
     enabled = _ANSWERS[argument]
-    plural = "Welcomes" if kind == "welcome" else "Goodbyes"
+    plural = tr("greetings.welcomes") if kind == "welcome" else tr("greetings.goodbyes")
     if bool((await greetings.get(message.chat.id))[f"{kind}_on"]) == enabled:
-        await reply(message, f"{plural} are already <b>{'on' if enabled else 'off'}</b>.")
+        await reply(message, tr("greetings.are_already", plural=plural, opt=tr("common.on") if enabled else tr("common.off")))
         return
     await greetings.update(message.chat.id, **{f"{kind}_on": enabled})
-    await reply(message, f"{plural} are now <b>{'on' if enabled else 'off'}</b>.")
+    await reply(message, tr("greetings.are_now", plural=plural, opt=tr("common.on") if enabled else tr("common.off")))
 
 
 async def _set(message: Message, command: CommandObject, role: Role | None, kind: str) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     if not await _begin(message, role, change=True):
         return
@@ -191,7 +160,7 @@ async def _set(message: Message, command: CommandObject, role: Role | None, kind
     if not text and replied is not None:
         text = sender.text_of(replied)
     if not text and media is None:
-        await reply(message, f"Tell me what to say: write the text after /set{kind}, or reply to a message.")
+        await reply(message, tr("greetings.tell_me_what_to_say_write", kind=kind))
         return
     try:
         sender.validate(text, media is not None)
@@ -206,12 +175,12 @@ async def _set(message: Message, command: CommandObject, role: Role | None, kind
             f"{kind}_media_file_id": media[1] if media else None,
         },
     )
-    await reply(message, f"The {kind} message is saved. Use /{kind} to see it.")
+    await reply(message, tr("greetings.the_message_is_saved_use_to", kind=kind))
 
 
 async def _reset(message: Message, role: Role | None, kind: str) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     if not await _begin(message, role, change=True):
         return
@@ -219,7 +188,7 @@ async def _reset(message: Message, role: Role | None, kind: str) -> None:
         message.chat.id,
         **{f"{kind}_content": None, f"{kind}_media_type": None, f"{kind}_media_file_id": None},
     )
-    await reply(message, f"The {kind} message is back to the default.")
+    await reply(message, tr("greetings.the_message_is_back_to_the", kind=kind))
 
 
 @router.message(cmd("welcome"))
@@ -263,7 +232,7 @@ async def _switch(
     text,
 ) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     argument = (command.args or "").strip().lower()
     if not argument:
@@ -279,7 +248,7 @@ async def _switch(
         return
     enabled = _ANSWERS[argument]
     if bool((await greetings.get(message.chat.id))[column]) == enabled:
-        await reply(message, f"This is already <b>{'on' if enabled else 'off'}</b>.")
+        await reply(message, tr("greetings.this_is_already", opt=tr("common.on") if enabled else tr("common.off")))
         return
     await greetings.update(message.chat.id, **{column: enabled})
     await reply(message, text(enabled))
@@ -288,30 +257,30 @@ async def _switch(
 @router.message(cmd("welcomemute"))
 async def cmd_welcomemute(message: Message, command: CommandObject, role: Role | None = None) -> None:
     await _switch(
-        message, command, role, "welcome_mute", "Use /welcomemute on or /welcomemute off.",
-        lambda on: f"New members <b>can't send media</b> for their first {MUTE_HOURS} hours. They can still write."
+        message, command, role, "welcome_mute", tr("greetings.use_welcomemute_on_or_welcomemute_off"),
+        lambda on: tr("greetings.new_members_can_t_send_media", MUTE_HOURS=MUTE_HOURS)
         if on
-        else "New members can send anything right away.",
+        else tr("greetings.new_members_can_send_anything_right"),
     )
 
 
 @router.message(cmd("cleanwelcome"))
 async def cmd_cleanwelcome(message: Message, command: CommandObject, role: Role | None = None) -> None:
     await _switch(
-        message, command, role, "clean_welcome", "Use /cleanwelcome on or /cleanwelcome off.",
-        lambda on: "My previous welcome message will be <b>deleted</b> when I send a new one."
+        message, command, role, "clean_welcome", tr("greetings.use_cleanwelcome_on_or_cleanwelcome_off"),
+        lambda on: tr("greetings.my_previous_welcome_message_will_be")
         if on
-        else "Old welcome messages will be <b>kept</b>.",
+        else tr("greetings.old_welcome_messages_will_be_kept"),
     )
 
 
 @router.message(cmd("cleanservice"))
 async def cmd_cleanservice(message: Message, command: CommandObject, role: Role | None = None) -> None:
     await _switch(
-        message, command, role, "clean_service", "Use /cleanservice on or /cleanservice off.",
-        lambda on: "The \"joined\" and \"left\" service messages will be <b>deleted</b>."
+        message, command, role, "clean_service", tr("greetings.use_cleanservice_on_or_cleanservice_off"),
+        lambda on: tr("greetings.the_joined_and_left_service_messages")
         if on
-        else "Service messages will be <b>kept</b>.",
+        else tr("greetings.service_messages_will_be_kept"),
     )
 
 
@@ -343,7 +312,7 @@ async def _delete(message: Message) -> None:
 
 async def _greet_staff(message: Message, user, role: Role) -> None:
     """Somebody with a role is welcomed with the message of their role, whatever the chat's settings are."""
-    await sender.send(message, user, staffgreet.get(role, "welcome"), None, None, label="staff welcome message")
+    await sender.send(message, user, staffgreet.get(role, "welcome"), None, None, label=tr("greetings.staff_welcome_message"))
 
 
 async def _greet(message: Message, people: list, settings: dict) -> None:
@@ -374,7 +343,7 @@ async def _greet(message: Message, people: list, settings: dict) -> None:
             skip, button = await captchas.welcome_for(message.bot, message.chat.id, user.id)
             if skip:
                 continue
-            sent = await sender.send(message, user, content, media_type, file_id, label="welcome message", extra_button=button)
+            sent = await sender.send(message, user, content, media_type, file_id, label=tr("greetings.welcome_message"), extra_button=button)
             if sent is not None:
                 last_sent = sent.message_id
                 if button is not None:
@@ -448,10 +417,10 @@ async def _say_goodbye(message: Message, left, settings: dict, left_on_own: bool
         return
     role = await roles.get_role(left.id)
     if role is not None:  # staff are always seen off, with the goodbye of their role
-        await sender.send(message, left, staffgreet.get(role, "goodbye"), None, None, label="staff goodbye message")
+        await sender.send(message, left, staffgreet.get(role, "goodbye"), None, None, label=tr("greetings.staff_goodbye_message"))
     elif settings["goodbye_on"]:
         content, media_type, file_id = greetings.message_of(settings, "goodbye")
-        await sender.send(message, left, content, media_type, file_id, label="goodbye message")
+        await sender.send(message, left, content, media_type, file_id, label=tr("greetings.goodbye_message"))
 
 
 # --- Joins and leaves that come without a service message ---------------------------------------------

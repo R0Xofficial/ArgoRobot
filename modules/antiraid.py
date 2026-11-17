@@ -14,24 +14,19 @@ from core.helpers import reply
 from core.moderation import GROUP_TYPES, ModerationError, parse_duration
 from core.roles import Role
 from core.text import duration_text, esc, parse_switch
+from core.i18n import tr
 
 log = logging.getLogger(__name__)
 
-ABOUT = """
-A raid is a crowd of new accounts joining a chat within moments, usually to flood it. With antiraid on, I count the joins: when too many come in a short time, the chat is in a raid for a while, and everybody who joins during it is dealt with, as are the people who made it a raid.
+ABOUT = "antiraid.about"
 
-By default 10 joins within 1 minute make a raid, and a raid lasts 1 hour. Newcomers are muted until the raid is over (they can write once it ends), or kicked, or banned. Chat admins, approved users, bots and the bot's staff are never touched.
-
-Antiraid is off until a chat admin turns it on, and I need the right to restrict users.
-"""
-
-HELP_WHO = "admins"
+HELP_WHO = "common.admins"
 
 HELP = [
-    ("/antiraid [on|off]", "Turn antiraid on or off, or show its settings. Turning it off also ends a running raid."),
-    ("/raidlimit <joins> <time>", "How many joins within how much time make a raid. Example: /raidlimit 10 1m. Default: 10 within 1 minute."),
-    ("/raidtime <time>", "How long a raid lasts, like 30m, 2h or 1d. Default: 1 hour."),
-    ("/raidmode <mute|kick|ban>", "What happens to newcomers during a raid. Default: mute until the raid is over."),
+    ("/antiraid [on|off]", "antiraid.help.turn_antiraid_on_or_off"),
+    ("/raidlimit <joins> <time>", "antiraid.help.how_many_joins_within_how"),
+    ("/raidtime <time>", "antiraid.help.how_long_a_raid_lasts"),
+    ("/raidmode <mute|kick|ban>", "antiraid.help.what_happens_to_newcomers_during"),
 ]
 
 router = Router(name="antiraid")
@@ -44,19 +39,15 @@ _complained: dict[int, float] = {}
 
 
 def _mode_text(mode: str) -> str:
-    return {"mute": "muted until the raid is over", "kick": "kicked", "ban": "banned"}[mode]
+    return {"mute": tr("antiraid.muted_until_the_raid_is_over"), "kick": "kicked", "ban": "banned"}[mode]
 
 
 def _summary(settings: antiraid.Settings) -> str:
     raid = ""
     if antiraid.raging(settings):
-        raid = f"\n• <b>Raid:</b> <code>running</code>, ends in <code>{duration_text(int(settings.until - time.time()))}</code>"
+        raid = tr("antiraid.raid_running_ends_in", duration_text=duration_text(int(settings.until - time.time())))
     return (
-        "<b>Antiraid</b>\n"
-        f"• <b>Enabled:</b> <code>{'on' if settings.enabled else 'off'}</code>\n"
-        f"• <b>Raid:</b> <code>{settings.joins}</code> joins within <code>{duration_text(settings.window)}</code>\n"
-        f"• <b>Lasts:</b> <code>{duration_text(settings.duration)}</code>\n"
-        f"• <b>Newcomers are:</b> <code>{_mode_text(settings.mode)}</code>"
+        tr("antiraid.antiraid_enabled_raid_joins_within_lasts", opt=tr("common.on") if settings.enabled else tr("common.off"), joins=settings.joins, duration_text=duration_text(settings.window), duration_text2=duration_text(settings.duration), mode_text=_mode_text(settings.mode))
         + raid
     )
 
@@ -71,7 +62,7 @@ async def react(bot, chat, users: list) -> None:
         now = time.monotonic()
         if now - _complained.get(chat.id, -FAILURE_COOLDOWN) >= FAILURE_COOLDOWN:
             _complained[chat.id] = now
-            await _say(bot, chat, f"Antiraid is on, but I can't act: {esc(exc)}")
+            await _say(bot, chat, tr("antiraid.antiraid_is_on_but_i_can", exc=esc(exc)))
         return
     except Exception:
         log.exception("Antiraid failed in chat %s", chat.id)
@@ -82,8 +73,7 @@ async def react(bot, chat, users: list) -> None:
     await _say(
         bot,
         chat,
-        f"<b>Raid detected.</b> {len(result['people'])} accounts joined within {duration_text(settings.window)}. "
-        f"For the next {duration_text(settings.duration)}, newcomers are {_mode_text(settings.mode)}.",
+        tr("antiraid.raid_detected_accounts_joined_within_for", people=len(result['people']), duration_text=duration_text(settings.window), duration_text2=duration_text(settings.duration), mode_text=_mode_text(settings.mode)),
     )
 
 
@@ -136,7 +126,7 @@ router.chat_member.outer_middleware(RaidUpdateMiddleware())
 
 async def _allowed(message: Message, role: Role | None) -> bool:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return False
     return await moderation.begin_chat_command(message, role) is not None
 
@@ -150,7 +140,7 @@ async def cmd_antiraid(message: Message, command: CommandObject, role: Role | No
     if argument:
         wanted = parse_switch(argument)
         if wanted is None:
-            await reply(message, "Use /antiraid on or /antiraid off.")
+            await reply(message, tr("antiraid.use_antiraid_on_or_antiraid_off"))
             return
         await antiraid.update(chat_id, enabled=wanted)
         if not wanted:
@@ -164,8 +154,7 @@ async def cmd_raidlimit(message: Message, command: CommandObject, role: Role | N
         return
     words = (command.args or "").split()
     usage = (
-        f"Use /raidlimit &lt;joins&gt; &lt;time&gt;, with joins from {antiraid.MIN_JOINS} to {antiraid.MAX_JOINS} "
-        "and a time like 30s, 1m or 10m. Example: /raidlimit 10 1m."
+        tr("antiraid.use_raidlimit_lt_joins_gt_lt", MIN_JOINS=antiraid.MIN_JOINS, MAX_JOINS=antiraid.MAX_JOINS)
     )
     if len(words) != 2 or not words[0].isdigit():
         await reply(message, usage)
@@ -176,7 +165,7 @@ async def cmd_raidlimit(message: Message, command: CommandObject, role: Role | N
         await reply(message, usage)
         return
     await antiraid.update(message.chat.id, joins=joins, window=window)
-    await reply(message, f"A raid now starts when <b>{joins}</b> accounts join within <b>{duration_text(window)}</b>.")
+    await reply(message, tr("antiraid.a_raid_now_starts_when_accounts", joins=joins, duration_text=duration_text(window)))
 
 
 @router.message(cmd("raidtime"))
@@ -185,10 +174,10 @@ async def cmd_raidtime(message: Message, command: CommandObject, role: Role | No
         return
     duration = _seconds((command.args or "").strip())
     if duration is None or not antiraid.MIN_DURATION <= duration <= antiraid.MAX_DURATION:
-        await reply(message, "Use /raidtime &lt;time&gt;, from 1 minute to 7 days, like 30m, 2h or 1d.")
+        await reply(message, tr("antiraid.use_raidtime_lt_time_gt_from"))
         return
     await antiraid.update(message.chat.id, duration=duration)
-    await reply(message, f"A raid now lasts <b>{duration_text(duration)}</b>.")
+    await reply(message, tr("antiraid.a_raid_now_lasts", duration_text=duration_text(duration)))
 
 
 @router.message(cmd("raidmode"))
@@ -197,10 +186,10 @@ async def cmd_raidmode(message: Message, command: CommandObject, role: Role | No
         return
     mode = (command.args or "").strip().lower()
     if mode not in antiraid.MODES:
-        await reply(message, "Use /raidmode &lt;mute|kick|ban&gt;.")
+        await reply(message, tr("antiraid.use_raidmode_lt_mute_kick_ban"))
         return
     await antiraid.update(message.chat.id, mode=mode)
-    await reply(message, f"During a raid, newcomers are now <b>{_mode_text(mode)}</b>.")
+    await reply(message, tr("antiraid.during_a_raid_newcomers_are_now", mode_text=_mode_text(mode)))
 
 
 def _seconds(text: str, allow_seconds: bool = False) -> int | None:

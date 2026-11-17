@@ -16,40 +16,33 @@ from core.helpers import edit, reply
 from core.roles import Role
 from core.targets import TargetError, display_name, resolve_target
 from core.text import duration_text, esc, user_link, user_ref
+from core.i18n import tr
 
 # Protected modules cannot be disabled with /module, so the commands in this
 # file (including /module itself) are always available.
 PROTECTED = True
 
 # Commands shown in /help (see core/help_index.py).
-ABOUT = """
-Commands for running the bot itself. Most of them are for my staff, so you only see the ones your role allows.
-
-Staff roles, from lowest to highest: Support, Sudo, Developer, Owner. The Owner grants and removes Developers; Developers grant and remove Sudo and Support users.
-
-The whitelist shields people from global actions: someone on it can't be globally banned, in any chat I'm in. It is different from /approve, which only works in one chat. Sudo and up manage it.
-
-Staff are greeted in a way of their own: when someone with a role joins a chat they get the welcome of their role, and the goodbye of their role when they leave, in every chat and whatever its settings are.
-"""
+ABOUT = "root.about"
 
 HELP = [
-    ("/ping", "Check that I'm alive and how fast I answer."),
-    ("/modules", "List every module and whether it is enabled.", Role.DEVELOPER),
-    ("/module <enable|disable> <name>", "Turn a module on or off. A disabled module stops answering and disappears from /help. Core modules can't be disabled.", Role.DEVELOPER),
-    ("/cleanchats", "Forget the chats I have been removed from and report how many were dropped.", Role.DEVELOPER),
-    ("/stats", "Show what I know: users, chats, bans and more.", Role.DEVELOPER),
-    ("/status", "Show how I am doing: uptime, Telegram and database latency, memory use and versions.", Role.DEVELOPER),
-    ("/leave", "Make me leave the chat where you send it.", Role.DEVELOPER),
-    ("/speedtest", "Measure the ping, download and upload speed of my server.", Role.DEVELOPER),
-    ("/staff", "Show who holds each staff role.", Role.SUPPORT),
-    ("/adddev <user>", "Grant the Developer role. Not possible for users with a global or federation ban.", Role.OWNER),
-    ("/rmdev <user>", "Remove the Developer role.", Role.OWNER),
-    ("/addsudo <user>", "Grant the Sudo role.", Role.DEVELOPER),
-    ("/rmsudo <user>", "Remove the Sudo role.", Role.DEVELOPER),
-    ("/addsupport <user>", "Grant the Support role.", Role.DEVELOPER),
-    ("/rmsupport <user>", "Remove the Support role.", Role.DEVELOPER),
-    ("/whitelist <user>", "Protect a user from global bans.", Role.SUDO),
-    ("/unwhitelist <user>", "Remove a user's protection.", Role.SUDO),
+    ("/ping", "root.help.check_that_i_m_alive"),
+    ("/modules", "root.help.list_every_module_and_whether", Role.DEVELOPER),
+    ("/module <enable|disable> <name>", "root.help.turn_a_module_on_or", Role.DEVELOPER),
+    ("/cleanchats", "root.help.forget_the_chats_i_have", Role.DEVELOPER),
+    ("/stats", "root.help.show_what_i_know_users", Role.DEVELOPER),
+    ("/status", "root.help.show_how_i_am_doing", Role.DEVELOPER),
+    ("/leave", "root.help.make_me_leave_the_chat", Role.DEVELOPER),
+    ("/speedtest", "root.help.measure_the_ping_download_and", Role.DEVELOPER),
+    ("/staff", "root.help.show_who_holds_each_staff", Role.SUPPORT),
+    ("/adddev <user>", "root.help.grant_the_developer_role_not", Role.OWNER),
+    ("/rmdev <user>", "root.help.remove_the_developer_role", Role.OWNER),
+    ("/addsudo <user>", "root.help.grant_the_sudo_role", Role.DEVELOPER),
+    ("/rmsudo <user>", "root.help.remove_the_sudo_role", Role.DEVELOPER),
+    ("/addsupport <user>", "root.help.grant_the_support_role", Role.DEVELOPER),
+    ("/rmsupport <user>", "root.help.remove_the_support_role", Role.DEVELOPER),
+    ("/whitelist <user>", "root.help.protect_a_user_from_global", Role.SUDO),
+    ("/unwhitelist <user>", "root.help.remove_a_user_s_protection", Role.SUDO),
 ]
 
 router = Router(name="root")
@@ -77,9 +70,9 @@ STAFF_TEXT_LIMIT = 3800  # Telegram allows 4096 characters per message
 async def cmd_ping(message: Message) -> None:
     # Latency is the round trip of sending a message to Telegram.
     started = time.perf_counter()
-    sent = await reply(message, "<b>Pong!</b>")
+    sent = await reply(message, tr("root.pong"))
     latency_ms = (time.perf_counter() - started) * 1000
-    await edit(sent, f"<b>Pong!</b>\nLatency: <code>{latency_ms:.0f}</code> ms.")
+    await edit(sent, tr("root.pong_latency_ms", latency_ms=latency_ms))
 
 
 # --- Bot management ---------------------------------------------------------
@@ -88,15 +81,15 @@ async def cmd_ping(message: Message) -> None:
 async def cmd_modules(message: Message) -> None:
     modules = registry.all_modules()
     if not modules:
-        await reply(message, "No modules loaded.")
+        await reply(message, tr("root.no_modules_loaded"))
         return
 
-    lines = ["<b>Modules</b>"]
+    lines = [tr("root.modules")]
     for info in modules:
-        status = "enabled" if info.enabled else "disabled"
+        status = tr("common.enabled") if info.enabled else tr("common.disabled")
         line = f"<code>{esc(info.name)}</code> - <b>{status}</b>"
         if info.protected:
-            line += " <i>(protected)</i>"
+            line += tr("root.protected")
         lines.append(line)
         if info.description:
             lines.append(f"<i>Description: {esc(info.description)}</i>")
@@ -110,40 +103,40 @@ async def cmd_module(message: Message, command: CommandObject) -> None:
     action = args[0].lower() if args else ""
 
     if len(args) != 2 or action not in ("enable", "disable"):
-        await reply(message, "Usage: /module &lt;enable|disable&gt; &lt;name&gt;")
+        await reply(message, tr("root.usage_module_lt_enable_disable_gt"))
         return
 
     name = args[1]
     try:
         found = await registry.set_enabled(name, action == "enable")
     except registry.ProtectedModuleError:
-        await reply(message, f"Module <code>{esc(name.lower())}</code> is protected and can't be disabled.")
+        await reply(message, tr("root.module_is_protected_and_can_t", lower=esc(name.lower())))
         return
 
     if not found:
-        await reply(message, f"Module <code>{esc(name)}</code> not found.")
+        await reply(message, tr("root.module_not_found", name=esc(name)))
         return
 
-    past = "enabled" if action == "enable" else "disabled"
+    past = tr("common.enabled") if action == "enable" else tr("common.disabled")
     ended = ""
     if action == "disable" and name.lower() == "connection":
         ended = await _end_all_connections(message)
-    await reply(message, f"Module <code>{esc(name.lower())}</code> {past}.{ended}")
+    await reply(message, tr("root.module", lower=esc(name.lower()), past=past, ended=ended))
 
 
 @router.message(cmd("cleanchats"), HasRole(Role.DEVELOPER))
 async def cmd_cleanchats(message: Message) -> None:
     """Check every stored chat and forget the ones the bot is no longer in."""
     if chats.is_cleaning():
-        await reply(message, "A chat cleanup is already running.")
+        await reply(message, tr("root.a_chat_cleanup_is_already_running"))
         return
 
-    sent = await reply(message, "Checking chats, this can take a while...")
+    sent = await reply(message, tr("root.checking_chats_this_can_take_a"))
     result = await chats.cleanup(message.bot)
     if result is None:  # someone else started one in the meantime
-        await edit(sent, "A chat cleanup is already running.")
+        await edit(sent, tr("root.a_chat_cleanup_is_already_running"))
         return
-    await edit(sent, chats.report(result, "Chat cleanup finished"))
+    await edit(sent, chats.report(result, tr("root.chat_cleanup_finished")))
 
 
 @router.message(cmd("stats"), HasRole(Role.DEVELOPER))
@@ -158,17 +151,16 @@ async def cmd_stats(message: Message) -> None:
     feds = await database.fetch_one("SELECT count(*) AS total FROM federations")
 
     lines = [
-        "<b>Bot Statistics:</b>",
+        tr("root.bot_statistics"),
         "",
-        f"• <b>Known Users:</b> <code>{people['total']}</code> (bots: <code>{people['bots']}</code>)",
-        f"• <b>Chats:</b> <code>{sum(by_type.values())}</code> "
-        f"(groups: <code>{groups}</code>, channels: <code>{by_type.get('channel', 0)}</code>)",
-        f"• <b>Global Bans:</b> <code>{await gbans.count()}</code>",
-        f"• <b>Federations:</b> <code>{feds['total']}</code>",
-        f"• <b>Whitelisted:</b> <code>{len(await whitelist.list_all())}</code>",
-        f"• <b>Approved Users:</b> <code>{approved['total']}</code>",
-        f"• <b>Staff:</b> <code>{staff['total'] + 1}</code> (including the owner)",
-        f"• <b>Modules:</b> <code>{registry.count_enabled()}</code> of <code>{registry.count_loaded()}</code> enabled",
+        tr("root.known_users_bots", total=people['total'], bots=people['bots']),
+        tr("root.chats_groups_channels", sum=sum(by_type.values()), groups=groups, get=by_type.get('channel', 0)),
+        tr("root.global_bans", v=await gbans.count()),
+        tr("root.federations", total=feds['total']),
+        tr("root.whitelisted", v=len(await whitelist.list_all())),
+        tr("root.approved_users", total=approved['total']),
+        tr("root.staff_including_the_owner", v=staff['total'] + 1),
+        tr("root.modules_of_enabled", count_enabled=registry.count_enabled(), count_loaded=registry.count_loaded()),
     ]
     await reply(message, "\n".join(lines))
 
@@ -202,9 +194,9 @@ async def cmd_status(message: Message) -> None:
     started = time.perf_counter()
     try:
         await database.fetch_one("SELECT 1 AS ok")
-        db_text = f"<code>{(time.perf_counter() - started) * 1000:.0f}</code> ms"
+        db_text = tr("root.ms", v=(time.perf_counter() - started) * 1000)
     except Exception:
-        db_text = "<b>not reachable</b>"
+        db_text = tr("root.not_reachable")
 
     try:
         import aiogram
@@ -215,15 +207,15 @@ async def cmd_status(message: Message) -> None:
 
     memory = _memory_mb()
     lines = [
-        "<b>Bot Status:</b>",
+        tr("root.bot_status"),
         "",
-        f"• <b>Uptime:</b> <code>{duration_text(int(time.monotonic() - _STARTED))}</code>",
-        f"• <b>Telegram:</b> " + (f"<code>{telegram:.0f}</code> ms" if telegram is not None else "<b>not reachable</b>"),
-        f"• <b>Database:</b> {db_text}",
-        f"• <b>Memory:</b> " + (f"<code>{memory:.0f}</code> MB" if memory is not None else "<code>unknown</code>"),
-        f"• <b>Modules:</b> <code>{registry.count_enabled()}</code> of <code>{registry.count_loaded()}</code> enabled",
-        f"• <b>Python:</b> <code>{platform.python_version()}</code>",
-        f"• <b>aiogram:</b> <code>{esc(aiogram_version)}</code>",
+        tr("root.uptime", duration_text=duration_text(int(time.monotonic() - _STARTED))),
+        tr("root.telegram") + (tr("root.ms_2", telegram=telegram) if telegram is not None else tr("root.not_reachable")),
+        tr("root.database", db_text=db_text),
+        tr("root.memory") + (tr("root.mb", memory=memory) if memory is not None else tr("root.unknown")),
+        tr("root.modules_of_enabled", count_enabled=registry.count_enabled(), count_loaded=registry.count_loaded()),
+        tr("root.python", python_version=platform.python_version()),
+        tr("root.aiogram", aiogram_version=esc(aiogram_version)),
     ]
     await reply(message, "\n".join(lines))
 
@@ -232,15 +224,15 @@ async def cmd_status(message: Message) -> None:
 async def cmd_leave(message: Message) -> None:
     """Leave the chat the command is used in."""
     if message.chat.type == "private":
-        await reply(message, "I can only leave groups and channels.")
+        await reply(message, tr("root.i_can_only_leave_groups_and"))
         return
 
     chat_id = message.chat.id
-    await reply(message, "Farewell! My duties here are finished. 🫡")
+    await reply(message, tr("root.farewell_my_duties_here_are_finished"))
     try:
         await message.bot.leave_chat(chat_id)
     except TelegramAPIError as exc:
-        await reply(message, f"I couldn't leave this chat: <code>{esc(getattr(exc, 'message', exc))}</code>")
+        await reply(message, tr("root.i_couldn_t_leave_this_chat", getattr=esc(getattr(exc, 'message', exc))))
         return
     await chats.remove_chat(chat_id)
 
@@ -252,21 +244,18 @@ _speedtest_running = False
 async def cmd_speedtest(message: Message) -> None:
     global _speedtest_running
     if _speedtest_running:
-        await reply(message, "A speedtest is already running.")
+        await reply(message, tr("root.a_speedtest_is_already_running"))
         return
 
     _speedtest_running = True
-    sent = await reply(message, "Running a speedtest, this takes a few seconds...")
+    sent = await reply(message, tr("root.running_a_speedtest_this_takes_a"))
     try:
         ping, download, upload = await speedtest.run()
         text = (
-            "<b>Speedtest</b>\n\n"
-            f"• <b>Ping:</b> <code>{ping:.1f} ms</code>\n"
-            f"• <b>Download:</b> <code>{download:.2f} Mbps</code>\n"
-            f"• <b>Upload:</b> <code>{upload:.2f} Mbps</code>"
+            tr("root.speedtest_ping_ms_download_mbps_upload", ping=ping, download=download, upload=upload)
         )
     except Exception as exc:  # network trouble of any kind: report it, don't crash
-        text = f"<b>Speedtest failed:</b> <code>{esc(str(exc) or type(exc).__name__)}</code>"
+        text = tr("root.speedtest_failed", v=esc(str(exc) or type(exc).__name__))
     finally:
         _speedtest_running = False
     await edit(sent, text)
@@ -286,7 +275,7 @@ async def cmd_staff_role(message: Message, command: CommandObject, role: Role | 
     actor = message.from_user
 
     if not roles.can_manage(role, target_role):
-        await reply(message, f"You don't have permission to manage {roles.label(target_role, plural=True)}.")
+        await reply(message, tr("root.you_don_t_have_permission_to", label=roles.label(target_role, plural=True)))
         return
 
     try:
@@ -296,10 +285,10 @@ async def cmd_staff_role(message: Message, command: CommandObject, role: Role | 
         return
 
     if target.user_id == actor.id:
-        await reply(message, "You can't change your own role.")
+        await reply(message, tr("root.you_can_t_change_your_own"))
         return
     if target.user_id == settings.OWNER_ID:
-        await reply(message, "The owner's role can't be changed.")
+        await reply(message, tr("common.the_owner_s_role_can_t"))
         return
 
     who = user_link(target.user_id, target.name)
@@ -308,35 +297,34 @@ async def cmd_staff_role(message: Message, command: CommandObject, role: Role | 
 
     if granting:
         if current is target_role:
-            await reply(message, f"{who} is already {label}.")
+            await reply(message, tr("root.is_already", who=who, label=label))
             return
         if current is not None:
             await reply(
                 message,
-                f"{who} is already {roles.label(current)}. Remove that role first.",
+                tr("root.is_already_remove_that_role_first", who=who, label=roles.label(current)),
             )
             return
         if await gbans.is_gbanned(target.user_id):
-            await reply(message, f"{who} is globally banned and can't be promoted.")
+            await reply(message, tr("root.is_globally_banned_and_can_t", who=who))
             return
         fed_bans = await federations.banned_in(target.user_id)
         if fed_bans:
             names = ", ".join(esc(row["name"]) for row in fed_bans[:5])
-            more = f" and {len(fed_bans) - 5} more" if len(fed_bans) > 5 else ""
+            more = tr("root.and_more", v=len(fed_bans) - 5) if len(fed_bans) > 5 else ""
             await reply(
                 message,
-                f"{who} is banned in a federation ({names}{more}) and can't be promoted. "
-                "If the ban is bogus, lift it first with /clearfban.",
+                tr("root.is_banned_in_a_federation_and", who=who, names=names, more=more),
             )
             return
         await roles.set_role(target.user_id, target_role, actor.id, target.name, actor.full_name)
-        await reply(message, f"{who} has been promoted to <b>{label}</b>.")
+        await reply(message, tr("root.has_been_promoted_to", who=who, label=label))
     else:
         if current is not target_role:
-            await reply(message, f"{who} is not {label}.")
+            await reply(message, tr("root.is_not", who=who, label=label))
             return
         await roles.remove_role(target.user_id)
-        await reply(message, f"{who} has been removed from <b>{label}</b>.")
+        await reply(message, tr("root.has_been_removed_from", who=who, label=label))
 
     granted_tag, revoked_tag = roles.LOG_TAGS[target_role]
     await logs.role_log(
@@ -355,12 +343,12 @@ def _staff_home_keyboard() -> InlineKeyboardMarkup:
 
 def _staff_back_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="Back", callback_data=CB_STAFF_HOME)]]
+        inline_keyboard=[[InlineKeyboardButton(text=tr("common.back"), callback_data=CB_STAFF_HOME)]]
     )
 
 
 def _staff_home_text() -> str:
-    return "<b>Staff</b>\n\nChoose a role to see who holds it."
+    return tr("root.staff_choose_a_role_to_see")
 
 
 async def _staff_list_text(bot, role: Role) -> str:
@@ -372,7 +360,7 @@ async def _staff_list_text(bot, role: Role) -> str:
         rows = await roles.list_role(role)
 
     if not rows:
-        return f"<b>{title}</b>\n\nNobody holds this role yet."
+        return tr("root.nobody_holds_this_role_yet", title=title)
 
     # Look every person up once, in parallel; fall back to the stored name.
     stored: dict[int, str | None] = {}
@@ -420,7 +408,7 @@ async def cb_staff_role(callback: CallbackQuery) -> None:
     try:
         role = Role(int((callback.data or "")[len(CB_STAFF_ROLE):]))
     except ValueError:
-        await callback.answer("Unknown role.", show_alert=True)
+        await callback.answer(tr("root.unknown_role"), show_alert=True)
         return
 
     await callback.answer()
@@ -447,35 +435,35 @@ async def cmd_whitelist(message: Message, command: CommandObject) -> None:
         return
 
     if target.user_id == actor.id:
-        await reply(message, "You can't change your own whitelist status.")
+        await reply(message, tr("root.you_can_t_change_your_own_2"))
         return
 
     who = user_link(target.user_id, target.name)
     if immunity.is_immune(target.user_id):
-        await reply(message, f"{who} is immune to all bot actions and doesn't need to be whitelisted.")
+        await reply(message, tr("root.is_immune_to_all_bot_actions", who=who))
         return
 
     if adding:
         if await gbans.is_gbanned(target.user_id):
-            await reply(message, f"{who} is globally banned and can't be whitelisted. Remove the global ban first.")
+            await reply(message, tr("root.is_globally_banned_and_can_t_2", who=who))
             return
         if not await whitelist.add(target.user_id, actor.id, target.name, actor.full_name):
-            await reply(message, f"{who} is already whitelisted.")
+            await reply(message, tr("root.is_already_whitelisted", who=who))
             return
         tag = "#WHITELIST"
-        await reply(message, f"{who} has been whitelisted.")
+        await reply(message, tr("root.has_been_whitelisted", who=who))
     else:
         if not await whitelist.remove(target.user_id):
-            await reply(message, f"{who} is not whitelisted.")
+            await reply(message, tr("root.is_not_whitelisted", who=who))
             return
         tag = "#UNWHITELIST"
-        await reply(message, f"{who} has been removed from the whitelist.")
+        await reply(message, tr("root.has_been_removed_from_the_whitelist", who=who))
 
     await logs.role_log(message.bot, logs.audit_text(tag, target.user_id, target.name, actor))
 
 
 async def _info_flags(bot, user_id: int, chat_id: int | None) -> list[tuple[str, bool]]:
-    return [("Immune", immunity.is_immune(user_id)), ("Whitelisted", await whitelist.is_whitelisted(user_id))]
+    return [(tr("root.immune"), immunity.is_immune(user_id)), (tr("root.whitelisted_2"), await whitelist.is_whitelisted(user_id))]
 
 
 info_hooks.register("root", _info_flags)
@@ -492,13 +480,13 @@ async def _end_all_connections(message: Message) -> str:
     try:
         open_ones = await connection.drop_all()
     except Exception:
-        return "\nEnding the open connections failed; they end by themselves on the next command."
+        return tr("root.ending_the_open_connections_failed_they")
     for item in open_ones:
         with suppress(TelegramAPIError):
             await message.bot.send_message(
                 chat_id=item["user_id"],
-                text=f"Your connection to <b>{esc(item['title'] or str(item['chat_id']))}</b> has ended: connections were switched off.",
+                text=tr("root.your_connection_to_has_ended_connections", v=esc(item['title'] or str(item['chat_id']))),
             )
     n = len(open_ones)
-    return f"\n{n} connection{'s' if n != 1 else ''} ended." if n else ""
+    return tr("root.connection_ended", n=n, opt='s' if n != 1 else '') if n else ""
 

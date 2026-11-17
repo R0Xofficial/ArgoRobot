@@ -10,19 +10,14 @@ from core.helpers import reply
 from core.moderation import GROUP_TYPES
 from core.roles import Role
 from core.text import esc
+from core.i18n import tr
 
-ABOUT = """
-Admins can run a group from a private chat with me, so the group stays free of commands.
-
-Connect with /connect in the group (I send a button) or /connect <chat id or @username> here. From then on the group's admin commands sent to me privately, like /ban @someone or /lock url, act on that group, and I answer privately. Your rights in the group are checked every time, exactly as if you had sent the command there.
-
-Commands that need a reply to a message, that delete your command or that show a saved message in the chat don't work this way: send those in the group. My own commands, like /help, are answered normally.
-"""
+ABOUT = "connection.about"
 
 HELP = [
-    ("/connect [chat id or @username]", "In a group, I send a button that connects your private chat with me to it. In a private chat, give the group's ID or @username. Only admins of the group can connect to it.", "admins"),
-    ("/disconnect", "Stop managing the group from this private chat.", "admins"),
-    ("/connection", "Show which group this private chat is connected to.", "admins"),
+    ("/connect [chat id or @username]", "connection.help.in_a_group_i_send", "common.admins"),
+    ("/disconnect", "connection.help.stop_managing_the_group_from", "common.admins"),
+    ("/connection", "connection.help.show_which_group_this_private", "common.admins"),
 ]
 
 router = Router(name="connection")
@@ -50,8 +45,7 @@ async def connect_and_tell(message: Message, reference: int | str) -> None:
         return
     await reply(
         message,
-        f"You are connected to {_group_name(record)}. Its admin commands you send me here now act on it.\n"
-        "Use /disconnect to stop.",
+        tr("connection.you_are_connected_to_its_admin", group_name=_group_name(record)),
     )
 
 
@@ -61,27 +55,27 @@ async def cmd_connect(message: Message, command: CommandObject, role: Role | Non
         if await moderation.begin_chat_command(message, role, right="can_manage_chat") is None:
             return
         me = await message.bot.me()
-        button = InlineKeyboardButton(text="Connect", url=f"https://t.me/{me.username}?start=connect_{message.chat.id}")
+        button = InlineKeyboardButton(text=tr("connection.connect"), url=f"https://t.me/{me.username}?start=connect_{message.chat.id}")
         await reply(
             message,
-            "Tap the button to connect your private chat with me to this group. Only admins can.",
+            tr("connection.tap_the_button_to_connect_your"),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[[button]]),
         )
         return
     if message.chat.type != "private":
-        await reply(message, "Use this in a group or in a private chat with me.")
+        await reply(message, tr("connection.use_this_in_a_group_or"))
         return
     argument = (command.args or "").strip()
     if not argument:
         record = await connection.get(message.from_user.id)
         if record is not None:
-            await reply(message, f"You are connected to {_group_name(record)}. Use /disconnect to stop.")
+            await reply(message, tr("connection.you_are_connected_to_use_disconnect", group_name=_group_name(record)))
         else:
-            await reply(message, "Use /connect &lt;chat id or @username&gt;, or send /connect in the group.")
+            await reply(message, tr("connection.use_connect_lt_chat_id_or"))
         return
     reference = _reference(argument)
     if reference is None:
-        await reply(message, "Give me the group's ID or @username.")
+        await reply(message, tr("connection.give_me_the_group_s_id"))
         return
     await connect_and_tell(message, reference)
 
@@ -89,22 +83,22 @@ async def cmd_connect(message: Message, command: CommandObject, role: Role | Non
 @router.message(cmd("disconnect"))
 async def cmd_disconnect(message: Message) -> None:
     if message.chat.type != "private":
-        await reply(message, "Send this to me in a private chat.")
+        await reply(message, tr("connection.send_this_to_me_in_a"))
         return
     record = await connection.get(message.from_user.id)
     if record is None or not await connection.clear(message.from_user.id):
-        await reply(message, "You are not connected to a group.")
+        await reply(message, tr("connection.you_are_not_connected_to_a"))
         return
-    await reply(message, f"You are no longer connected to {_group_name(record)}.")
+    await reply(message, tr("connection.you_are_no_longer_connected_to", group_name=_group_name(record)))
 
 
 @router.message(cmd("connection"))
 async def cmd_connection(message: Message) -> None:
     if message.chat.type != "private":
-        await reply(message, "Send this to me in a private chat.")
+        await reply(message, tr("connection.send_this_to_me_in_a"))
         return
     record = await connection.get(message.from_user.id)
     if record is None:
-        await reply(message, "You are not connected to a group. Use /connect.")
+        await reply(message, tr("connection.you_are_not_connected_to_a_2"))
         return
-    await reply(message, f"You are connected to {_group_name(record)} (<code>{record['chat_id']}</code>).")
+    await reply(message, tr("connection.you_are_connected_to", group_name=_group_name(record), chat_id=record['chat_id']))

@@ -14,32 +14,21 @@ from core.helpers import edit, reply
 from core.moderation import ModerationError, perform
 from core.roles import Role
 from core.text import esc
+from core.i18n import tr
 
 # Usable by chat admins (with the right to ban users) and by the bot's Owner,
 # Developers and Sudo users. See core/moderation.py.
-ABOUT = """
-Take away someone's right to write without removing them from the chat.
+ABOUT = "mutes.about"
 
-These commands are for chat admins with the right to ban users. My staff (Sudo and up) can use them too, unless the chat owner turned that off with /staffhelp.
-
-Name the target by replying to their message, or with a @username or a numeric ID. Anything after it is the reason, which is shown in the answer.
-
-I won't act against chat admins, my own staff or protected accounts, and I need the right to restrict users myself.
-
-Times look like 30m, 2h, 3d or 1w, from 1 minute to 365 days.
-
-Under every mute there is an Unmute button, so you don't have to look up the ID. It works for admins and staff who may mute, like /unmute. Silent mutes say nothing, so they have no button.
-"""
-
-HELP_WHO = "admins"
+HELP_WHO = "common.admins"
 
 HELP = [
-    ("/mute <user> [reason]", "Stop a user from writing until someone unmutes them."),
-    ("/tmute <user> <time> [reason]", "Mute a user for a limited time. They can write again when it ends."),
-    ("/unmute <user>", "Give a muted user back the right to write."),
-    ("/smute <user> [reason]", "Silent mute: mutes, deletes your command and says nothing."),
-    ("/stmute <user> <time> [reason]", "Silent timed mute. Alias: /stempmute."),
-    ("/sunmute <user>", "Silent unmute."),
+    ("/mute <user> [reason]", "mutes.help.stop_a_user_from_writing"),
+    ("/tmute <user> <time> [reason]", "mutes.help.mute_a_user_for_a"),
+    ("/unmute <user>", "mutes.help.give_a_muted_user_back"),
+    ("/smute <user> [reason]", "mutes.help.silent_mute_mutes_deletes_your"),
+    ("/stmute <user> <time> [reason]", "mutes.help.silent_timed_mute_alias_stempmute"),
+    ("/sunmute <user>", "mutes.help.silent_unmute"),
 ]
 
 router = Router(name="mutes")
@@ -82,8 +71,7 @@ async def cmd_mute(message: Message, command: CommandObject, role: Role | None =
         return
     await reply(
         message,
-        f"{moderation.who(target)} was muted{moderation.by(actor)}"
-        f"{moderation.reason_line(target.extra)}{moderation.staff_note(actor)}",
+        tr("mutes.was_muted", who=moderation.who(target), by=moderation.by(actor), reason_line=moderation.reason_line(target.extra), staff_note=moderation.staff_note(actor)),
         reply_markup=moderation.undo_keyboard("mute", target),
     )
 
@@ -114,8 +102,7 @@ async def cmd_tmute(message: Message, command: CommandObject, role: Role | None 
         return
     await reply(
         message,
-        f"{moderation.who(target)} was muted for {moderation.format_duration(duration)}{moderation.by(actor)}"
-        f"{moderation.reason_line(reason)}{moderation.staff_note(actor)}",
+        tr("mutes.was_muted_for", who=moderation.who(target), format_duration=moderation.format_duration(duration), by=moderation.by(actor), reason_line=moderation.reason_line(reason), staff_note=moderation.staff_note(actor)),
         reply_markup=moderation.undo_keyboard("mute", target),
     )
 
@@ -132,11 +119,11 @@ async def cmd_unmute(message: Message, command: CommandObject, role: Role | None
     if member is not None:
         status = getattr(member.status, "value", member.status)
         if status in ("creator", "administrator"):
-            await reply(message, "I can't take action against a chat admin.")
+            await reply(message, tr("common.i_can_t_take_action_against_2"))
             return
         # Muted means restricted without the right to write.
         if status != "restricted" or getattr(member, "can_send_messages", False) is not False:
-            await reply(message, f"{moderation.who(target)} isn't muted.")
+            await reply(message, tr("mutes.isn_t_muted", who=moderation.who(target)))
             return
 
     try:
@@ -150,7 +137,7 @@ async def cmd_unmute(message: Message, command: CommandObject, role: Role | None
     if silent:
         await _silently(message)
         return
-    await reply(message, f"{moderation.who(target)} was unmuted{moderation.by(actor)}{moderation.staff_note(actor)}")
+    await reply(message, tr("mutes.was_unmuted", who=moderation.who(target), by=moderation.by(actor), staff_note=moderation.staff_note(actor)))
 
 
 @router.callback_query(F.data.startswith(moderation.CB_UNDO + "mute:"))
@@ -162,14 +149,14 @@ async def cb_unmute(callback: CallbackQuery, role: Role | None = None) -> None:
         return
     message, actor = allowed
     if user_id is None or user_id < 0:
-        await callback.answer("This button is not valid.", show_alert=True)
+        await callback.answer(tr("common.this_button_is_not_valid"), show_alert=True)
         return
     bot = callback.bot
     target = await moderation.target_by_id(bot, message.chat.id, user_id)
     member = await moderation.get_member(bot, message.chat.id, user_id)
     status = getattr(getattr(member, "status", None), "value", getattr(member, "status", None))
     if member is not None and (status != "restricted" or getattr(member, "can_send_messages", False) is not False):
-        await callback.answer("They aren't muted any more.", show_alert=True)
+        await callback.answer(tr("mutes.they_aren_t_muted_any_more"), show_alert=True)
         with suppress(TelegramAPIError):
             await message.edit_reply_markup(reply_markup=None)
         return
@@ -181,4 +168,4 @@ async def cb_unmute(callback: CallbackQuery, role: Role | None = None) -> None:
         return
     await callback.answer()
     await moderation.log_action(message, "UNMUTED", actor, target, "", ("Undo", "yes"))
-    await edit(message, f"{moderation.who(target)} was unmuted{moderation.by(actor)}{moderation.staff_note(actor)}", reply_markup=None)
+    await edit(message, tr("mutes.was_unmuted", who=moderation.who(target), by=moderation.by(actor), staff_note=moderation.staff_note(actor)), reply_markup=None)

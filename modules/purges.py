@@ -14,25 +14,22 @@ from core.helpers import reply
 from core.moderation import GROUP_TYPES, ModerationError, perform
 from core.roles import Role
 from core.text import esc
+from core.i18n import tr
 
 log = logging.getLogger(__name__)
 
-ABOUT = """
-Clean up a chat. /del removes one message, /purge removes a whole stretch of them: everything from the message you reply to down to your command.
-
-These are for chat admins with the right to delete messages, and I need that right too. Telegram only lets me delete messages that are less than 48 hours old, and in one go I clear at most 1000 messages. Reply to a newer message if the stretch is longer.
-"""
+ABOUT = "purges.about"
 
 HELP = [
-    ("/del", "Delete the message you reply to, and your command with it. Alias: /delete.", "admins"),
-    ("/purge [reason]", "Delete every message from the one you reply to down to your command. I confirm when it is done, and say the reason if you gave one.", "admins"),
-    ("/spurge", "Like /purge, but silent: nothing is said afterwards.", "admins"),
+    ("/del", "purges.help.delete_the_message_you_reply", "common.admins"),
+    ("/purge [reason]", "purges.help.delete_every_message_from_the", "common.admins"),
+    ("/spurge", "purges.help.like_purge_but_silent_nothing", "common.admins"),
 ]
 
 router = Router(name="purges")
 
 RIGHT = "can_delete_messages"
-RIGHTS_REFUSED = "I can't delete messages here. Make me an admin with permission to delete messages."
+RIGHTS_REFUSED = "purges.rights_refused"
 MAX_PURGE = 1000       # messages cleared by one command
 MAX_REASON = 500       # characters of a reason that are shown
 BATCH = 100            # Telegram deletes at most this many messages per request
@@ -40,7 +37,7 @@ BATCH = 100            # Telegram deletes at most this many messages per request
 
 async def _begin(message: Message, role: Role | None):
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return None
     return await moderation.begin_chat_command(message, role, right=RIGHT)
 
@@ -58,7 +55,7 @@ async def cmd_del(message: Message, role: Role | None = None) -> None:
         await moderation.deny(message, exc)
         return
     except TelegramBadRequest:
-        await reply(message, "I can't delete that message. It may be gone already, or too old.")
+        await reply(message, tr("purges.i_can_t_delete_that_message"))
         return
     with suppress(TelegramAPIError):
         await message.delete()  # the command itself
@@ -72,11 +69,11 @@ async def _purge(message: Message, role: Role | None, silent: bool, reason: str 
         return
     first, last = target.message_id, message.message_id
     if first >= last:
-        await reply(message, "Reply to a message that came before your command.")
+        await reply(message, tr("purges.reply_to_a_message_that_came"))
         return
     count = last - first + 1
     if count > MAX_PURGE:
-        await reply(message, f"That is too many messages: I clear at most {MAX_PURGE} at a time. Reply to a newer message.")
+        await reply(message, tr("purges.that_is_too_many_messages_i", MAX_PURGE=MAX_PURGE))
         return
 
     ids = list(range(first, last + 1))
@@ -88,12 +85,12 @@ async def _purge(message: Message, role: Role | None, silent: bool, reason: str 
         return
     except TelegramBadRequest as exc:
         log.info("Purge in chat %s failed: %s", message.chat.id, exc)
-        await reply(message, "I couldn't delete those messages. They may be too old.")
+        await reply(message, tr("purges.i_couldn_t_delete_those_messages"))
         return
     if not silent:
-        text = f"Purge complete: up to {count} messages deleted."
+        text = tr("purges.purge_complete_up_to_messages_deleted", count=count)
         if reason:
-            text += f"\nReason: <code>{esc(reason[:MAX_REASON])}</code>"
+            text += tr("purges.reason", v=esc(reason[:MAX_REASON]))
         await reply(message, text, quote=False)
 
 

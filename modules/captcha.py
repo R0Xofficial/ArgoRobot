@@ -15,6 +15,7 @@ from core.helpers import reply
 from core.moderation import GROUP_TYPES
 from core.roles import Role
 from core.text import esc, parse_switch
+from core.i18n import tr
 
 log = logging.getLogger(__name__)
 
@@ -22,44 +23,21 @@ log = logging.getLogger(__name__)
 PRIORITY = -10
 
 # The name of this module's button in /help.
-HELP_TITLE = "CAPTCHA"
+HELP_TITLE = "captcha.title"
 
-ABOUT = """
-Some chats get a lot of users joining just to spam. They may be trolls, or part of a spam network.
+ABOUT = "captcha.about"
 
-To slow them down, turn captchas on. Everybody who joins is muted and has to pass a test to prove they're a real person before they can speak.
-
-Captchas ride on the welcome message, so they only work while welcome messages are on (/welcome). With welcomes off nobody is muted.
-
-Test types (/captchamode): button (press a button), math (pick the answer to a small sum), text (the code is written in the message; press the scrambled characters in the order of the code) and text2 (the same, but the code is a picture).
-
-How it looks: the newcomer's welcome carries a verify button, the same for everybody. In button mode one press unmutes them; the other modes (and button mode with /captcharules) open a private chat with me where they solve the test. Somebody who is already verified only gets a small pop-up saying so.
-
-If the chat uses join requests, the captcha is sent privately and the request is approved once it is solved.
-
-Time: /captchamutetime unmutes people who haven't solved it after a while (by default they stay muted until they do). /captchakick removes people who run out of time (/captchakicktime). When both are set, the kick comes first.
-
-Examples:
-• Turn captchas on: /captcha on
-• Use the math test: /captchamode math
-• Make people accept the rules too: /captcharules on
-• Unmute after a day even if unsolved: /captchamutetime 1d
-• Stay muted until solved: /captchamutetime off
-
-I need the right to restrict users (and, for join requests, to invite users).
-"""
-
-HELP_WHO = "admins"
+HELP_WHO = "common.admins"
 
 HELP = [
-    ("/captcha <on|off>", "Every user who joins must solve a captcha. With join requests, the captcha is sent privately. Without an argument it shows the settings."),
-    ("/captchamode <button|math|text|text2>", "Choose the test: a button, a sum, a code of scrambled characters, or the same code as a picture."),
-    ("/captcharules <on|off>", "Newcomers must accept the chat's rules (/rules) after the captcha, before they can speak."),
-    ("/captchamutetime <time|off>", "Unmute people who haven't solved the captcha after this time, like 30m, 2h, 1d or 1w. off: they stay muted until they solve it."),
-    ("/captchakick <on|off>", "Remove people who haven't solved the captcha in time. Join requests are dismissed."),
-    ("/captchakicktime <time>", "How long people get before they are removed, like 5m. Default 5 minutes."),
-    ("/setcaptchatext <text>", "Change the text of the captcha button (button mode)."),
-    ("/resetcaptchatext", "Back to the default button text."),
+    ("/captcha <on|off>", "captcha.help.every_user_who_joins_must"),
+    ("/captchamode <button|math|text|text2>", "captcha.help.choose_the_test_a_button"),
+    ("/captcharules <on|off>", "captcha.help.newcomers_must_accept_the_chat"),
+    ("/captchamutetime <time|off>", "captcha.help.unmute_people_who_haven_t"),
+    ("/captchakick <on|off>", "captcha.help.remove_people_who_haven_t"),
+    ("/captchakicktime <time>", "captcha.help.how_long_people_get_before"),
+    ("/setcaptchatext <text>", "captcha.help.change_the_text_of_the"),
+    ("/resetcaptchatext", "captcha.help.back_to_the_default_button"),
 ]
 
 router = Router(name="captcha")
@@ -102,7 +80,7 @@ async def _info_flags(bot, user_id, chat_id):
     if chat_id is None:
         return []
     row = await captchas.find(chat_id, user_id)
-    return [("Captcha Pending", row is not None and row["kind"] == "join")]
+    return [(tr("captcha.captcha_pending"), row is not None and row["kind"] == "join")]
 
 
 info_hooks.register("captcha", _info_flags)
@@ -128,14 +106,14 @@ def _pending_id(callback: CallbackQuery, parts_wanted: int) -> tuple[int, int] |
 async def cb_test(callback: CallbackQuery) -> None:
     found = _pending_id(callback, 3)
     if found is None:
-        await callback.answer("This button is not valid.", show_alert=True)
+        await callback.answer(tr("common.this_button_is_not_valid"), show_alert=True)
         return
     row = await captchas.get(found[0])
     if row is None:
-        await callback.answer("You're already verified, or this captcha has expired.", show_alert=True)
+        await callback.answer(tr("common.you_re_already_verified_or_this"), show_alert=True)
         return
     if callback.from_user.id != row["user_id"]:
-        await callback.answer("This button isn't for you.", show_alert=True)
+        await callback.answer(tr("captcha.this_button_isn_t_for_you"), show_alert=True)
         return
     await callback.answer(await captchas.press(callback.bot, row, found[1], callback.from_user))
 
@@ -145,12 +123,12 @@ async def cb_welcome(callback: CallbackQuery) -> None:
     """The button under a welcome message: the same for everybody, it looks up who pressed it."""
     value = (callback.data or "").split(":", 1)[1]
     if not value.lstrip("-").isdigit():
-        await callback.answer("This button is not valid.", show_alert=True)
+        await callback.answer(tr("common.this_button_is_not_valid"), show_alert=True)
         return
     chat_id = int(value)
     here = getattr(getattr(callback.message, "chat", None), "id", chat_id)
     if here != chat_id:
-        await callback.answer("This button is not valid.", show_alert=True)
+        await callback.answer(tr("common.this_button_is_not_valid"), show_alert=True)
         return
     note, alert, url = await captchas.welcome_pressed(callback.bot, chat_id, callback.from_user)
     await callback.answer(note, show_alert=alert, url=url)
@@ -160,14 +138,14 @@ async def cb_welcome(callback: CallbackQuery) -> None:
 async def cb_rules(callback: CallbackQuery) -> None:
     found = _pending_id(callback, 2)
     if found is None:
-        await callback.answer("This button is not valid.", show_alert=True)
+        await callback.answer(tr("common.this_button_is_not_valid"), show_alert=True)
         return
     row = await captchas.get(found[0])
     if row is None:
-        await callback.answer("This captcha has expired.", show_alert=True)
+        await callback.answer(tr("captcha.this_captcha_has_expired"), show_alert=True)
         return
     if callback.from_user.id != row["user_id"]:
-        await callback.answer("This isn't for you.", show_alert=True)
+        await callback.answer(tr("captcha.this_isn_t_for_you"), show_alert=True)
         return
     await callback.answer(await captchas.accept_rules(callback.bot, row, callback.from_user))
 
@@ -177,14 +155,14 @@ async def cb_rules(callback: CallbackQuery) -> None:
 async def _begin(message: Message, role: Role | None, *, change: bool) -> bool:
     """The chat's own business: admins only, never the bot's staff."""
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return False
     right = RIGHT if change else LOOK_RIGHT
     return await moderation.begin_chat_command(message, role, right=right) is not None
 
 
 def _on_off(value: bool) -> str:
-    return "on" if value else "off"
+    return tr("common.on") if value else tr("common.off")
 
 
 def _time(seconds: int) -> str:
@@ -192,16 +170,10 @@ def _time(seconds: int) -> str:
 
 
 def _summary(config: dict[str, Any]) -> str:
-    mute = "stay muted until solved" if not config["mute_seconds"] else f"unmuted after {_time(config['mute_seconds'])}"
-    button = f"<code>{esc(config['button_text'])}</code>" if config["button_text"] else f"<code>{esc(captchas.DEFAULT_BUTTON)}</code> (default)"
+    mute = tr("captcha.stay_muted_until_solved") if not config["mute_seconds"] else tr("captcha.unmuted_after", time=_time(config['mute_seconds']))
+    button = f"<code>{esc(config['button_text'])}</code>" if config["button_text"] else tr("captcha.default", tr=esc(tr(captchas.DEFAULT_BUTTON)))
     return (
-        "<b>Captcha</b>\n"
-        f"• <b>Enabled:</b> <code>{_on_off(config['enabled'])}</code>\n"
-        f"• <b>Mode:</b> <code>{config['mode']}</code>\n"
-        f"• <b>Rules:</b> <code>{_on_off(config['rules'])}</code>\n"
-        f"• <b>Unsolved:</b> <code>{mute}</code>\n"
-        f"• <b>Kick:</b> <code>{_on_off(config['kick'])}</code> (after <code>{_time(config['kick_seconds'])}</code>)\n"
-        f"• <b>Button text:</b> {button}"
+        tr("captcha.captcha_enabled_mode_rules_unsolved_kick", on_off=_on_off(config['enabled']), mode=config['mode'], on_off2=_on_off(config['rules']), mute=mute, on_off3=_on_off(config['kick']), time=_time(config['kick_seconds']), button=button)
     )
 
 
@@ -209,7 +181,7 @@ async def _rights_warning(message: Message) -> str:
     """Sentences about what keeps captchas from working here, else an empty string."""
     note = ""
     if not await captchas.welcome_available(message.chat.id):
-        note = "\n\nWelcome messages are currently off. Captchas only work with welcomes on: turn them on with /welcome on."
+        note = tr("captcha.welcome_messages_are_currently_off_captchas")
     try:
         member = await message.bot.get_chat_member(message.chat.id, message.bot.id)
     except TelegramAPIError:
@@ -217,7 +189,7 @@ async def _rights_warning(message: Message) -> str:
     status = str(getattr(member.status, "value", member.status))
     if status == "creator" or (status == "administrator" and getattr(member, "can_restrict_members", False)):
         return note
-    return note + "\n\nI can't mute anybody yet: make me an admin with the right to restrict users, or captchas won't work."
+    return note + tr("captcha.i_can_t_mute_anybody_yet")
 
 
 @router.message(cmd("captcha"))
@@ -226,35 +198,35 @@ async def cmd_captcha(message: Message, command: CommandObject, role: Role | Non
     argument = words[0] if words else ""
     if not argument:
         if await _begin(message, role, change=False):
-            warning = "" if await captchas.welcome_available(message.chat.id) else "\n\nWelcome messages are off: captchas only work with welcomes on."
-            await reply(message, _summary(await captchas.settings(message.chat.id)) + warning + "\n\nUse /captcha on or /captcha off.")
+            warning = "" if await captchas.welcome_available(message.chat.id) else tr("captcha.welcome_messages_are_off_captchas_only")
+            await reply(message, _summary(await captchas.settings(message.chat.id)) + warning + tr("captcha.use_captcha_on_or_captcha_off"))
         return
     enabled = parse_switch(argument)
     if enabled is None:
-        await reply(message, "Use /captcha on or /captcha off.")
+        await reply(message, tr("captcha.use_captcha_on_or_captcha_off_2"))
         return
     if not await _begin(message, role, change=True):
         return
     config = await captchas.settings(message.chat.id)
     if config["enabled"] == enabled:
-        await reply(message, f"Captchas are already <b>{_on_off(enabled)}</b>.")
+        await reply(message, tr("captcha.captchas_are_already", on_off=_on_off(enabled)))
         return
     await captchas.update(message.chat.id, enabled=enabled)
     if enabled:
-        await reply(message, "Captchas are <b>on</b>. New members are muted until they pass the test." + await _rights_warning(message))
+        await reply(message, tr("captcha.captchas_are_on_new_members_are") + await _rights_warning(message))
         return
     freed = await captchas.release_chat(message.bot, message.chat.id)
-    await reply(message, "Captchas are <b>off</b>." + (f" {freed} waiting member{'s' if freed != 1 else ''} let in." if freed else ""))
+    await reply(message, tr("captcha.captchas_are_off") + (tr("captcha.waiting_member_let_in", freed=freed, opt='s' if freed != 1 else '') if freed else ""))
 
 
 @router.message(cmd("captchamode"))
 async def cmd_captchamode(message: Message, command: CommandObject, role: Role | None = None) -> None:
     argument = (command.args or "").strip().lower()
-    usage = "Use /captchamode button, math, text or text2."
+    usage = tr("captcha.use_captchamode_button_math_text_or")
     if not argument:
         if await _begin(message, role, change=False):
             config = await captchas.settings(message.chat.id)
-            await reply(message, f"The captcha mode is <b>{config['mode']}</b>.\n{usage}")
+            await reply(message, tr("captcha.the_captcha_mode_is", mode=config['mode'], usage=usage))
         return
     if argument not in captchas.MODES:
         await reply(message, usage)
@@ -262,10 +234,10 @@ async def cmd_captchamode(message: Message, command: CommandObject, role: Role |
     if not await _begin(message, role, change=True):
         return
     if argument == "text2" and not captchas.picture_works():
-        await reply(message, "I can't draw pictures on this server, so text2 isn't available. Try text.")
+        await reply(message, tr("captcha.i_can_t_draw_pictures_on"))
         return
     await captchas.update(message.chat.id, mode=argument)
-    await reply(message, f"The captcha mode is now <b>{argument}</b>.")
+    await reply(message, tr("captcha.the_captcha_mode_is_now", argument=argument))
 
 
 @router.message(cmd("captcharules"))
@@ -274,19 +246,19 @@ async def cmd_captcharules(message: Message, command: CommandObject, role: Role 
     if not argument:
         if await _begin(message, role, change=False):
             config = await captchas.settings(message.chat.id)
-            note = "\n⚠️ This chat has no rules yet, so nothing is shown. Set them with /setrules." if config["rules"] and await captchas.rules_missing(message.chat.id) else ""
-            await reply(message, f"Accepting the rules is <b>{_on_off(config['rules'])}</b>.\nUse /captcharules on or /captcharules off.{note}")
+            note = tr("captcha.this_chat_has_no_rules_yet") if config["rules"] and await captchas.rules_missing(message.chat.id) else ""
+            await reply(message, tr("captcha.accepting_the_rules_is_use_captcharules", on_off=_on_off(config['rules']), note=note))
         return
     enabled = parse_switch(argument)
     if enabled is None:
-        await reply(message, "Use /captcharules on or /captcharules off.")
+        await reply(message, tr("captcha.use_captcharules_on_or_captcharules_off"))
         return
     if not await _begin(message, role, change=True):
         return
     await captchas.update(message.chat.id, rules=enabled)
-    text = "Newcomers must <b>accept the rules</b> after the captcha." if enabled else "Newcomers no longer have to accept the rules."
+    text = tr("captcha.newcomers_must_accept_the_rules_after") if enabled else tr("captcha.newcomers_no_longer_have_to_accept")
     if enabled and await captchas.rules_missing(message.chat.id):
-        text += "\n⚠️ This chat has no rules yet, so there is nothing to accept and this step is skipped. Set them with /setrules."
+        text += tr("captcha.this_chat_has_no_rules_yet_2")
     await reply(message, text)
 
 
@@ -300,12 +272,12 @@ def _duration(text: str) -> timedelta | None:
 @router.message(cmd("captchamutetime"))
 async def cmd_captchamutetime(message: Message, command: CommandObject, role: Role | None = None) -> None:
     argument = (command.args or "").strip().lower()
-    usage = "Use /captchamutetime 30m (or 2h, 1d, 1w), or /captchamutetime off."
+    usage = tr("captcha.use_captchamutetime_30m_or_2h_1d")
     if not argument:
         if await _begin(message, role, change=False):
             config = await captchas.settings(message.chat.id)
-            now = "Unsolved members stay muted until they solve it." if not config["mute_seconds"] \
-                else f"Unsolved members are unmuted after <b>{_time(config['mute_seconds'])}</b>."
+            now = tr("captcha.unsolved_members_stay_muted_until_they") if not config["mute_seconds"] \
+                else tr("captcha.unsolved_members_are_unmuted_after", time=_time(config['mute_seconds']))
             await reply(message, f"{now}\n{usage}")
         return
     if argument in ("off", "no"):
@@ -321,8 +293,8 @@ async def cmd_captchamutetime(message: Message, command: CommandObject, role: Ro
     await captchas.update(message.chat.id, mute_seconds=seconds)
     await reply(
         message,
-        "Unsolved members stay <b>muted until they solve it</b>." if seconds is None
-        else f"Members who haven't solved the captcha are unmuted after <b>{_time(seconds)}</b>.",
+        tr("captcha.unsolved_members_stay_muted_until_they_2") if seconds is None
+        else tr("captcha.members_who_haven_t_solved_the", time=_time(seconds)),
     )
 
 
@@ -332,30 +304,30 @@ async def cmd_captchakick(message: Message, command: CommandObject, role: Role |
     if not argument:
         if await _begin(message, role, change=False):
             config = await captchas.settings(message.chat.id)
-            await reply(message, f"Kicking is <b>{_on_off(config['kick'])}</b> (after {_time(config['kick_seconds'])}).\nUse /captchakick on or /captchakick off.")
+            await reply(message, tr("captcha.kicking_is_after_use_captchakick_on", on_off=_on_off(config['kick']), time=_time(config['kick_seconds'])))
         return
     enabled = parse_switch(argument)
     if enabled is None:
-        await reply(message, "Use /captchakick on or /captchakick off.")
+        await reply(message, tr("captcha.use_captchakick_on_or_captchakick_off"))
         return
     if not await _begin(message, role, change=True):
         return
     config = await captchas.settings(message.chat.id)
     await captchas.update(message.chat.id, kick=enabled)
     if enabled:
-        await reply(message, f"People who don't solve the captcha within <b>{_time(config['kick_seconds'])}</b> are removed. Join requests are dismissed. Change the time with /captchakicktime.")
+        await reply(message, tr("captcha.people_who_don_t_solve_the", time=_time(config['kick_seconds'])))
     else:
-        await reply(message, "People are no longer removed for not solving the captcha.")
+        await reply(message, tr("captcha.people_are_no_longer_removed_for"))
 
 
 @router.message(cmd("captchakicktime"))
 async def cmd_captchakicktime(message: Message, command: CommandObject, role: Role | None = None) -> None:
     argument = (command.args or "").strip().lower()
-    usage = "Use /captchakicktime 5m (or 30m, 2h, 1d)."
+    usage = tr("captcha.use_captchakicktime_5m_or_30m_2h")
     if not argument:
         if await _begin(message, role, change=False):
             config = await captchas.settings(message.chat.id)
-            await reply(message, f"The kick time is <b>{_time(config['kick_seconds'])}</b>.\n{usage}")
+            await reply(message, tr("captcha.the_kick_time_is", time=_time(config['kick_seconds']), usage=usage))
         return
     found = _duration(argument.split()[0])
     if found is None:
@@ -366,23 +338,23 @@ async def cmd_captchakicktime(message: Message, command: CommandObject, role: Ro
     seconds = int(found.total_seconds())
     config = await captchas.settings(message.chat.id)
     await captchas.update(message.chat.id, kick_seconds=seconds)
-    hint = "" if config["kick"] else " Kicking is off: turn it on with /captchakick on."
-    await reply(message, f"People get <b>{_time(seconds)}</b> to solve the captcha.{hint}")
+    hint = "" if config["kick"] else tr("captcha.kicking_is_off_turn_it_on")
+    await reply(message, tr("captcha.people_get_to_solve_the_captcha", time=_time(seconds), hint=hint))
 
 
 @router.message(cmd("setcaptchatext"))
 async def cmd_setcaptchatext(message: Message, command: CommandObject, role: Role | None = None) -> None:
     text = " ".join((command.args or "").split())
     if not text:
-        await reply(message, "Use /setcaptchatext &lt;text&gt;, for example /setcaptchatext I come in peace.")
+        await reply(message, tr("captcha.use_setcaptchatext_lt_text_gt_for"))
         return
     if len(text) > MAX_BUTTON_TEXT:
-        await reply(message, f"That's too long for a button. Keep it under {MAX_BUTTON_TEXT} characters.")
+        await reply(message, tr("captcha.that_s_too_long_for_a", MAX_BUTTON_TEXT=MAX_BUTTON_TEXT))
         return
     if not await _begin(message, role, change=True):
         return
     await captchas.update(message.chat.id, button_text=text)
-    await reply(message, f"The captcha button now says <b>{esc(text)}</b>.")
+    await reply(message, tr("captcha.the_captcha_button_now_says", text=esc(text)))
 
 
 @router.message(cmd("resetcaptchatext"))
@@ -390,4 +362,4 @@ async def cmd_resetcaptchatext(message: Message, role: Role | None = None) -> No
     if not await _begin(message, role, change=True):
         return
     await captchas.update(message.chat.id, button_text=None)
-    await reply(message, f"The captcha button is back to <b>{esc(captchas.DEFAULT_BUTTON)}</b>.")
+    await reply(message, tr("captcha.the_captcha_button_is_back_to", DEFAULT_BUTTON=esc(tr(captchas.DEFAULT_BUTTON))))

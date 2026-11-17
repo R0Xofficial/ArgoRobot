@@ -19,58 +19,38 @@ from core.moderation import GROUP_TYPES, MAX_DURATION, MIN_DURATION, ModerationE
 from core.roles import Role
 from core.targets import replied_message
 from core.text import duration_text, esc, truncate, user_link, SWITCH as _ON_OFF
+from core.i18n import tr, word
 
 # Messages that match a trigger are deleted, or get a custom action. Blacklists do not
 # affect group admins, or approved users.
-ABOUT = """
-Stop certain words or phrases from being said in the group. Matching messages are deleted, or get a custom action. Blacklists do not affect chat admins, approved users or the bot's staff, and edited messages are checked too.
-
-Triggers are matched as whole words and ignore case, so "spam" catches "SPAM!" but not "spammer". Add several triggers at once with one per line.
-
-The commands that change the blacklist are for chat admins with the right to change chat info.
-"""
+ABOUT = "blacklists.about"
 
 HELP = [
-    ("/blacklists", "List the blacklisted triggers of this chat and the default action."),
-    ("/addblacklist <reply/triggers>", "Add one or more triggers, one per line, or reply to a message to blacklist its text. Alias: /blacklist.", "admins"),
-    ("/unblacklist <triggers>", "Remove triggers, one per line, or reply to a message or sticker. Alias: /rmblacklist.", "admins"),
-    ("/blacklistmode", "Show the default action and whether blacklisted messages are deleted. Alias: /blocklistmode.", "admins"),
-    ("/setblacklistmode <off|del|warn|ban|kick|mute|tban|tmute>", "Set the default action. tban and tmute need a duration. off turns the default off, leaving only triggers with their own action. Alias: /setblocklistmode.", "admins"),
-    ("/blocklistdelete <on|off>", "Delete blacklisted messages, whatever the action. Default: on. With off, only the action delete removes a message. Alias: /blacklistdelete.", "admins"),
-    ("/unblacklistall", "Remove every trigger at once. Asks for confirmation.", "chat owner"),
+    ("/blacklists", "blacklists.help.list_the_blacklisted_triggers_of"),
+    ("/addblacklist <reply/triggers>", "blacklists.help.add_one_or_more_triggers", "common.admins"),
+    ("/unblacklist <triggers>", "blacklists.help.remove_triggers_one_per_line", "common.admins"),
+    ("/blacklistmode", "blacklists.help.show_the_default_action_and", "common.admins"),
+    ("/setblacklistmode <off|del|warn|ban|kick|mute|tban|tmute>", "blacklists.help.set_the_default_action_tban", "common.admins"),
+    ("/blocklistdelete <on|off>", "blacklists.help.delete_blacklisted_messages_whatever_the", "common.admins"),
+    ("/unblacklistall", "blacklists.help.remove_every_trigger_at_once", "common.chat_owner"),
 ]
 
 HELP_NOTES = [
     (
-        "Custom action per trigger",
-        """
-        Append {action} after a trigger to override the default action. Example: /addblacklist "ban me" {ban} bans anyone who says ban me.
-        Actions: delete, ban, mute, kick, warn, tban <time>, tmute <time>.
-        """,
+        "blacklists.note.custom_action_per_trigger",
+        "blacklists.note.append_after_a_trigger_to",
     ),
     (
-        "Match modifiers",
-        """
-        exact:word - match only messages equal to word.
-        prefix:word - match only messages that start with word.
-        sticker:emoji - match a sticker by its emoji.
-        stickerpack:name - match a whole sticker pack (the part after t.me/addstickers/).
-        """,
+        "common.match_modifiers",
+        "blacklists.note.exact_word_match_only_messages",
     ),
     (
-        "Wildcards",
-        """
-        ? - any single character except spaces.
-        * - any run of characters except spaces (great for URLs).
-        ** - any run of characters, spaces included.
-        Put a backslash before * or ? to match them literally.
-        """,
+        "common.wildcards",
+        "blacklists.note.any_single_character_except_spaces",
     ),
     (
-        "Stickers",
-        """
-        Reply to a sticker with /blacklist to blacklist its pack. Add a custom reason and/or action: /blacklist ugly pack {ban}.
-        """,
+        "blacklists.note.stickers",
+        "blacklists.note.reply_to_a_sticker_with",
     ),
 ]
 
@@ -99,10 +79,10 @@ def _action_name(action: str | None) -> str:
 
 def _mode_text(mode: str, seconds: int) -> str:
     if mode == "off":
-        return "off"
+        return tr("common.off")
     if mode in enforce.TIMED_MODES:
-        return f"{mode} for {duration_text(seconds)}"
-    return _action_name(mode)
+        return tr("common.for", mode=word(mode), duration_text=duration_text(seconds))
+    return word(_action_name(mode))
 
 
 def _trigger_line(trigger: blacklist.Trigger) -> str:
@@ -132,7 +112,7 @@ def _sticker_trigger(sticker) -> str:
         return f"stickerpack:{sticker.set_name}"
     if getattr(sticker, "emoji", None):
         return f"sticker:{sticker.emoji}"
-    raise TriggerError("That sticker has neither a pack nor an emoji to match.")
+    raise TriggerError(tr("blacklists.that_sticker_has_neither_a_pack"))
 
 
 # --- Commands -----------------------------------------------------------------------------
@@ -144,15 +124,15 @@ async def _admin_only(message: Message, role: Role | None) -> bool:
 @router.message(cmd("blacklists"))
 async def cmd_blacklists(message: Message) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     found = await blacklist.triggers(message.chat.id)
     cfg = await blacklist.settings(message.chat.id)
-    title = f"<b>Blacklisted triggers in {esc(message.chat.title or 'this chat')}</b>"
+    title = tr("blacklists.blacklisted_triggers_in", v=esc(message.chat.title or tr("common.this_chat")))
     if not found:
-        await reply(message, f"{title}\n\nThere are none.")
+        await reply(message, tr("blacklists.there_are_none", title=title))
         return
-    lines = [title, f"Default action: <b>{esc(_mode_text(cfg['mode'], cfg['mode_seconds']))}</b>", ""]
+    lines = [title, tr("blacklists.default_action", mode_text=esc(_mode_text(cfg['mode'], cfg['mode_seconds']))), ""]
     lines += [f"• {_trigger_line(t)}" for t in found[:MAX_SHOWN]]
     if len(found) > MAX_SHOWN:
         lines.append(f"…and {len(found) - MAX_SHOWN} more.")
@@ -177,7 +157,7 @@ async def cmd_addblacklist(message: Message, command: CommandObject, role: Role 
             else:
                 trigger_text = blacklist.escape_wildcards(" ".join((replied.text or replied.caption or "").split()))
                 if not trigger_text:
-                    raise TriggerError("That message has no text to blacklist.")
+                    raise TriggerError(tr("blacklists.that_message_has_no_text_to"))
         except TriggerError as exc:
             await reply(message, esc(exc))
             return
@@ -190,8 +170,7 @@ async def cmd_addblacklist(message: Message, command: CommandObject, role: Role 
     else:
         await reply(
             message,
-            "Give me triggers, one per line, or reply to a message or sticker.\n"
-            "Example: /addblacklist spam word\nAppend {action} to a trigger to override the default action.",
+            tr("blacklists.give_me_triggers_one_per_line"),
         )
         return
 
@@ -208,7 +187,7 @@ async def cmd_addblacklist(message: Message, command: CommandObject, role: Role 
             problems.append(f"<code>{esc(truncate(text, 40))}</code>: {esc(exc)}")
             continue
         if outcome is None:
-            full_text = f"The blacklist is full ({blacklist.MAX_TRIGGERS} triggers)."
+            full_text = tr("common.the_blacklist_is_full_triggers", MAX_TRIGGERS=blacklist.MAX_TRIGGERS)
             if full_text not in problems:
                 problems.append(full_text)
             continue
@@ -216,7 +195,7 @@ async def cmd_addblacklist(message: Message, command: CommandObject, role: Role 
         (added if outcome else updated).append(shown)
 
     lines: list[str] = []
-    for label, items in (("Added", added), ("Updated", updated)):
+    for label, items in ((tr("common.added"), added), (tr("common.updated"), updated)):
         if items:
             lines.append(f"<b>{label} {len(items)} trigger{'' if len(items) == 1 else 's'}:</b>")
             lines += [f"• {item}" for item in items[:MAX_SHOWN_ADDED]]
@@ -247,7 +226,7 @@ async def cmd_unblacklist(message: Message, command: CommandObject, role: Role |
             await reply(message, esc(exc))
             return
     if not texts:
-        await reply(message, "Give me the triggers to remove, one per line, or reply to a message or sticker.")
+        await reply(message, tr("blacklists.give_me_the_triggers_to_remove"))
         return
 
     removed: list[str] = []
@@ -277,9 +256,7 @@ async def cmd_blacklistmode(message: Message, role: Role | None = None) -> None:
     cfg = await blacklist.settings(message.chat.id)
     await reply(
         message,
-        f"Default action: <b>{esc(_mode_text(cfg['mode'], cfg['mode_seconds']))}</b>\n"
-        f"Delete blacklisted messages: <b>{'on' if cfg['delete_matches'] else 'off'}</b>\n"
-        "Change it with /setblacklistmode.",
+        tr("blacklists.default_action_delete_blacklisted_messages_c", mode_text=esc(_mode_text(cfg['mode'], cfg['mode_seconds'])), opt=tr("common.on") if cfg['delete_matches'] else tr("common.off")),
     )
 
 
@@ -289,8 +266,7 @@ async def cmd_setblacklistmode(message: Message, command: CommandObject, role: R
         return
     spec = (command.args or "").strip()
     usage = (
-        "Use /setblacklistmode &lt;off|del|warn|ban|kick|mute|tban|tmute&gt;.\n"
-        "tban and tmute need a duration, like 30m, 2h, 3d or 1w."
+        tr("blacklists.use_setblacklistmode_lt_off_del_warn")
     )
     if not spec:
         await reply(message, usage)
@@ -302,9 +278,9 @@ async def cmd_setblacklistmode(message: Message, command: CommandObject, role: R
         return
     await blacklist.update_settings(message.chat.id, mode=mode, mode_seconds=seconds)
     if mode == "off":
-        await reply(message, "The default action is now <b>off</b>: only triggers with their own {action} do anything.")
+        await reply(message, tr("blacklists.the_default_action_is_now_off"))
     else:
-        await reply(message, f"The default action is now <b>{esc(_mode_text(mode, seconds))}</b>.")
+        await reply(message, tr("blacklists.the_default_action_is_now", mode_text=esc(_mode_text(mode, seconds))))
 
 
 @router.message(cmd("blocklistdelete", "blacklistdelete"))
@@ -315,16 +291,16 @@ async def cmd_blocklistdelete(message: Message, command: CommandObject, role: Ro
 
     def text(on: bool) -> str:
         return (
-            "Blacklisted messages will be <b>deleted</b>."
+            tr("blacklists.blacklisted_messages_will_be_deleted")
             if on
-            else "Blacklisted messages will be <b>kept</b> (unless the action is delete)."
+            else tr("blacklists.blacklisted_messages_will_be_kept_unless")
         )
 
     if not argument:
-        await reply(message, f"{text((await blacklist.settings(message.chat.id))['delete_matches'])}\nUse /blocklistdelete on or off.")
+        await reply(message, tr("blacklists.use_blocklistdelete_on_or_off", text=text((await blacklist.settings(message.chat.id))['delete_matches'])))
         return
     if argument not in _ON_OFF:
-        await reply(message, "Use /blocklistdelete on or /blocklistdelete off.")
+        await reply(message, tr("blacklists.use_blocklistdelete_on_or_blocklistdelete_of"))
         return
     await blacklist.update_settings(message.chat.id, delete_matches=_ON_OFF[argument])
     await reply(message, text(_ON_OFF[argument]))
@@ -339,35 +315,35 @@ async def cmd_unblacklistall(message: Message) -> None:
         return
     count = len(await blacklist.triggers(message.chat.id))
     if not count:
-        await reply(message, "The blacklist of this chat is empty.")
+        await reply(message, tr("blacklists.the_blacklist_of_this_chat_is"))
         return
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="Remove all", callback_data=f"{CB_CLEAR}yes"),
-                InlineKeyboardButton(text="Cancel", callback_data=f"{CB_CLEAR}no"),
+                InlineKeyboardButton(text=tr("common.remove_all"), callback_data=f"{CB_CLEAR}yes"),
+                InlineKeyboardButton(text=tr("common.cancel"), callback_data=f"{CB_CLEAR}no"),
             ]
         ]
     )
-    await reply(message, f"Remove all <b>{count}</b> triggers of this chat? This can't be undone.", reply_markup=keyboard)
+    await reply(message, tr("blacklists.remove_all_triggers_of_this_chat", count=count), reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith(CB_CLEAR))
 async def cb_unblacklistall(callback: CallbackQuery) -> None:
     message = callback.message if isinstance(callback.message, Message) else None
     if message is None:
-        await callback.answer("This button is no longer valid.", show_alert=True)
+        await callback.answer(tr("common.this_button_is_no_longer_valid"), show_alert=True)
         return
     if await moderation.member_status(callback.bot, message.chat.id, callback.from_user.id) != "creator":
-        await callback.answer("Only the owner of this chat can do this.", show_alert=True)
+        await callback.answer(tr("common.only_the_owner_of_this_chat"), show_alert=True)
         return
     if callback.data == f"{CB_CLEAR}yes":
         removed = await blacklist.clear(message.chat.id)
         await callback.answer()
-        await edit(message, f"Done. <b>{removed}</b> triggers removed.", reply_markup=None)
+        await edit(message, tr("blacklists.done_triggers_removed", removed=removed), reply_markup=None)
     else:
         await callback.answer()
-        await edit(message, "Cancelled. The blacklist is unchanged.", reply_markup=None)
+        await edit(message, tr("blacklists.cancelled_the_blacklist_is_unchanged"), reply_markup=None)
 
 
 # --- Enforcement ----------------------------------------------------------------------------
@@ -415,14 +391,14 @@ async def _warn(bot: Bot, message: Message, reason: str) -> str:
     user = message.from_user
     chat_id = message.chat.id
     target = SimpleNamespace(user_id=user.id, name=user.full_name)
-    await warns.add_warn(chat_id, target, reason, moderation.Actor(bot.id, "Blacklist"))
+    await warns.add_warn(chat_id, target, reason, moderation.Actor(bot.id, tr("blacklists.blacklist")))
     count = len(await warns.list_warns(chat_id, user.id))
     limit = await warns.get_limit(chat_id)
     if count < limit:
-        return f"warned ({count}/{limit})"
+        return tr("common.warned", count=count, limit=limit)
     done = await warns.limit_action(bot, chat_id, user.id)
     await warns.clear_warns(chat_id, user.id)
-    return f"{done} after reaching the warn limit ({count}/{limit})"
+    return tr("common.after_reaching_the_warn_limit", done=done, count=count, limit=limit)
 
 
 @router.message(_blacklisted)
@@ -436,7 +412,7 @@ async def on_blacklisted(message: Message, bot: Bot, bl_hit: SimpleNamespace) ->
     if bl_hit.action == "del":
         return
 
-    reason = bl_hit.trigger.reason or f"Blacklisted trigger: {bl_hit.trigger.pattern}"
+    reason = bl_hit.trigger.reason or tr("blacklists.blacklisted_trigger", pattern=bl_hit.trigger.pattern)
     try:
         if bl_hit.action == "warn":
             done = await _warn(bot, message, reason)
@@ -446,11 +422,11 @@ async def on_blacklisted(message: Message, bot: Bot, bl_hit: SimpleNamespace) ->
         now = time.monotonic()
         if now - _complained.get(chat_id, -FAILURE_COOLDOWN) >= FAILURE_COOLDOWN:
             _complained[chat_id] = now
-            await reply(message, f"{user_link(user.id, user.full_name)} used a blacklisted trigger, but I can't act: {esc(exc)}", quote=False)
+            await reply(message, tr("blacklists.used_a_blacklisted_trigger_but_i", id=user_link(user.id, user.full_name), exc=esc(exc)), quote=False)
         return
     await reply(
         message,
-        f"{user_link(user.id, user.full_name)} has been {done}.{moderation.reason_line(bl_hit.trigger.reason or '')}"
-        + ("" if bl_hit.trigger.reason else "\nReason: used a blacklisted trigger."),
+        tr("blacklists.has_been", id=user_link(user.id, user.full_name), done=done, reason_line=moderation.reason_line(bl_hit.trigger.reason or ''))
+        + ("" if bl_hit.trigger.reason else tr("blacklists.reason_used_a_blacklisted_trigger")),
         quote=False,
     )

@@ -13,23 +13,16 @@ from core.helpers import reply
 from core.moderation import ModerationError, perform
 from core.roles import Role
 from core.text import esc
+from core.i18n import plural, tr
 
 log = logging.getLogger(__name__)
 
-ABOUT = """
-Deleted accounts ("zombies") stay in a chat's member list and just take up room. /zombies removes them.
+ABOUT = "zombies.about"
 
-Where I can get the full member list I check everyone. Otherwise I check the people I have seen in this chat, those who wrote, joined or left while I was here. Then a deleted account that never wrote anything here, or sat in the chat before I came, stays out of reach. Run it again after a while to catch more.
-
-They are kicked, not banned. A deleted account can't come back anyway.
-
-For chat admins with the right to ban users, and I need that right too. Only one run per chat at a time.
-"""
-
-HELP_WHO = "admins"
+HELP_WHO = "common.admins"
 
 HELP = [
-    ("/zombies", "Find the deleted accounts in this chat and remove them."),
+    ("/zombies", "zombies.help.find_the_deleted_accounts_in"),
 ]
 
 router = Router(name="zombies")
@@ -114,11 +107,11 @@ async def _sweep(message: Message, progress: Message, user_ids: list[int]) -> No
         _running.discard(chat_id)
 
     if found == 0:
-        text = "No deleted accounts found."
+        text = tr("zombies.no_deleted_accounts_found")
     else:
-        text = f"Removed {removed} deleted account{'' if removed == 1 else 's'}."
+        text = tr("zombies.removed_deleted_account", removed=removed, opt='' if removed == 1 else 's', noun=plural(removed, "usunięte konto", "usunięte konta", "usuniętych kont"))
         if failed:
-            text += f" I couldn't remove {failed}: " + "; ".join(esc(reason) for reason in reasons)
+            text += tr("zombies.i_couldn_t_remove", failed=failed) + "; ".join(esc(reason) for reason in reasons)
     try:
         await progress.edit_text(text)
     except TelegramAPIError:
@@ -131,16 +124,16 @@ async def cmd_zombies(message: Message, role: Role | None = None) -> None:
         return
     chat_id = message.chat.id
     if chat_id in _running:
-        await reply(message, "I'm already checking this chat.")
+        await reply(message, tr("zombies.i_m_already_checking_this_chat"))
         return
 
     user_ids = (await chats.users_in(chat_id))[:MAX_CHECKED]
     if not user_ids and not mtproto.configured():
-        await reply(message, "I haven't seen anyone in this chat yet.")
+        await reply(message, tr("zombies.i_haven_t_seen_anyone_in"))
         return
 
     _running.add(chat_id)
-    progress = await reply(message, "Looking for deleted accounts. This can take a while.")
+    progress = await reply(message, tr("zombies.looking_for_deleted_accounts_this_can"))
     task = asyncio.get_running_loop().create_task(_sweep(message, progress, user_ids))
     _tasks.add(task)
     task.add_done_callback(_tasks.discard)

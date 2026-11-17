@@ -13,27 +13,22 @@ from core.helpers import edit, reply
 from core.roles import Role
 from core.targets import TargetError, resolve_target
 from core.text import esc, user_link, user_ref
+from core.i18n import tr
 
 # Approve trusted users so locks, blacklists, antiflood, global bans and federation
 # bans stop applying to them. Useful when you trust someone but don't want to make
 # them an admin. Approval is per chat, and admins can still ban, mute or warn an
 # approved user by hand.
-ABOUT = """
-Approved users are people you trust without making them admins. In the chat where they are approved, automatic measures leave them alone: locks, blacklists, antiflood, global bans, federation bans and anything similar I learn later.
+ABOUT = "approves.about"
 
-Approval is per chat and never stops an admin from banning, muting or warning someone by hand. Chat admins are already exempt, so they can't be approved. My own staff can be approved like anyone else.
-
-Name the user by replying to their message, or with a @username or a numeric ID.
-"""
-
-HELP_WHO = "admins"
+HELP_WHO = "common.admins"
 
 HELP = [
-    ("/approve <user>", "Approve a trusted user in this chat. Locks, blacklists, antiflood, global and federation bans stop applying to them."),
-    ("/unapprove <user>", "Take a user's approval away."),
-    ("/approval [user]", "Check whether a user (you, if you name nobody) is approved, and by whom."),
-    ("/approved", "List everyone approved in this chat. Aliases: /approvals, /approvedlist."),
-    ("/disapproveall", "Take away the approval of every user in this chat. Cannot be undone.", "chat owner"),
+    ("/approve <user>", "approves.help.approve_a_trusted_user_in"),
+    ("/unapprove <user>", "approves.help.take_a_user_s_approval"),
+    ("/approval [user]", "approves.help.check_whether_a_user_you"),
+    ("/approved", "approves.help.list_everyone_approved_in_this"),
+    ("/disapproveall", "approves.help.take_away_the_approval_of", "common.chat_owner"),
 ]
 
 router = Router(name="approves")
@@ -54,7 +49,7 @@ async def _begin(message: Message, command: CommandObject, role: Role | None, *,
         await reply(message, esc(exc))
         return None
     if immunity.is_immune(target.user_id):
-        await reply(message, "I can't take action against that account.")
+        await reply(message, tr("common.i_can_t_take_action_against"))
         return None
     return target, actor
 
@@ -73,10 +68,10 @@ async def cmd_approve(message: Message, command: CommandObject, role: Role | Non
         target.user_id == bot.id
         or await moderation.is_chat_admin(bot, chat_id, target.user_id)
     ):
-        await reply(message, "That user can't be approved: they are a chat admin or me.")
+        await reply(message, tr("approves.that_user_can_t_be_approved"))
         return
     if not await approvals.approve(chat_id, target.user_id, target.name, actor.id, actor.name):
-        await reply(message, "This user is already approved!")
+        await reply(message, tr("approves.this_user_is_already_approved"))
         return
 
     if await gbans.is_gbanned(target.user_id):
@@ -91,8 +86,7 @@ async def cmd_approve(message: Message, command: CommandObject, role: Role | Non
         await federations.forget_applied(chat_id, target.user_id)
     await reply(
         message,
-        f"{who} was <b>approved</b>{moderation.by(actor)}\nLocks, blacklists, antiflood and global and "
-        "federation bans no longer apply to them here." + moderation.staff_note(actor),
+        tr("approves.was_approved_locks_blacklists_antiflood_and", who=who, by=moderation.by(actor)) + moderation.staff_note(actor),
     )
 
 
@@ -103,11 +97,11 @@ async def cmd_unapprove(message: Message, command: CommandObject, role: Role | N
         return
     target, actor = started
     if not await approvals.unapprove(message.chat.id, target.user_id):
-        await reply(message, "This user was not approved in this chat.")
+        await reply(message, tr("approves.this_user_was_not_approved_in"))
         return
     await reply(
         message,
-        f"{user_link(target.user_id, target.name)} is <b>no longer approved</b>{moderation.by(actor)}"
+        tr("approves.is_no_longer_approved", user_id=user_link(target.user_id, target.name), by=moderation.by(actor))
         + moderation.staff_note(actor),
     )
 
@@ -128,10 +122,10 @@ async def cmd_approval(message: Message, command: CommandObject, role: Role | No
     who = user_ref(user_id, name)
     row = await approvals.get(message.chat.id, user_id)
     if row is None:
-        await reply(message, f"{who} is not approved in this chat.")
+        await reply(message, tr("approves.is_not_approved_in_this_chat", who=who))
         return
-    by = f" by {user_ref(row['approved_by'], row['approved_by_name'])}" if row["approved_by"] else ""
-    await reply(message, f"{who} is <b>approved</b> in this chat{by}.", link_preview_options=NO_PREVIEW)
+    by = tr("approves.by", approved_by=user_ref(row['approved_by'], row['approved_by_name'])) if row["approved_by"] else ""
+    await reply(message, tr("approves.is_approved_in_this_chat", who=who, by=by), link_preview_options=NO_PREVIEW)
 
 
 @router.message(cmd("approved", "approvals", "approvedlist"))
@@ -140,11 +134,11 @@ async def cmd_approved(message: Message, command: CommandObject, role: Role | No
         return
     rows = await approvals.list_chat(message.chat.id)
     if not rows:
-        await reply(message, "There are no approved users in this chat.")
+        await reply(message, tr("approves.there_are_no_approved_users_in"))
         return
     lines = [
-        f"<b>Approved Users in {esc(message.chat.title)}:</b>",
-        "<i>Automatic measures leave them alone in this chat: locks, blacklists, antiflood, global bans and federation bans. Admins can still act on them by hand.</i>",
+        tr("approves.approved_users_in", title=esc(message.chat.title)),
+        tr("approves.automatic_measures_leave_them_alone_in"),
         "",
     ]
     lines += [f"• {user_ref(row['user_id'], row['name'])}" for row in rows[:MAX_SHOWN]]
@@ -162,19 +156,19 @@ async def cmd_disapproveall(message: Message, command: CommandObject, role: Role
         return
     count = len(await approvals.list_chat(message.chat.id))
     if not count:
-        await reply(message, "There are no approved users in this chat.")
+        await reply(message, tr("approves.there_are_no_approved_users_in"))
         return
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="Unapprove all", callback_data=f"{CB_CLEAR}yes"),
-                InlineKeyboardButton(text="Cancel", callback_data=f"{CB_CLEAR}no"),
+                InlineKeyboardButton(text=tr("approves.unapprove_all"), callback_data=f"{CB_CLEAR}yes"),
+                InlineKeyboardButton(text=tr("common.cancel"), callback_data=f"{CB_CLEAR}no"),
             ]
         ]
     )
     await reply(
         message,
-        f"Unapprove all <b>{count}</b> approved users of this chat? This can't be undone.",
+        tr("approves.unapprove_all_approved_users_of_this", count=count),
         reply_markup=keyboard,
     )
 
@@ -183,25 +177,25 @@ async def cmd_disapproveall(message: Message, command: CommandObject, role: Role
 async def cb_disapproveall(callback: CallbackQuery) -> None:
     message = callback.message if isinstance(callback.message, Message) else None
     if message is None:
-        await callback.answer("This button is no longer valid.", show_alert=True)
+        await callback.answer(tr("common.this_button_is_no_longer_valid"), show_alert=True)
         return
     status = await moderation.member_status(callback.bot, message.chat.id, callback.from_user.id)
     if status != "creator":
-        await callback.answer("Only the owner of this chat can do this.", show_alert=True)
+        await callback.answer(tr("common.only_the_owner_of_this_chat"), show_alert=True)
         return
     if callback.data == f"{CB_CLEAR}yes":
         removed = await approvals.clear_chat(message.chat.id)
         await callback.answer()
-        await edit(message, f"Done. <b>{removed}</b> users are no longer approved.", reply_markup=None)
+        await edit(message, tr("approves.done_users_are_no_longer_approved", removed=removed), reply_markup=None)
     else:
         await callback.answer()
-        await edit(message, "Cancelled. Nobody was unapproved.", reply_markup=None)
+        await edit(message, tr("approves.cancelled_nobody_was_unapproved"), reply_markup=None)
 
 
 async def _info_flags(bot, user_id: int, chat_id: int | None) -> list[tuple[str, bool]]:
     if chat_id is None:
         return []  # approval belongs to a chat
-    return [("Approved", await approvals.is_approved(chat_id, user_id))]
+    return [(tr("approves.approved"), await approvals.is_approved(chat_id, user_id))]
 
 
 info_hooks.register("approves", _info_flags)

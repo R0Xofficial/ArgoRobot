@@ -19,89 +19,51 @@ from core.moderation import GROUP_TYPES, ModerationError
 from core.roles import Role
 from core.targets import replied_message
 from core.text import esc, truncate
+from core.i18n import tr
 
 log = logging.getLogger(__name__)
 
 # Reply to keywords with a saved message. Filters are case-insensitive. A saved message
 # can be formatted, address people by name, carry buttons, and vary at random.
-ABOUT = """
-Reply to keywords with a saved message. Filters are case-insensitive, and a keyword matches whole words: "bot" answers "my bot" but not "robot".
-
-Save the message by writing it after the keyword, or by replying to a message with the command: a replied-to photo, GIF, video, sticker, document, audio or voice message is sent back as it is, with its text as the caption. The commands that change filters are for chat admins with the right to change chat info.
-
-Under the text, formatting, fillings, buttons and random variants work as described below. Command messages never trigger a filter, and a filter answers the same keyword at most once every few seconds.
-"""
+ABOUT = "filters.about"
 
 HELP = [
-    ("/filters", "List the active filters in this chat."),
-    ("/filter <keyword> <reply or text>", "Save a filter for a single keyword. Reply to a message instead of writing text to save that message, media included.", "admins"),
-    ("/filter \"a long sentence\" <reply or text>", "Save a filter for a phrase. Use double quotes.", "admins"),
-    ("/filter (word1, word2, \"long sentence\") <reply or text>", "Save one filter that matches any of several triggers.", "admins"),
-    ("/stop <keyword>", "Remove a filter. Accepts the same keyword forms as /filter, so a list removes several at once.", "admins"),
-    ("/stopAll", "Remove every filter at once. Asks for confirmation.", "chat owner"),
+    ("/filters", "filters.help.list_the_active_filters_in"),
+    ("/filter <keyword> <reply or text>", "filters.help.save_a_filter_for_a", "common.admins"),
+    ("/filter \"a long sentence\" <reply or text>", "filters.help.save_a_filter_for_a_2", "common.admins"),
+    ("/filter (word1, word2, \"long sentence\") <reply or text>", "filters.help.save_one_filter_that_matches", "common.admins"),
+    ("/stop <keyword>", "filters.help.remove_a_filter_accepts_the", "common.admins"),
+    ("/stopAll", "filters.help.remove_every_filter_at_once", "common.chat_owner"),
 ]
 
 HELP_NOTES = [
     (
-        "Match modifiers",
-        """
-        prefix:word - match messages that start with word.
-        exact:word - match messages that are exactly word.
-        Both also work with a phrase: exact:"good morning".
-        """,
+        "common.match_modifiers",
+        "filters.note.prefix_word_match_messages_that",
     ),
     (
-        "Formatting",
-        """
-        <b>bold</b>  <i>italic</i>  <u>underline</u>  <s>strike</s>  <tg-spoiler>spoiler</tg-spoiler>
-        <code>code</code>  <pre>pre</pre>  <blockquote>quote</blockquote>  <a href="https://link">text</a>
-        The formatting menu of Telegram works as well: select the text and pick Bold, Italic, Link...
-        Anything that is not one of these tags is shown as typed.
-        """,
+        "common.formatting",
+        "common.bold_italic_underline_strike_spoiler_code",
     ),
     (
-        "Fillings",
-        """
-        Replaced by facts about whoever said the keyword:
-        {first} {last} {fullname} {username} {mention} {id} {chatname} {count}
-        {username} falls back to a mention for people without one. {count} is the number of members.
-        """,
+        "common.fillings",
+        "filters.note.replaced_by_facts_about_whoever",
     ),
     (
-        "Options",
-        """
-        Put these anywhere in the text; they are removed and change how the reply is sent:
-        {preview} - show link previews.
-        {protect} - forbid forwarding and saving.
-        {nonotif} - send silently.
-        {mediaspoiler} - hide a photo, GIF or video behind a spoiler.
-        """,
+        "common.options",
+        "filters.note.put_these_anywhere_in_the",
     ),
     (
-        "Buttons",
-        """
-        [Text](buttonurl://example.com) - a button under the message, on its own row.
-        [Text](buttonurl://example.com:same) - a button on the row of the previous one.
-        """,
+        "common.buttons",
+        "common.text_buttonurl_example_com_a_button",
     ),
     (
-        "Random content",
-        """
-        Separate variants with %%% and I send one of them at random each time.
-        /filter hi Hello! %%% Hey there! %%% Hi, {first}!
-        Each variant can have its own buttons.
-        """,
+        "common.random_content",
+        "filters.note.separate_variants_with_and_i",
     ),
     (
-        "Examples",
-        """
-        /filter bot Hello, I am a bot!
-        /filter "a long sentence" Reply to a long sentence
-        /filter (bad, terrible, "not good") Stay away from negative replies
-        /filter prefix:How Check google on how to ...
-        /filter exact:Hi Don't just send Hi
-        /filter rules <b>Read the rules, {first}!</b> [Rules](buttonurl://example.com/rules)
-        """,
+        "common.examples",
+        "filters.note.filter_bot_hello_i_am",
     ),
 ]
 
@@ -133,12 +95,12 @@ async def _admin_only(message: Message, role: Role | None) -> bool:
 @router.message(cmd("filters"))
 async def cmd_filters(message: Message) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     found = await filterstore.patterns(message.chat.id)
-    title = f"<b>Filters in {esc(message.chat.title or 'this chat')}</b>"
+    title = tr("filters.filters_in", v=esc(message.chat.title or tr("common.this_chat")))
     if not found:
-        await reply(message, f"{title}\n\nThere are none yet. Add one with /filter.")
+        await reply(message, tr("filters.there_are_none_yet_add_one", title=title))
         return
     lines = [title, ""] + [f"• <code>{esc(p)}</code>" for p in found[:MAX_LISTED]]
     if len(found) > MAX_LISTED:
@@ -155,7 +117,7 @@ async def cmd_filter(message: Message, command: CommandObject, role: Role | None
     except FilterError as exc:
         await reply(
             message,
-            f"{esc(exc)}\nUse /filter &lt;keyword&gt; &lt;reply or text&gt;, /filter \"a phrase\" &lt;text&gt; or /filter (a, b) &lt;text&gt;.",
+            tr("filters.use_filter_lt_keyword_gt_lt", exc=esc(exc)),
         )
         return
 
@@ -164,7 +126,7 @@ async def cmd_filter(message: Message, command: CommandObject, role: Role | None
     if not text and replied is not None:
         text = sender.text_of(replied)
     if not text and media is None:
-        await reply(message, "Tell me what to answer with: write the text after the keyword, or reply to a message.")
+        await reply(message, tr("filters.tell_me_what_to_answer_with"))
         return
     try:
         sender.validate(text, media is not None)
@@ -177,11 +139,11 @@ async def cmd_filter(message: Message, command: CommandObject, role: Role | None
     )
     lines = []
     if added:
-        lines.append("Saved filter for: " + ", ".join(f"<code>{esc(p)}</code>" for p in added) + ".")
+        lines.append(tr("filters.saved_filter_for") + ", ".join(f"<code>{esc(p)}</code>" for p in added) + ".")
     if updated:
-        lines.append("Updated filter for: " + ", ".join(f"<code>{esc(p)}</code>" for p in updated) + ".")
+        lines.append(tr("filters.updated_filter_for") + ", ".join(f"<code>{esc(p)}</code>" for p in updated) + ".")
     if full:
-        lines.append(f"This chat is full ({filterstore.MAX_FILTERS} filters). Not saved: " + ", ".join(f"<code>{esc(p)}</code>" for p in full) + ".")
+        lines.append(tr("filters.this_chat_is_full_filters_not", MAX_FILTERS=filterstore.MAX_FILTERS) + ", ".join(f"<code>{esc(p)}</code>" for p in full) + ".")
     await reply(message, "\n".join(lines))
 
 
@@ -192,15 +154,15 @@ async def cmd_stop(message: Message, command: CommandObject, role: Role | None =
     try:
         patterns, _ = filterstore.parse_triggers(command.args or "")
     except FilterError as exc:
-        await reply(message, f"{esc(exc)}\nUse /stop &lt;keyword&gt;.")
+        await reply(message, tr("filters.use_stop_lt_keyword_gt", exc=esc(exc)))
         return
     removed = [p for p in patterns if await filterstore.remove(message.chat.id, p)]
     missing = [p for p in patterns if p not in removed]
     lines = []
     if removed:
-        lines.append("Removed the filter for: " + ", ".join(f"<code>{esc(p)}</code>" for p in removed) + ".")
+        lines.append(tr("filters.removed_the_filter_for") + ", ".join(f"<code>{esc(p)}</code>" for p in removed) + ".")
     if missing:
-        lines.append("There is no filter for: " + ", ".join(f"<code>{esc(p)}</code>" for p in missing) + ".")
+        lines.append(tr("filters.there_is_no_filter_for") + ", ".join(f"<code>{esc(p)}</code>" for p in missing) + ".")
     await reply(message, "\n".join(lines))
 
 
@@ -213,35 +175,35 @@ async def cmd_stopall(message: Message) -> None:
         return
     count = len(await filterstore.patterns(message.chat.id))
     if not count:
-        await reply(message, "There are no filters in this chat.")
+        await reply(message, tr("filters.there_are_no_filters_in_this"))
         return
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="Remove all", callback_data=f"{CB_CLEAR}yes"),
-                InlineKeyboardButton(text="Cancel", callback_data=f"{CB_CLEAR}no"),
+                InlineKeyboardButton(text=tr("common.remove_all"), callback_data=f"{CB_CLEAR}yes"),
+                InlineKeyboardButton(text=tr("common.cancel"), callback_data=f"{CB_CLEAR}no"),
             ]
         ]
     )
-    await reply(message, f"Remove all <b>{count}</b> filters of this chat? This can't be undone.", reply_markup=keyboard)
+    await reply(message, tr("filters.remove_all_filters_of_this_chat", count=count), reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith(CB_CLEAR))
 async def cb_stopall(callback: CallbackQuery) -> None:
     message = callback.message if isinstance(callback.message, Message) else None
     if message is None:
-        await callback.answer("This button is no longer valid.", show_alert=True)
+        await callback.answer(tr("common.this_button_is_no_longer_valid"), show_alert=True)
         return
     if await moderation.member_status(callback.bot, message.chat.id, callback.from_user.id) != "creator":
-        await callback.answer("Only the owner of this chat can do this.", show_alert=True)
+        await callback.answer(tr("common.only_the_owner_of_this_chat"), show_alert=True)
         return
     if callback.data == f"{CB_CLEAR}yes":
         removed = await filterstore.clear(message.chat.id)
         await callback.answer()
-        await edit(message, f"Done. <b>{removed}</b> filters removed.", reply_markup=None)
+        await edit(message, tr("filters.done_filters_removed", removed=removed), reply_markup=None)
     else:
         await callback.answer()
-        await edit(message, "Cancelled. The filters are unchanged.", reply_markup=None)
+        await edit(message, tr("filters.cancelled_the_filters_are_unchanged"), reply_markup=None)
 
 
 # --- Answering ------------------------------------------------------------------------------
@@ -280,5 +242,5 @@ async def on_match(message: Message, bot: Bot, filter_pattern: str) -> None:
     if row is None:
         return
     await sender.send(
-        message, message.from_user, row["content"], row["media_type"], row["media_file_id"], label=f"filter {filter_pattern!r}"
+        message, message.from_user, row["content"], row["media_type"], row["media_file_id"], label=tr("filters.filter", filter_pattern=filter_pattern)
     )

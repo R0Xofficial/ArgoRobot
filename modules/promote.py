@@ -14,23 +14,18 @@ from core.moderation import RIGHTS_MESSAGE, ModerationError, NotAllowed, perform
 from core.roles import Role
 from core.targets import Target, TargetError, replied_message, resolve_target
 from core.text import esc, user_link, user_ref
+from core.i18n import tr
 
-ABOUT = """
-Manage admins without digging through Telegram's menus.
+ABOUT = "promote.about"
 
-You need the right to add new admins, and so do I: I can only hand out permissions I have myself. Telegram lets bots change the title of only those admins the bot promoted, so /title and /demote work only on admins promoted by me.
-
-Name the target by replying to their message, or with a @username or a numeric ID.
-"""
-
-HELP_WHO = "admins"
+HELP_WHO = "common.admins"
 
 HELP = [
-    ("/promote <user> [title]", "Make a user an admin with the usual permissions. Text after the user becomes their title, like /promote @name Guy."),
-    ("/fullPromote <user> [title]", "Make a user an admin with every permission except staying anonymous. A title can follow the user too."),
-    ("/demote <user>", "Take admin rights away from an admin I promoted."),
-    ("/title <user> <text>", "Set a custom title (up to 16 characters, no emoji) on an admin I promoted. Without text the title is cleared. Admins can change their own."),
-    ("/tag <user> <text>", "Set a custom tag (up to 16 characters) on a member. Without text the tag is cleared."),
+    ("/promote <user> [title]", "promote.help.make_a_user_an_admin"),
+    ("/fullPromote <user> [title]", "promote.help.make_a_user_an_admin_2"),
+    ("/demote <user>", "promote.help.take_admin_rights_away_from"),
+    ("/title <user> <text>", "promote.help.set_a_custom_title_up"),
+    ("/tag <user> <text>", "promote.help.set_a_custom_tag_up"),
 ]
 
 router = Router(name="promote")
@@ -39,16 +34,16 @@ MAX_LENGTH = 16  # Telegram's limit for titles and tags
 
 # Admin rights this module hands out, with the names shown to people.
 RIGHT_NAMES = {
-    "can_manage_chat": "manage chat",
-    "can_change_info": "change info",
-    "can_delete_messages": "delete messages",
-    "can_invite_users": "invite users",
-    "can_restrict_members": "restrict members",
-    "can_pin_messages": "pin messages",
-    "can_manage_video_chats": "manage video chats",
-    "can_manage_topics": "manage topics",
-    "can_manage_tags": "manage tags",
-    "can_promote_members": "add admins",
+    "can_manage_chat": "promote.right_names.can_manage_chat",
+    "can_change_info": "promote.right_names.can_change_info",
+    "can_delete_messages": "promote.right_names.can_delete_messages",
+    "can_invite_users": "common.invite_users",
+    "can_restrict_members": "promote.right_names.can_restrict_members",
+    "can_pin_messages": "promote.right_names.can_pin_messages",
+    "can_manage_video_chats": "promote.right_names.can_manage_video",
+    "can_manage_topics": "promote.right_names.can_manage_topics",
+    "can_manage_tags": "promote.right_names.can_manage_tags",
+    "can_promote_members": "promote.right_names.can_promote_members",
 }
 FULL_RIGHTS = tuple(RIGHT_NAMES)
 BASIC_RIGHTS = tuple(right for right in FULL_RIGHTS if right != "can_promote_members")
@@ -72,10 +67,10 @@ async def _call(call):
     try:
         return await call
     except TelegramForbiddenError:
-        raise ModerationError(RIGHTS_MESSAGE) from None
+        raise ModerationError(tr(RIGHTS_MESSAGE)) from None
     except TelegramBadRequest as exc:
         if any(key in str(exc).lower() for key in ("user not found", "participant_id_invalid", "user_not_participant")):
-            raise ModerationError("That user isn't in this chat.") from None
+            raise ModerationError(tr("common.that_user_isn_t_in_this")) from None
         raise
 
 
@@ -91,7 +86,7 @@ def _has(member, right: str) -> bool:
 async def _member(message: Message, user_id: int):
     member = await moderation.get_member(message.bot, message.chat.id, user_id)
     if member is None:
-        raise ModerationError("I couldn't check that user in this chat.")
+        raise ModerationError(tr("promote.i_couldn_t_check_that_user"))
     return member
 
 
@@ -133,14 +128,14 @@ async def _begin(message: Message, role: Role | None = None) -> object | None:
     """
     try:
         if message.chat.type not in moderation.GROUP_TYPES:
-            raise ModerationError("This command only works in groups.")
+            raise ModerationError(tr("common.this_command_only_works_in_groups"))
         if moderation.actor_of(message).anonymous:
-            raise NotAllowed("Send this command as yourself, not as an anonymous admin.")
+            raise NotAllowed(tr("common.send_this_command_as_yourself_not"))
         member = await _actor_member(message, role, "can_promote_members")
         if member is None:
-            raise ModerationError("I couldn't check your rights in this chat.")
+            raise ModerationError(tr("common.i_couldn_t_check_your_rights"))
         if not _has(member, "can_promote_members"):
-            raise NotAllowed("You need the right to add new admins to use this command.")
+            raise NotAllowed(tr("promote.you_need_the_right_to_add"))
         return member
     except ModerationError as exc:
         await moderation.deny(message, exc)
@@ -152,7 +147,7 @@ async def _bot_member(message: Message, *needed: str):
     member = await _member(message, me.id)
     for right in needed:
         if not _has(member, right):
-            raise ModerationError(f"I need the admin right to {RIGHT_NAMES.get(right, right)} for that.")
+            raise ModerationError(tr("promote.i_need_the_admin_right_to", get=tr(RIGHT_NAMES.get(right, right))))
     return member
 
 
@@ -177,7 +172,7 @@ async def _target(message: Message, command: CommandObject, *, self_fallback: bo
 
 
 def _rights_text(rights: list[str]) -> str:
-    return ", ".join(RIGHT_NAMES[right] for right in rights) or "none"
+    return ", ".join(tr(RIGHT_NAMES[right]) for right in rights) or tr("promote.none")
 
 
 # --- /promote, /fullPromote -------------------------------------------------------
@@ -196,21 +191,21 @@ async def cmd_promote(message: Message, command: CommandObject, role: Role | Non
         target = await _target(message, command)
         title = target.extra.strip()
         if len(title) > MAX_LENGTH:
-            raise ModerationError(f"A title can have at most {MAX_LENGTH} characters.")
+            raise ModerationError(tr("promote.a_title_can_have_at_most", MAX_LENGTH=MAX_LENGTH))
         await moderation.check_target(bot, message.chat, target, actor, None, punitive=False, allow_self=True)
         bot_member = await _bot_member(message, "can_promote_members")
         target_member = await _member(message, target.user_id)
         status = _status(target_member)
         if status == "creator":
-            raise ModerationError("I can't change the owner of the chat.")
+            raise ModerationError(tr("promote.i_can_t_change_the_owner"))
         if status in ("left", "kicked") or (status == "restricted" and not getattr(target_member, "is_member", True)):
-            raise ModerationError("That user isn't in this chat.")
+            raise ModerationError(tr("common.that_user_isn_t_in_this"))
 
         # Nobody can hand out more than they hold themselves, and neither can I.
         wanted = FULL_RIGHTS if full else BASIC_RIGHTS
         rights = [r for r in wanted if _has(bot_member, r) and _has(actor_member, r)]
         if not rights:
-            raise ModerationError("You and I have no admin rights in common to give.")
+            raise ModerationError(tr("promote.you_and_i_have_no_admin"))
 
         await _call(
             bot.promote_chat_member(
@@ -229,18 +224,18 @@ async def cmd_promote(message: Message, command: CommandObject, role: Role | Non
     if title:
         try:
             await _call(bot.set_chat_administrator_custom_title(message.chat.id, target.user_id, title))
-            title_line = f"\nTitle: <b>{esc(title)}</b>"
+            title_line = tr("promote.title", title=esc(title))
         except (TelegramBadRequest, ModerationError) as exc:
-            reason = "A title can't contain emoji." if "emoji" in str(exc).lower() else "I couldn't set the title."
-            title_line = f"\nTitle not set: {reason}"
+            reason = tr("promote.a_title_can_t_contain_emoji") if "emoji" in str(exc).lower() else tr("promote.i_couldn_t_set_the_title")
+            title_line = tr("promote.title_not_set", reason=reason)
 
-    kind = "to admin with full rights" if full else "to admin"
+    kind = tr("promote.to_admin_with_full_rights") if full else tr("promote.to_admin")
     await moderation.log_action(
-        message, "PROMOTED", actor, target, "", ("Rights", esc(_rights_text(rights))), *((("Title", esc(title)),) if title else ())
+        message, "PROMOTED", actor, target, "", (tr("promote.rights"), esc(_rights_text(rights))), *(((tr("common.title"), esc(title)),) if title else ())
     )
     await reply(
         message,
-        f"{user_link(target.user_id, target.name)} was promoted {kind}{moderation.by(actor)}"
+        tr("promote.was_promoted", user_id=user_link(target.user_id, target.name), kind=kind, by=moderation.by(actor))
         + title_line + moderation.staff_note(actor),
     )
 
@@ -248,9 +243,9 @@ async def cmd_promote(message: Message, command: CommandObject, role: Role | Non
 def _promotion_problem(exc: TelegramBadRequest) -> str:
     problem = str(exc).lower()
     if "administrator" in problem or "admin_rank" in problem or "chat_admin_required" in problem:
-        return "I can only change admins that I promoted myself."
+        return tr("promote.i_can_only_change_admins_that")
     if "bot" in problem and "can't" in problem:
-        return "Telegram doesn't allow that for this user."
+        return tr("promote.telegram_doesn_t_allow_that_for")
     raise exc
 
 
@@ -272,9 +267,9 @@ async def cmd_demote(message: Message, command: CommandObject, role: Role | None
         target_member = await _member(message, target.user_id)
         status = _status(target_member)
         if status == "creator":
-            raise ModerationError("I can't demote the owner of the chat.")
+            raise ModerationError(tr("promote.i_can_t_demote_the_owner"))
         if status != "administrator":
-            raise ModerationError("That user isn't an admin.")
+            raise ModerationError(tr("promote.that_user_isn_t_an_admin"))
         await _call(bot.promote_chat_member(message.chat.id, target.user_id, **{r: False for r in ALL_RIGHTS_OFF}))
     except (TargetError, ModerationError) as exc:
         await moderation.deny(message, exc)
@@ -286,7 +281,7 @@ async def cmd_demote(message: Message, command: CommandObject, role: Role | None
     await moderation.log_action(message, "DEMOTED", actor, target)
     await reply(
         message,
-        f"{user_link(target.user_id, target.name)} was demoted{moderation.by(actor)}" + moderation.staff_note(actor),
+        tr("promote.was_demoted", user_id=user_link(target.user_id, target.name), by=moderation.by(actor)) + moderation.staff_note(actor),
     )
 
 
@@ -299,34 +294,34 @@ async def cmd_title(message: Message, command: CommandObject, role: Role | None 
     actor = moderation.actor_of(message)
     try:
         if message.chat.type not in moderation.GROUP_TYPES:
-            raise ModerationError("This command only works in groups.")
+            raise ModerationError(tr("common.this_command_only_works_in_groups"))
         if actor.anonymous:
-            raise NotAllowed("Send this command as yourself, not as an anonymous admin.")
+            raise NotAllowed(tr("common.send_this_command_as_yourself_not"))
         target = await _target(message, command, self_fallback=True)
         text = target.extra.strip()
         if len(text) > MAX_LENGTH:
-            raise ModerationError(f"A title can have at most {MAX_LENGTH} characters.")
+            raise ModerationError(tr("promote.a_title_can_have_at_most", MAX_LENGTH=MAX_LENGTH))
 
         own = target.user_id == actor.id
         if own:
             actor_member = await _member(message, actor.id)
             if _status(actor_member) not in ("administrator", "creator"):
-                raise NotAllowed("Only admins can have a title.")
+                raise NotAllowed(tr("promote.only_admins_can_have_a_title"))
         else:
             actor_member = await _actor_member(message, role, "can_promote_members")
             if actor_member is None:
-                raise ModerationError("I couldn't check your rights in this chat.")
+                raise ModerationError(tr("common.i_couldn_t_check_your_rights"))
             await moderation.check_target(bot, message.chat, target, actor, None, punitive=False, allow_self=True)
             if not _has(actor_member, "can_promote_members"):
-                raise NotAllowed("You need the right to add new admins to change someone else's title.")
+                raise NotAllowed(tr("promote.you_need_the_right_to_add_2"))
             _mark_staff(actor, actor_member)
         await _bot_member(message, "can_promote_members")
         target_member = await _member(message, target.user_id)
         status = _status(target_member)
         if status == "creator":
-            raise ModerationError("The owner of the chat sets their own title in Telegram.")
+            raise ModerationError(tr("promote.the_owner_of_the_chat_sets"))
         if status != "administrator":
-            raise ModerationError("That user isn't an admin.")
+            raise ModerationError(tr("promote.that_user_isn_t_an_admin"))
         await _call(bot.set_chat_administrator_custom_title(message.chat.id, target.user_id, text))
     except (TargetError, ModerationError) as exc:
         await moderation.deny(message, exc)
@@ -334,18 +329,18 @@ async def cmd_title(message: Message, command: CommandObject, role: Role | None 
     except TelegramBadRequest as exc:
         problem = str(exc).lower()
         if "emoji" in problem:
-            await reply(message, "A title can't contain emoji.")
+            await reply(message, tr("promote.a_title_can_t_contain_emoji"))
         elif "admin" in problem:
-            await reply(message, "I can only set the title of admins that I promoted myself.")
+            await reply(message, tr("promote.i_can_only_set_the_title"))
         else:
             raise
         return
 
     who = user_link(target.user_id, target.name)
     if text:
-        await reply(message, f"{who} was given the title <b>{esc(text)}</b>{moderation.by(actor)}")
+        await reply(message, tr("promote.was_given_the_title", who=who, text=esc(text), by=moderation.by(actor)))
     else:
-        await reply(message, f"The title of {who} was cleared{moderation.by(actor)}")
+        await reply(message, tr("promote.the_title_of_was_cleared", who=who, by=moderation.by(actor)))
 
 
 # --- /tag -------------------------------------------------------------------------------
@@ -370,46 +365,46 @@ async def cmd_tag(message: Message, command: CommandObject, role: Role | None = 
     actor = moderation.actor_of(message)
     try:
         if message.chat.type not in moderation.GROUP_TYPES:
-            raise ModerationError("This command only works in groups.")
+            raise ModerationError(tr("common.this_command_only_works_in_groups"))
         if actor.anonymous:
-            raise NotAllowed("Send this command as yourself, not as an anonymous admin.")
+            raise NotAllowed(tr("common.send_this_command_as_yourself_not"))
         target = await _target(message, command, self_fallback=True)
         text = target.extra.strip()
         if len(text) > MAX_LENGTH:
-            raise ModerationError(f"A tag can have at most {MAX_LENGTH} characters.")
+            raise ModerationError(tr("promote.a_tag_can_have_at_most", MAX_LENGTH=MAX_LENGTH))
 
         own = target.user_id == actor.id
         if own:
             actor_member = await _member(message, actor.id)
             if not await _may_edit_own_tag(message, actor_member):
-                raise NotAllowed("This chat doesn't let members edit their own tag.")
+                raise NotAllowed(tr("promote.this_chat_doesn_t_let_members"))
         else:
             actor_member = await _actor_member(message, role, "can_manage_tags")
             if actor_member is None:
-                raise ModerationError("I couldn't check your rights in this chat.")
+                raise ModerationError(tr("common.i_couldn_t_check_your_rights"))
             await moderation.check_target(bot, message.chat, target, actor, None, punitive=False, allow_self=True)
             if not _has(actor_member, "can_manage_tags"):
-                raise NotAllowed("You need the right to manage tags to change someone else's tag.")
+                raise NotAllowed(tr("promote.you_need_the_right_to_manage"))
             _mark_staff(actor, actor_member)
         await _bot_member(message, "can_manage_tags")
         target_member = await _member(message, target.user_id)
         status = _status(target_member)
         if status in ("administrator", "creator"):
-            raise ModerationError("Admins have a title instead. Use /title.")
+            raise ModerationError(tr("promote.admins_have_a_title_instead_use"))
         if status in ("left", "kicked") or (status == "restricted" and not getattr(target_member, "is_member", True)):
-            raise ModerationError("That user isn't in this chat.")
+            raise ModerationError(tr("common.that_user_isn_t_in_this"))
         await perform(bot.set_chat_member_tag(message.chat.id, target.user_id, text or None))
     except (TargetError, ModerationError) as exc:
         await moderation.deny(message, exc)
         return
     except TelegramBadRequest as exc:
         if "emoji" in str(exc).lower():
-            await reply(message, "A tag can't contain emoji.")
+            await reply(message, tr("promote.a_tag_can_t_contain_emoji"))
             return
         raise
 
     who = user_link(target.user_id, target.name)
     if text:
-        await reply(message, f"{who} was given the tag <b>{esc(text)}</b>{moderation.by(actor)}")
+        await reply(message, tr("promote.was_given_the_tag", who=who, text=esc(text), by=moderation.by(actor)))
     else:
-        await reply(message, f"The tag of {who} was cleared{moderation.by(actor)}")
+        await reply(message, tr("promote.the_tag_of_was_cleared", who=who, by=moderation.by(actor)))

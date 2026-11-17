@@ -17,74 +17,44 @@ from core.moderation import GROUP_TYPES
 from core.roles import Role
 from core.targets import replied_message
 from core.text import esc
+from core.i18n import tr
 
 log = logging.getLogger(__name__)
 
-ABOUT = """
-Every chat can have rules that anyone can ask for. By default /rules gives you a button that opens them in a private chat with me, which keeps the group quiet; /rules here shows them in the group instead.
-
-The rules can be text, or any media with text as its caption. Write them after /setrules, or reply to a message to use it as it is. Setting and clearing them is for chat admins with the right to change chat info.
-
-Formatting, fillings, buttons and random variants work as described below.
-"""
+ABOUT = "rules.about"
 
 HELP = [
-    ("/rules", "Get the rules of this chat in a private chat with me."),
-    ("/rules here", "Show the rules in the group."),
-    ("/rules noformat", "Show the rules in the group exactly as they were written, without formatting."),
-    ("/setrules <reply or text>", "Set the rules. Reply to a message to use it, media included. Setting them again replaces the old ones.", "admins"),
-    ("/resetrules", "Clear the rules of this chat.", "admins"),
+    ("/rules", "rules.help.get_the_rules_of_this"),
+    ("/rules here", "rules.help.show_the_rules_in_the"),
+    ("/rules noformat", "rules.help.show_the_rules_in_the_2"),
+    ("/setrules <reply or text>", "rules.help.set_the_rules_reply_to", "common.admins"),
+    ("/resetrules", "rules.help.clear_the_rules_of_this", "common.admins"),
 ]
 
 HELP_NOTES = [
     (
-        "Formatting",
-        """
-        <b>bold</b>  <i>italic</i>  <u>underline</u>  <s>strike</s>  <tg-spoiler>spoiler</tg-spoiler>
-        <code>code</code>  <pre>pre</pre>  <blockquote>quote</blockquote>  <a href="https://link">text</a>
-        The formatting menu of Telegram works as well: select the text and pick Bold, Italic, Link...
-        Anything that is not one of these tags is shown as typed.
-        """,
+        "common.formatting",
+        "common.bold_italic_underline_strike_spoiler_code",
     ),
     (
-        "Fillings",
-        """
-        Replaced by facts about whoever asks for the rules:
-        {first} {last} {fullname} {username} {mention} {id} {chatname} {count}
-        {username} falls back to a mention for people without one. {count} is the number of members.
-        """,
+        "common.fillings",
+        "rules.note.replaced_by_facts_about_whoever",
     ),
     (
-        "Options",
-        """
-        Put these anywhere in the text; they are removed and change how the rules are sent:
-        {preview} - show link previews.
-        {protect} - forbid forwarding and saving.
-        {nonotif} - send silently.
-        {mediaspoiler} - hide a photo, GIF or video behind a spoiler.
-        """,
+        "common.options",
+        "rules.note.put_these_anywhere_in_the",
     ),
     (
-        "Buttons",
-        """
-        [Text](buttonurl://example.com) - a button under the rules, on its own row.
-        [Text](buttonurl://example.com:same) - a button on the row of the previous one.
-        """,
+        "common.buttons",
+        "rules.note.text_buttonurl_example_com_a",
     ),
     (
-        "Random content",
-        """
-        Separate variants with %%% and I send one of them at random each time.
-        """,
+        "common.random_content",
+        "common.separate_variants_with_and_i_send",
     ),
     (
-        "Examples",
-        """
-        /setrules <b>1.</b> Be kind, {first}.
-        <b>2.</b> No spam. [More](buttonurl://example.com/rules)
-        /setrules - reply to a message to make it the rules.
-        /rules noformat
-        """,
+        "common.examples",
+        "rules.note.setrules_1_be_kind_2",
     ),
 ]
 
@@ -108,7 +78,7 @@ async def _admin_only(message: Message, role: Role | None) -> bool:
 @router.message(cmd("setrules"))
 async def cmd_setrules(message: Message, command: CommandObject, role: Role | None = None) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     if not await _admin_only(message, role):
         return
@@ -118,7 +88,7 @@ async def cmd_setrules(message: Message, command: CommandObject, role: Role | No
     if not text and replied is not None:
         text = sender.text_of(replied)
     if not text and media is None:
-        await reply(message, "Tell me what the rules are: write them after /setrules, or reply to a message.")
+        await reply(message, tr("rules.tell_me_what_the_rules_are"))
         return
     try:
         sender.validate(text, media is not None)
@@ -126,20 +96,20 @@ async def cmd_setrules(message: Message, command: CommandObject, role: Role | No
         await reply(message, esc(exc))
         return
     await rulestore.save(message.chat.id, text, media[0] if media else None, media[1] if media else None)
-    await reply(message, "The rules are saved. Use /rules to see them.")
+    await reply(message, tr("rules.the_rules_are_saved_use_rules"))
 
 
 @router.message(cmd("resetrules"))
 async def cmd_resetrules(message: Message, role: Role | None = None) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     if not await _admin_only(message, role):
         return
     if await rulestore.remove(message.chat.id):
-        await reply(message, "The rules are cleared.")
+        await reply(message, tr("rules.the_rules_are_cleared"))
     else:
-        await reply(message, "This chat has no rules to clear.")
+        await reply(message, tr("rules.this_chat_has_no_rules_to"))
 
 
 # --- Asking -----------------------------------------------------------------------------------
@@ -151,7 +121,7 @@ async def _send_rules(message: Message, chat: Any, *, raw: bool = False) -> bool
         return False
     await sender.send(
         message, message.from_user, row["content"], row["media_type"], row["media_file_id"],
-        raw=raw, label="rules", chat=chat,
+        raw=raw, label=tr("rules.rules"), chat=chat,
     )
     return True
 
@@ -159,24 +129,24 @@ async def _send_rules(message: Message, chat: Any, *, raw: bool = False) -> bool
 @router.message(cmd("rules"))
 async def cmd_rules(message: Message, command: CommandObject) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     argument = (command.args or "").strip().lower()
     if argument not in ("", "here", "noformat"):
-        await reply(message, "Use /rules, /rules here or /rules noformat.")
+        await reply(message, tr("rules.use_rules_rules_here_or_rules"))
         return
     row = await rulestore.get(message.chat.id)
     if row is None or (not row["content"] and not row["media_type"]):
-        await reply(message, "This chat has no rules yet. Admins can set them with /setrules.")
+        await reply(message, tr("rules.this_chat_has_no_rules_yet"))
         return
     if argument:
         await _send_rules(message, message.chat, raw=argument == "noformat")
         return
     me = await message.bot.me()
     keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="Rules", url=f"https://t.me/{me.username}?start=rules_{message.chat.id}")]]
+        inline_keyboard=[[InlineKeyboardButton(text=tr("rules.rules_2"), url=f"https://t.me/{me.username}?start=rules_{message.chat.id}")]]
     )
-    await reply(message, "Click the button below to read the rules of this chat.", reply_markup=keyboard)
+    await reply(message, tr("rules.click_the_button_below_to_read"), reply_markup=keyboard)
 
 
 async def _opened_link(message: Message) -> dict[str, Any] | bool:
@@ -192,11 +162,11 @@ async def on_link(message: Message, rules_chat: int) -> None:
     try:
         chat = await message.bot.get_chat(rules_chat)
     except TelegramAPIError:
-        await reply(message, "I can't find that chat. Maybe I was removed from it.")
+        await reply(message, tr("rules.i_can_t_find_that_chat"))
         return
     status = await moderation.member_status(message.bot, rules_chat, message.from_user.id)
     if chat.type not in GROUP_TYPES or status is None or status in _LEFT:
-        await reply(message, "You are not in that chat, so I can't show you its rules.")
+        await reply(message, tr("rules.you_are_not_in_that_chat"))
         return
     if not await _send_rules(message, chat):
-        await reply(message, f"<b>{esc(chat.title or 'That chat')}</b> has no rules yet.")
+        await reply(message, tr("rules.has_no_rules_yet", v=esc(chat.title or tr("rules.that_chat"))))

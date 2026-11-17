@@ -16,34 +16,25 @@ from core.helpers import reply
 from core.moderation import GROUP_TYPES, MAX_DURATION, MIN_DURATION, ModerationError, parse_duration, perform
 from core.roles import Role
 from core.text import duration_text, esc, user_link, SWITCH as _ON_OFF, parse_switch
+from core.i18n import tr, word
 
 # Flood control is off until a chat admin sets a limit with /setflood. Bots are
 # ignored, and so are chat admins and approved users.
-ABOUT = """
-Takes action on people who flood the chat with messages. It is off until an admin turns it on with /setflood, for example /setflood 10 to act on anyone who sends more than ten messages in a row (a mute by default). Bots, chat admins, approved users and the bot's staff are ignored, and an album of photos counts as one message.
-
-Two rules can run side by side: the limit counts messages in a row from one person, the timer counts messages from one person within a time window, whoever else writes in between.
-
-The /set... commands are for chat admins with the right to change chat info.
-"""
+ABOUT = "antiflood.about"
 
 HELP = [
-    ("/flood", "Show the current flood-control settings."),
-    ("/setflood <count|off>", "Act on anyone who sends more than count messages in a row (2 to 100). off disables this rule.", "admins"),
-    ("/setfloodtimer <count> <duration>", "Act on anyone who sends count messages within duration, like 10s, 2m or 1h. off disables the timer.", "admins"),
-    ("/setfloodmode &lt;ban|kick|mute|tban|tmute&gt; [duration]", "Choose what happens to a flooder. tban and tmute are temporary and need a duration like 30m, 2h or 3d. Default: mute.", "admins"),
-    ("/clearflood <on|off>", "Delete the whole flood. Without it only the messages over the limit are deleted.", "admins"),
-    ("/antichannel <on|off>", "Ban anyone who writes as a channel and make them talk as themselves. Anonymous admins and the chat's linked channel are not affected.", "admins"),
+    ("/flood", "antiflood.help.show_the_current_flood_control"),
+    ("/setflood <count|off>", "antiflood.help.act_on_anyone_who_sends", "common.admins"),
+    ("/setfloodtimer <count> <duration>", "antiflood.help.act_on_anyone_who_sends_2", "common.admins"),
+    ("/setfloodmode &lt;ban|kick|mute|tban|tmute&gt; [duration]", "antiflood.help.choose_what_happens_to_a", "common.admins"),
+    ("/clearflood <on|off>", "antiflood.help.delete_the_whole_flood_without", "common.admins"),
+    ("/antichannel <on|off>", "antiflood.help.ban_anyone_who_writes_as", "common.admins"),
 ]
 
 HELP_NOTES = [
     (
-        "Examples",
-        """
-        /setflood 10 - more than ten messages in a row.
-        /setfloodtimer 5 10s - five messages within ten seconds.
-        /setfloodmode tmute 30m - mute flooders for thirty minutes.
-        """,
+        "common.examples",
+        "antiflood.note.setflood_10_more_than_ten",
     ),
 ]
 
@@ -69,12 +60,12 @@ _span_text = duration_text
 def _mode_text(settings: dict[str, Any]) -> str:
     mode = settings["mode"]
     if mode in flood.TIMED_MODES:
-        return f"{mode} for {_span_text(settings['mode_seconds'])}"
-    return mode
+        return tr("antiflood.for", mode=word(mode), span_text=_span_text(settings['mode_seconds']))
+    return word(mode)
 
 
 def _state(enabled: bool) -> str:
-    return "on" if enabled else "off"
+    return tr("common.on") if enabled else tr("common.off")
 
 
 def _parse_span(text: str) -> int | None:
@@ -96,17 +87,17 @@ def _parse_count(text: str) -> int | None:
 def _settings_text(chat_title: str, settings: dict[str, Any]) -> str:
     limit = settings["flood_limit"]
     timer = settings["timer_count"]
-    lines = [f"<b>Flood control in {esc(chat_title)}</b>", ""]
+    lines = [tr("antiflood.flood_control_in", chat_title=esc(chat_title)), ""]
     if not flood.active(settings):
         lines.append("Flood control is <b>off</b>.")
     else:
         lines.append(
-            f"Limit: more than <b>{limit}</b> messages in a row" if limit else "Limit: <b>off</b>"
+            tr("antiflood.limit_more_than_messages_in_a", limit=limit) if limit else tr("antiflood.limit_off")
         )
         lines.append(
-            f"Timer: <b>{timer}</b> messages within <b>{_span_text(settings['timer_seconds'])}</b>"
+            tr("antiflood.timer_messages_within", timer=timer, span_text=_span_text(settings['timer_seconds']))
             if timer
-            else "Timer: <b>off</b>"
+            else tr("antiflood.timer_off")
         )
         lines.append(f"Action: <b>{esc(_mode_text(settings))}</b>")
         lines.append(f"Delete all flood messages: <b>{_state(settings['clear_flood'])}</b>")
@@ -124,9 +115,9 @@ async def _admin_only(message: Message, role: Role | None) -> bool:
 @router.message(cmd("flood"))
 async def cmd_flood(message: Message) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
-    await reply(message, _settings_text(message.chat.title or "this chat", await flood.get(message.chat.id)))
+    await reply(message, _settings_text(message.chat.title or tr("common.this_chat"), await flood.get(message.chat.id)))
 
 
 @router.message(cmd("setflood"))
@@ -134,17 +125,17 @@ async def cmd_setflood(message: Message, command: CommandObject, role: Role | No
     if not await _admin_only(message, role):
         return
     argument = (command.args or "").strip().lower()
-    usage = f"Use /setflood &lt;count&gt; ({flood.MIN_COUNT} to {flood.MAX_COUNT}) or /setflood off."
+    usage = tr("antiflood.use_setflood_lt_count_gt_to", MIN_COUNT=flood.MIN_COUNT, MAX_COUNT=flood.MAX_COUNT)
     if parse_switch(argument) is False or argument == "0":
         await flood.update(message.chat.id, flood_limit=0)
-        await reply(message, "The limit on messages in a row is now <b>off</b>.")
+        await reply(message, tr("antiflood.the_limit_on_messages_in_a"))
         return
     count = _parse_count(argument)
     if count is None:
         await reply(message, usage)
         return
     await flood.update(message.chat.id, flood_limit=count)
-    await reply(message, f"Flood control will act on anyone who sends more than <b>{count}</b> messages in a row.")
+    await reply(message, tr("antiflood.flood_control_will_act_on_anyone", count=count))
 
 
 @router.message(cmd("setfloodtimer"))
@@ -154,20 +145,19 @@ async def cmd_setfloodtimer(message: Message, command: CommandObject, role: Role
     parts = (command.args or "").lower().split()
     if len(parts) == 1 and parse_switch(parts[0]) is False:
         await flood.update(message.chat.id, timer_count=0, timer_seconds=0)
-        await reply(message, "The timer is now <b>off</b>.")
+        await reply(message, tr("antiflood.the_timer_is_now_off"))
         return
     count = _parse_count(parts[0]) if len(parts) == 2 else None
     seconds = _parse_span(parts[1]) if len(parts) == 2 else None
     if count is None or seconds is None:
         await reply(
             message,
-            f"Use /setfloodtimer &lt;count&gt; &lt;duration&gt;, for example /setfloodtimer 5 10s, or /setfloodtimer off.\n"
-            f"The count is {flood.MIN_COUNT} to {flood.MAX_COUNT}; the duration is like 10s, 2m or 1h (up to 24 hours).",
+            tr("antiflood.use_setfloodtimer_lt_count_gt_lt", MIN_COUNT=flood.MIN_COUNT, MAX_COUNT=flood.MAX_COUNT),
         )
         return
     await flood.update(message.chat.id, timer_count=count, timer_seconds=seconds)
     await reply(
-        message, f"Flood control will act on anyone who sends <b>{count}</b> messages within <b>{_span_text(seconds)}</b>."
+        message, tr("antiflood.flood_control_will_act_on_anyone_2", count=count, span_text=_span_text(seconds))
     )
 
 
@@ -177,8 +167,7 @@ async def cmd_setfloodmode(message: Message, command: CommandObject, role: Role 
         return
     parts = (command.args or "").lower().split()
     usage = (
-        "Use /setfloodmode &lt;ban|kick|mute|tban|tmute&gt; [duration].\n"
-        "tban and tmute need a duration, like 30m, 2h, 3d or 1w."
+        tr("antiflood.use_setfloodmode_lt_ban_kick_mute")
     )
     if not parts or parts[0] not in flood.MODES or len(parts) > 2:
         await reply(message, usage)
@@ -188,14 +177,14 @@ async def cmd_setfloodmode(message: Message, command: CommandObject, role: Role 
     if mode in flood.TIMED_MODES:
         duration = parse_duration(parts[1]) if len(parts) == 2 else None
         if duration is None or not MIN_DURATION <= duration <= MAX_DURATION:
-            await reply(message, f"{mode} needs a duration, like 30m, 2h, 3d or 1w (from 1 minute to 365 days).")
+            await reply(message, tr("antiflood.needs_a_duration_like_30m_2h", mode=mode))
             return
         seconds = int(duration.total_seconds())
     elif len(parts) == 2:
-        await reply(message, f"{mode} doesn't take a duration. Use tban or tmute for a temporary action.")
+        await reply(message, tr("antiflood.doesn_t_take_a_duration_use", mode=mode))
         return
     settings = await flood.update(message.chat.id, mode=mode, mode_seconds=seconds)
-    await reply(message, f"Flood control will now <b>{esc(_mode_text(settings))}</b> anyone who floods the chat.")
+    await reply(message, tr("antiflood.flood_control_will_now_anyone_who", mode_text=esc(_mode_text(settings))))
 
 
 async def _toggle(message: Message, command: CommandObject, role: Role | None, column: str, usage: str, text) -> None:
@@ -217,20 +206,20 @@ async def _toggle(message: Message, command: CommandObject, role: Role | None, c
 @router.message(cmd("clearflood"))
 async def cmd_clearflood(message: Message, command: CommandObject, role: Role | None = None) -> None:
     await _toggle(
-        message, command, role, "clear_flood", "Use /clearflood on or /clearflood off.",
-        lambda on: "The messages that trigger flood control will be <b>deleted</b>."
+        message, command, role, "clear_flood", tr("antiflood.use_clearflood_on_or_clearflood_off"),
+        lambda on: tr("antiflood.the_messages_that_trigger_flood_control")
         if on
-        else "The messages that trigger flood control will be <b>kept</b>.",
+        else tr("antiflood.the_messages_that_trigger_flood_control_2"),
     )
 
 
 @router.message(cmd("antichannel"))
 async def cmd_antichannel(message: Message, command: CommandObject, role: Role | None = None) -> None:
     await _toggle(
-        message, command, role, "antichannel", "Use /antichannel on or /antichannel off.",
-        lambda on: "Anti-channel is <b>on</b>: anyone speaking as a channel is banned and must talk as themselves."
+        message, command, role, "antichannel", tr("antiflood.use_antichannel_on_or_antichannel_off"),
+        lambda on: tr("antiflood.anti_channel_is_on_anyone_speaking")
         if on
-        else "Anti-channel is <b>off</b>.",
+        else tr("antiflood.anti_channel_is_off"),
     )
 
 
@@ -303,9 +292,9 @@ async def on_flood(message: Message, bot: Bot, flood_ids: list[int], flood_setti
         now = time.monotonic()
         if now - _complained.get(chat_id, -FAILURE_COOLDOWN) >= FAILURE_COOLDOWN:
             _complained[chat_id] = now
-            await reply(message, f"{user_link(user.id, user.full_name)} is flooding the chat, but I can't act: {esc(failure)}")
+            await reply(message, tr("antiflood.is_flooding_the_chat_but_i", id=user_link(user.id, user.full_name), failure=esc(failure)))
         return
-    await reply(message, f"Flood control: {user_link(user.id, user.full_name)} has been {done}.", quote=False)
+    await reply(message, tr("antiflood.flood_control_has_been", id=user_link(user.id, user.full_name), done=done), quote=False)
 
 
 async def _channel_speaking(message: Message) -> bool:
@@ -329,8 +318,8 @@ async def on_channel(message: Message, bot: Bot) -> None:
         now = time.monotonic()
         if now - _complained.get(message.chat.id, -FAILURE_COOLDOWN) >= FAILURE_COOLDOWN:
             _complained[message.chat.id] = now
-            await reply(message, f"Anti-channel is on, but I can't ban channels: {esc(exc)}")
+            await reply(message, tr("antiflood.anti_channel_is_on_but_i", exc=esc(exc)))
         return
-    title = esc(channel.title or "A channel")
+    title = esc(channel.title or tr("antiflood.a_channel"))
     name = f'<a href="https://t.me/{esc(channel.username)}">{title}</a>' if getattr(channel, "username", None) else f"<b>{title}</b>"
-    await reply(message, f"{name} has been banned: speaking as a channel isn't allowed here. Talk as yourself.", quote=False)
+    await reply(message, tr("antiflood.has_been_banned_speaking_as_a", name=name), quote=False)

@@ -15,51 +15,34 @@ from core.helpers import reply
 from core.moderation import GROUP_TYPES, ModerationError
 from core.roles import Role
 from core.text import esc, truncate, user_link
+from core.i18n import tr
 
 log = logging.getLogger(__name__)
 
-HELP_TITLE = "Join Blacklists"
+HELP_TITLE = "joinblacklists.title"
 
-ABOUT = """
-Block people from joining when their profile contains certain words, which stops spammers before they post a single message. There are four lists, one for each part of a profile that is checked: the name, the @username, the bio and the personal channel (its name and its username). Each chat can have up to 10 triggers per list.
-
-Someone who matches is banned and the "joined" message is removed. Bots, chat admins, approved users and the bot's staff are never blocked, and neither is anyone who was added by a chat admin.
-
-Triggers match whole words and ignore case, so "casino" catches "Best Casino!" but not "casinos". To catch a word inside a longer one, use a wildcard: *casino* matches @best_casino_bot. Write one trigger per line to add several at once.
-
-The commands that change the lists are for chat admins with the right to change chat info. Anyone can look at them.
-"""
+ABOUT = "joinblacklists.about"
 
 HELP = [
-    ("/joinBlacklists", "List the join blacklists of this chat. Alias: /joinblacklist."),
-    ("/blacklistname <trigger>", "Block people whose name matches the trigger.", "admins"),
-    ("/blacklistusername <trigger>", "Block people whose @username matches the trigger.", "admins"),
-    ("/blacklistbio <trigger>", "Block people whose bio matches the trigger.", "admins"),
-    ("/blacklistchannel <trigger>", "Block people whose personal channel (its name or its username) matches the trigger.", "admins"),
-    ("/unblacklistname <trigger>", "Remove a name trigger.", "admins"),
-    ("/unblacklistusername <trigger>", "Remove a username trigger.", "admins"),
-    ("/unblacklistbio <trigger>", "Remove a bio trigger.", "admins"),
-    ("/unblacklistchannel <trigger>", "Remove a channel trigger.", "admins"),
+    ("/joinBlacklists", "joinblacklists.help.list_the_join_blacklists_of"),
+    ("/blacklistname <trigger>", "joinblacklists.help.block_people_whose_name_matches", "common.admins"),
+    ("/blacklistusername <trigger>", "joinblacklists.help.block_people_whose_username_matches", "common.admins"),
+    ("/blacklistbio <trigger>", "joinblacklists.help.block_people_whose_bio_matches", "common.admins"),
+    ("/blacklistchannel <trigger>", "joinblacklists.help.block_people_whose_personal_channel", "common.admins"),
+    ("/unblacklistname <trigger>", "joinblacklists.help.remove_a_name_trigger", "common.admins"),
+    ("/unblacklistusername <trigger>", "joinblacklists.help.remove_a_username_trigger", "common.admins"),
+    ("/unblacklistbio <trigger>", "joinblacklists.help.remove_a_bio_trigger", "common.admins"),
+    ("/unblacklistchannel <trigger>", "joinblacklists.help.remove_a_channel_trigger", "common.admins"),
 ]
 
 HELP_NOTES = [
     (
-        "Wildcards",
-        """
-        ? - any single character except whitespace.
-        * - any run of characters except whitespace (great for URLs).
-        ** - any run of characters, whitespace included.
-        A backslash makes them literal: \\* and \\?
-        """,
+        "common.wildcards",
+        "joinblacklists.note.any_single_character_except_whitespace",
     ),
     (
-        "Examples",
-        """
-        /blacklistname free crypto - names with the words "free crypto".
-        /blacklistusername *casino* - any username with casino inside.
-        /blacklistbio t.me/* - bios that link to a Telegram chat or channel.
-        /unblacklistbio t.me/*
-        """,
+        "common.examples",
+        "joinblacklists.note.blacklistname_free_crypto_names_with",
     ),
 ]
 
@@ -83,15 +66,14 @@ async def _admin_only(message: Message, role: Role | None) -> bool:
 @router.message(cmd("joinblacklists", "joinblacklist"))
 async def cmd_joinblacklists(message: Message) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     found = await joinblacklist.patterns(message.chat.id)
-    title = f"<b>Join blacklists in {esc(message.chat.title or 'this chat')}</b>"
+    title = tr("joinblacklists.join_blacklists_in", v=esc(message.chat.title or tr("common.this_chat")))
     if not any(found.values()):
         await reply(
             message,
-            f"{title}\n\nThere are none yet. Add one with /blacklistname, /blacklistusername, "
-            "/blacklistbio or /blacklistchannel.",
+            tr("joinblacklists.there_are_none_yet_add_one", title=title),
         )
         return
     lines = [title]
@@ -103,13 +85,13 @@ async def cmd_joinblacklists(message: Message) -> None:
 
 async def _add(message: Message, command: CommandObject, role: Role | None, kind: str) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     if not await _admin_only(message, role):
         return
     texts = [line for line in (command.args or "").splitlines() if line.strip()]
     if not texts:
-        await reply(message, f"Give me triggers, one per line. Example: /blacklist{kind} spam word")
+        await reply(message, tr("joinblacklists.give_me_triggers_one_per_line", kind=kind))
         return
     added: list[str] = []
     problems: list[str] = []
@@ -125,7 +107,7 @@ async def _add(message: Message, command: CommandObject, role: Role | None, kind
         elif outcome == "exists":
             problems.append(f"<code>{esc(pattern)}</code>: already in the list.")
         else:
-            note = f"The {kind} list is full ({joinblacklist.MAX_PER_KIND} triggers). Remove one first."
+            note = tr("joinblacklists.the_list_is_full_triggers_remove", kind=kind, MAX_PER_KIND=joinblacklist.MAX_PER_KIND)
             if note not in problems:
                 problems.append(note)
     lines: list[str] = []
@@ -140,13 +122,13 @@ async def _add(message: Message, command: CommandObject, role: Role | None, kind
 
 async def _remove(message: Message, command: CommandObject, role: Role | None, kind: str) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     if not await _admin_only(message, role):
         return
     texts = [line for line in (command.args or "").splitlines() if line.strip()]
     if not texts:
-        await reply(message, f"Give me the triggers to remove, one per line. Example: /unblacklist{kind} spam word")
+        await reply(message, tr("joinblacklists.give_me_the_triggers_to_remove", kind=kind))
         return
     removed: list[str] = []
     missing: list[str] = []

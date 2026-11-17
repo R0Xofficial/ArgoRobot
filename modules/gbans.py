@@ -31,6 +31,7 @@ from core.moderation import GROUP_TYPES, ModerationError
 from core.roles import Role
 from core.targets import Target, TargetError, display_name, replied_message, resolve_target, sender_as_target
 from core.text import at_name, esc, user_ref, SWITCH as _ANSWERS
+from core.i18n import tr
 
 log = logging.getLogger(__name__)
 
@@ -38,20 +39,16 @@ log = logging.getLogger(__name__)
 # any command of theirs could run (see main.discover_modules).
 PRIORITY = -100
 
-ABOUT = """
-A global ban works in every chat I'm in: I remove the user as soon as they show up there (write, edit, react, join or leave). They are handled by my staff: Sudo and up ban immediately, while Support users send a request that a Sudo user approves or declines with buttons.
-
-Banned users are removed when they write or join. Each chat can switch this off with /gbans. Whitelisted and approved users are skipped, and lifting a global ban only undoes the bans I made because of it. The ban message names the support chat to appeal in, when one is configured.
-"""
+ABOUT = "gbans.about"
 
 HELP = [
-    ("/gban <user> <reason>", "Ban a user in every chat. Support users send a request instead.", Role.SUPPORT),
-    ("/dgban <reason>", "Reply to a message: delete it and ban its author globally.", Role.SUPPORT),
-    ("/ungban <user> <reason>", "Lift a global ban. Support users send a request instead.", Role.SUPPORT),
-    ("/gstat [user]", "Show whether you are globally banned, and why. Support users can look up anyone. Alias: /gbanstat."),
-    ("/gbans [on|off]", "Choose whether this chat removes globally banned users. On by default; any admin can look, only the chat owner can change it. Alias: /enforcegban.", "chat owner"),
-    ("/gimport [csv|minicsv|json|human]", "Reply to a file to import global bans from it (or send the file with the command). The format is detected if you leave it out. JSON files with one ban per line work too.", Role.OWNER),
-    ("/gexport [csv|minicsv|json|human]", "Get the list of global bans as a file. The default is csv.", Role.OWNER),
+    ("/gban <user> <reason>", "gbans.help.ban_a_user_in_every", Role.SUPPORT),
+    ("/dgban <reason>", "gbans.help.reply_to_a_message_delete", Role.SUPPORT),
+    ("/ungban <user> <reason>", "gbans.help.lift_a_global_ban_support", Role.SUPPORT),
+    ("/gstat [user]", "gbans.help.show_whether_you_are_globally"),
+    ("/gbans [on|off]", "gbans.help.choose_whether_this_chat_removes", "common.chat_owner"),
+    ("/gimport [csv|minicsv|json|human]", "gbans.help.reply_to_a_file_to", Role.OWNER),
+    ("/gexport [csv|minicsv|json|human]", "gbans.help.get_the_list_of_global", Role.OWNER),
 ]
 
 router = Router(name="gbans")
@@ -63,9 +60,9 @@ IMPORT_CHUNK = 5000
 SUDO = Role.SUDO
 
 
-NO_REASON = "Give a reason!"
-IMMUNE_MESSAGE = "I can't take action against that account."
-PRIVILEGED_MESSAGE = "LoL, looks like... Someone tried gban privileged user. Nice Try."
+NO_REASON = "gbans.no_reason"
+IMMUNE_MESSAGE = "common.i_can_t_take_action_against"
+PRIVILEGED_MESSAGE = "gbans.privileged_message"
 
 
 # --- Wording -------------------------------------------------------------------
@@ -85,7 +82,7 @@ def _origin_html(message: Message) -> str:
     """The "Initiated From" line: where the command was given, with a link only for public chats."""
     chat = message.chat
     if chat.type == "private":
-        place = f"PM with {esc(message.from_user.first_name)}"
+        place = tr("gbans.pm_with", first_name=esc(message.from_user.first_name))
     elif chat.username:
         place = f'<a href="https://t.me/{esc(chat.username)}/{message.message_id}">{esc(chat.title)}</a>'
     else:
@@ -106,10 +103,10 @@ def _log_text(
 ) -> str:
     lines = [
         f"<b>{tag}</b>",
-        f"<b>Initiated From:</b> {origin}",
+        tr("gbans.initiated_from", origin=origin),
         "",
-        f"<b>User:</b> {target}",
-        f"<b>Reason:</b> <code>{esc(reason)}</code>",
+        tr("gbans.user", target=target),
+        tr("gbans.reason", reason=esc(reason)),
     ]
     if old_reason:
         lines.append(f"<b>Old Reason:</b> <code>{esc(old_reason)}</code>")
@@ -127,8 +124,8 @@ def _tag_for(old: dict | None) -> str:
 
 def _done_text(old: dict | None) -> str:
     if old:
-        return f"Done! Gban reason updated.\n<b>Old Reason:</b> <code>{esc(old['reason'])}</code>"
-    return "Done! Gbanned."
+        return tr("gbans.done_gban_reason_updated_old_reason", reason=esc(old['reason']))
+    return tr("gbans.done_gbanned")
 
 
 async def _notify(bot: Bot, chat_id: int, text: str, msg_id: int | None = None, thread_id: int | None = None) -> None:
@@ -152,11 +149,11 @@ async def _notify(bot: Bot, chat_id: int, text: str, msg_id: int | None = None, 
 async def _protection(bot: Bot, user_id: int) -> str | None:
     """Why this user can never be globally banned, or None. Message is HTML."""
     if immunity.is_immune(user_id):
-        return IMMUNE_MESSAGE
+        return tr(IMMUNE_MESSAGE)
     if user_id == bot.id or await roles.get_role(user_id) is not None:
-        return PRIVILEGED_MESSAGE
+        return tr(PRIVILEGED_MESSAGE)
     if await whitelist.is_whitelisted(user_id):
-        return "That user is whitelisted and can't be globally banned."
+        return tr("gbans.that_user_is_whitelisted_and_can")
     return None
 
 
@@ -216,10 +213,10 @@ async def _alert(bot: Bot, chat_id: int, ban: dict, thread_id: int | None, name:
     # The name they have now, else the one the bot registered when it saw them, else the one from the ban.
     name = name or await users.name_of(ban["user_id"]) or ban["name"]
     lines = [
-        "<b>Alert!</b> Detected globally banned user.",
-        "<code>I banned them here!</code>",
-        f"<b>User:</b> {user_ref(ban['user_id'], name)}",
-        f"<b>Reason:</b> <code>{esc(ban['reason'])}</code>",
+        tr("gbans.alert_detected_globally_banned_user"),
+        tr("gbans.i_banned_them_here"),
+        tr("gbans.user_2", user_id=user_ref(ban['user_id'], name)),
+        tr("gbans.reason", reason=esc(ban['reason'])),
     ]
     if at_name(settings.SUPPORT_CHAT_USERNAME):
         lines.append(f"<b>Appeal Chat:</b> {esc(at_name(settings.SUPPORT_CHAT_USERNAME))}")
@@ -272,7 +269,7 @@ async def _propagate_unban(bot: Bot, user_id: int, origin: tuple[int, int | None
         chat_id, msg_id, thread_id = origin
         seconds = round(time.monotonic() - started, 2)
         await _notify(
-            bot, chat_id, f"User has been un-gbanned.\nTime taken: <code>{seconds}s</code>", msg_id, thread_id
+            bot, chat_id, tr("gbans.user_has_been_un_gbanned_time", seconds=seconds), msg_id, thread_id
         )
 
 
@@ -319,8 +316,8 @@ def _request_keyboard(request_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="Approve", callback_data=f"{CB_PREFIX}apr:{request_id}"),
-                InlineKeyboardButton(text="Decline", callback_data=f"{CB_PREFIX}dec:{request_id}"),
+                InlineKeyboardButton(text=tr("gbans.approve"), callback_data=f"{CB_PREFIX}apr:{request_id}"),
+                InlineKeyboardButton(text=tr("common.decline"), callback_data=f"{CB_PREFIX}dec:{request_id}"),
             ]
         ]
     )
@@ -353,7 +350,7 @@ async def _ask_sudo(
         origin_html=origin,
     )
     if request_id is None:
-        await reply(message, f"There is already a pending request for {user_ref(target.user_id, target.name)}.")
+        await reply(message, tr("gbans.there_is_already_a_pending_request", user_id=user_ref(target.user_id, target.name)))
         return
 
     text = _log_text(
@@ -367,9 +364,9 @@ async def _ask_sudo(
     )
     if not await logs.role_log(message.bot, text, _request_keyboard(request_id)):
         await gbans.drop_request(request_id)
-        await reply(message, "I couldn't deliver your request to the log chat. Try again later.")
+        await reply(message, tr("gbans.i_couldn_t_deliver_your_request"))
         return
-    await reply(message, "Request sent.")
+    await reply(message, tr("gbans.request_sent"))
 
 
 @router.message(cmd("gban", "dgban"), HasRole(Role.SUPPORT))
@@ -381,10 +378,10 @@ async def cmd_gban(message: Message, command: CommandObject, role: Role) -> None
     try:
         if deleting:
             if replied is None:
-                raise TargetError("Reply to the message of the user you want to delete and ban.")
+                raise TargetError(tr("common.reply_to_the_message_of_the"))
             target = sender_as_target(replied)
             if target.is_chat or target.user_id in users.IGNORED_IDS:
-                raise TargetError("That message was not sent by a regular user.")
+                raise TargetError(tr("common.that_message_was_not_sent_by"))
             target.extra = (command.args or "").strip()
         else:
             target = await resolve_target(message, command, allow_bots=True)
@@ -396,13 +393,13 @@ async def cmd_gban(message: Message, command: CommandObject, role: Role) -> None
     reason = target.extra.strip()
 
     if immunity.is_immune(target.user_id):
-        await reply(message, IMMUNE_MESSAGE)
+        await reply(message, tr(IMMUNE_MESSAGE))
         return
     if not reason:
-        await reply(message, NO_REASON)
+        await reply(message, tr(NO_REASON))
         return
     if len(reason) > MAX_REASON_LENGTH:
-        await reply(message, f"The reason is too long (at most {MAX_REASON_LENGTH} characters).")
+        await reply(message, tr("gbans.the_reason_is_too_long_at", MAX_REASON_LENGTH=MAX_REASON_LENGTH))
         return
     problem = await _protection(bot, target.user_id)
     if problem is not None:
@@ -411,12 +408,12 @@ async def cmd_gban(message: Message, command: CommandObject, role: Role) -> None
     if await gbans.has_pending(target.user_id):
         await reply(
             message,
-            f"There is already a pending request for {who} waiting for approval in the log channel.",
+            tr("gbans.there_is_already_a_pending_request_2", who=who),
         )
         return
     old = await gbans.get(target.user_id)
     if old and old["reason"].strip() == reason:
-        await reply(message, f"{who} is already globally banned for the same reason. <b>No changes made.</b>")
+        await reply(message, tr("gbans.is_already_globally_banned_for_the", who=who))
         return
 
     target_msg_id = replied.message_id if deleting else None
@@ -471,24 +468,24 @@ async def cmd_ungban(message: Message, command: CommandObject, role: Role) -> No
     reason = target.extra.strip()
 
     if immunity.is_immune(target.user_id):
-        await reply(message, IMMUNE_MESSAGE)
+        await reply(message, tr(IMMUNE_MESSAGE))
         return
     if not reason:
-        await reply(message, NO_REASON)
+        await reply(message, tr(NO_REASON))
         return
     if len(reason) > MAX_REASON_LENGTH:
-        await reply(message, f"The reason is too long (at most {MAX_REASON_LENGTH} characters).")
+        await reply(message, tr("gbans.the_reason_is_too_long_at", MAX_REASON_LENGTH=MAX_REASON_LENGTH))
         return
     if target.user_id == bot.id or await roles.get_role(target.user_id) is not None:
-        await reply(message, "Privileged users are never gbanned...")
+        await reply(message, tr("gbans.privileged_users_are_never_gbanned"))
         return
     if not await gbans.is_gbanned(target.user_id):
-        await reply(message, f"{who} is not globally banned.")
+        await reply(message, tr("gbans.is_not_globally_banned", who=who))
         return
     if await gbans.has_pending(target.user_id):
         await reply(
             message,
-            f"There is already a pending request for {who} waiting for approval in the log channel.",
+            tr("gbans.there_is_already_a_pending_request_2", who=who),
         )
         return
 
@@ -506,13 +503,13 @@ async def cmd_ungban(message: Message, command: CommandObject, role: Role) -> No
 
     admin = message.from_user
     if await gbans.remove(target.user_id) is None:
-        await reply(message, f"{who} is not globally banned.")
+        await reply(message, tr("gbans.is_not_globally_banned", who=who))
         return
     await logs.role_log(
         bot,
         _log_text("#UNGBANNED", _origin_html(message), who, reason, user_ref(admin.id, admin.full_name)),
     )
-    await reply(message, "Let's give them another chance!")
+    await reply(message, tr("gbans.let_s_give_them_another_chance"))
     _spawn(_propagate_unban(bot, target.user_id, _reply_place(message)))
 
 
@@ -522,19 +519,19 @@ async def cmd_ungban(message: Message, command: CommandObject, role: Role) -> No
 async def cb_request(callback: CallbackQuery, role: Role | None = None) -> None:
     bot = callback.bot
     if role is None or role < SUDO:
-        await callback.answer("Only Sudo users and above can process requests.", show_alert=True)
+        await callback.answer(tr("gbans.only_sudo_users_and_above_can"), show_alert=True)
         return
 
     parts = (callback.data or "").split(":")
     if len(parts) != 3 or parts[1] not in ("apr", "dec") or not parts[2].isdigit():
-        await callback.answer("This button is not valid.", show_alert=True)
+        await callback.answer(tr("common.this_button_is_not_valid"), show_alert=True)
         return
     approving = parts[1] == "apr"
 
     message = callback.message if isinstance(callback.message, Message) else None
     request = await gbans.claim_request(int(parts[2]))
     if request is None:
-        await callback.answer("Request not found (likely already processed).", show_alert=True)
+        await callback.answer(tr("gbans.request_not_found_likely_already_processed"), show_alert=True)
         if message is not None:
             with suppress(TelegramAPIError):
                 await message.edit_reply_markup(reply_markup=None)
@@ -553,20 +550,20 @@ async def cb_request(callback: CallbackQuery, role: Role | None = None) -> None:
             await edit(message, text, reply_markup=None, link_preview_options=LinkPreviewOptions(is_disabled=True))
 
     if not approving:
-        await callback.answer("Request declined.")
+        await callback.answer(tr("gbans.request_declined"))
         if message is not None:
-            await finish(f"{message.html_text}\n<b>Declined by:</b> {user_ref(approver.id, approver.full_name)}")
-        await _notify(bot, chat_id, "Request Declined.", msg_id, thread_id)
+            await finish(tr("gbans.declined_by", html_text=message.html_text, id=user_ref(approver.id, approver.full_name)))
+        await _notify(bot, chat_id, tr("gbans.request_declined_2"), msg_id, thread_id)
         return
 
     if request["kind"] in ("gban", "dgban"):
         problem = await _protection(bot, target_id)
         if problem is not None:
-            await callback.answer("This user can no longer be globally banned.", show_alert=True)
-            await finish(f"{message.html_text if message else ''}\n<b>Cancelled:</b> {problem}")
-            await _notify(bot, chat_id, f"Request cancelled. {problem}", msg_id, thread_id)
+            await callback.answer(tr("gbans.this_user_can_no_longer_be"), show_alert=True)
+            await finish(tr("gbans.cancelled", opt=message.html_text if message else '', problem=problem))
+            await _notify(bot, chat_id, tr("gbans.request_cancelled", problem=problem), msg_id, thread_id)
             return
-        await callback.answer("Approved.")
+        await callback.answer(tr("gbans.approved"))
         chat_type = "private" if chat_id > 0 else "supergroup"  # only groups matter for banning
         old = await _apply_ban(
             bot,
@@ -598,10 +595,10 @@ async def cb_request(callback: CallbackQuery, role: Role | None = None) -> None:
     # ungban
     removed = await gbans.remove(target_id)
     if removed is None:
-        await callback.answer("This user is not globally banned any more.", show_alert=True)
-        await finish(f"{message.html_text if message else ''}\n<b>Cancelled:</b> not globally banned any more.")
+        await callback.answer(tr("gbans.this_user_is_not_globally_banned"), show_alert=True)
+        await finish(tr("gbans.cancelled_not_globally_banned_any_more", opt=message.html_text if message else ''))
         return
-    await callback.answer("Approved.")
+    await callback.answer(tr("gbans.approved"))
     await finish(
         _log_text(
             "#UNGBANNED",
@@ -622,7 +619,7 @@ async def cmd_gstat(message: Message, command: CommandObject, role: Role | None 
     bot = message.bot
     viewer = message.from_user
     if viewer is None or viewer.id in users.IGNORED_IDS:
-        await reply(message, "I can't tell who you are. Send this as yourself, not anonymously.")
+        await reply(message, tr("gbans.i_can_t_tell_who_you"))
         return
 
     if role is not None and (command.args or replied_message(message)):
@@ -636,13 +633,13 @@ async def cmd_gstat(message: Message, command: CommandObject, role: Role | None 
         target_id, stored_name = viewer.id, viewer.full_name
 
     if immunity.is_immune(target_id):
-        await reply(message, "This account is immune to all bot actions.")
+        await reply(message, tr("gbans.this_account_is_immune_to_all"))
         return
 
     ban = await gbans.get(target_id)
     name = await display_name(bot, target_id, (ban or {}).get("name") or stored_name)
-    title = "Your Global Ban Status:" if target_id == viewer.id else "Global Ban Status:"
-    lines = [f"<b>{title}</b>", f"• <b>User:</b> {user_ref(target_id, name)}", ""]
+    title = tr("gbans.your_global_ban_status") if target_id == viewer.id else tr("gbans.global_ban_status")
+    lines = [f"<b>{title}</b>", tr("gbans.user_3", target_id=user_ref(target_id, name)), ""]
 
     target_role = await roles.get_role(target_id)
     if target_role is not None:
@@ -681,16 +678,14 @@ async def cmd_gbans(message: Message, command: CommandObject, role: Role | None 
         enabled = await chatsettings.gban_enforce(message.chat.id)
         await reply(
             message,
-            "<b>Global Ban Enforcement</b>\n\n"
-            f"Current status for this chat: <b>{'ENABLED' if enabled else 'DISABLED'}</b>\n"
-            "<b>Usage:</b> <code>/gbans &lt;on/off&gt;</code>",
+            tr("gbans.global_ban_enforcement_current_status_for", opt=tr("gbans.enabled") if enabled else tr("gbans.disabled")),
         )
         return
 
     if argument not in _ANSWERS:
         await reply(
             message,
-            "<b>Invalid choice!</b>\n\nUse: <code>/gbans on</code> or <code>/gbans off</code>",
+            tr("gbans.invalid_choice_use_gbans_on_or"),
         )
         return
 
@@ -703,12 +698,11 @@ async def cmd_gbans(message: Message, command: CommandObject, role: Role | None 
     enabled = _ANSWERS[argument]
     await chatsettings.set_gban_enforce(message.chat.id, enabled)
     if enabled:
-        await reply(message, "<b>Global Ban enforcement has been ENABLED.</b>")
+        await reply(message, tr("gbans.global_ban_enforcement_has_been_enabled"))
     else:
         await reply(
             message,
-            "<b>Global Ban enforcement has been DISABLED.</b>\n"
-            "<i>Warning: Gbanned users will no longer be removed automatically.</i>",
+            tr("gbans.global_ban_enforcement_has_been_disabled"),
         )
 
 
@@ -722,17 +716,17 @@ _exported_at = 0.0
 async def cmd_gimport(message: Message, command: CommandObject) -> None:
     fmt = (command.args or "").strip().lower() or None
     if fmt is not None and fmt not in banfiles.FORMATS:
-        await reply(message, "Use /gimport [csv|minicsv|json|human], as a reply to a file or with the file attached.")
+        await reply(message, tr("gbans.use_gimport_csv_minicsv_json_human"))
         return
     document = message.document or (message.reply_to_message.document if message.reply_to_message else None)
     if document is None:
-        await reply(message, "Reply to a file with the bans (csv, minicsv, json or human), or send it with the command.")
+        await reply(message, tr("gbans.reply_to_a_file_with_the"))
         return
     if (document.file_size or 0) > banfiles.MAX_IMPORT_BYTES:
-        await reply(message, "That file is too big (the limit is 20 MB).")
+        await reply(message, tr("common.that_file_is_too_big_the"))
         return
 
-    status = await reply(message, "Importing bans... Please wait!")
+    status = await reply(message, tr("gbans.importing_bans_please_wait"))
     try:
         buffer = io.BytesIO()
         await message.bot.download(document, destination=buffer)
@@ -744,7 +738,7 @@ async def cmd_gimport(message: Message, command: CommandObject) -> None:
 
         found: dict[int, tuple[str, str | None]] = {}
         for user_id, name, reason in parsed:
-            reason = " ".join((reason or "").split())[:MAX_REASON_LENGTH] or "No reason given."
+            reason = " ".join((reason or "").split())[:MAX_REASON_LENGTH] or tr("gbans.no_reason_given")
             found.setdefault(user_id, (reason, name))
         rows: list[tuple[int, str, str | None]] = []
         protected = 0
@@ -759,22 +753,19 @@ async def cmd_gimport(message: Message, command: CommandObject) -> None:
             added += await gbans.import_many(rows[start : start + IMPORT_CHUNK])
     except Exception:
         log.exception("Importing bans failed")
-        await edit(status, "The import failed. Nothing more was imported; see the developer log.")
+        await edit(status, tr("gbans.the_import_failed_nothing_more_was"))
         raise
 
     skipped = len(rows) - added + protected
     await edit(
         status,
-        f"Imported <b>{added}</b> ban{'s' if added != 1 else ''}."
-        + (f" Skipped <b>{skipped}</b> (already banned, or protected)." if skipped else ""),
+        tr("gbans.imported_ban", added=added, opt='s' if added != 1 else '')
+        + (tr("common.skipped_already_banned_or_protected", skipped=skipped) if skipped else ""),
     )
     admin = message.from_user
     await logs.role_log(
         message.bot,
-        "<b>#GBANIMPORT</b>\n"
-        f"<b>Added:</b> <code>{added}</code>\n"
-        f"<b>Timestamp:</b> {logs.timestamp()}\n"
-        f"<b>Admin:</b> {user_ref(admin.id, admin.full_name)}",
+        tr("gbans.gbanimport_added_timestamp_admin", added=added, timestamp=logs.timestamp(), id=user_ref(admin.id, admin.full_name)),
     )
 
 
@@ -783,22 +774,22 @@ async def cmd_gexport(message: Message, command: CommandObject) -> None:
     global _exported_at
     fmt = (command.args or "csv").strip().lower() or "csv"
     if fmt not in banfiles.FORMATS:
-        await reply(message, "Use /gexport csv, minicsv, json or human.")
+        await reply(message, tr("gbans.use_gexport_csv_minicsv_json_or"))
         return
     now = time.monotonic()
     if now - _exported_at < EXPORT_COOLDOWN:
-        await reply(message, "Wait a little before exporting again.")
+        await reply(message, tr("common.wait_a_little_before_exporting_again"))
         return
     rows = await gbans.all_bans()
     if not rows:
-        await reply(message, "There are no global bans to export.")
+        await reply(message, tr("gbans.there_are_no_global_bans_to"))
         return
     _exported_at = now
     data, extension = banfiles.render_export(rows, fmt)
     await message.bot.send_document(
         message.chat.id,
         BufferedInputFile(data, filename=f"gbans.{extension}"),
-        caption=f"{len(rows)} global bans.",
+        caption=tr("gbans.global_bans", rows=len(rows)),
         message_thread_id=message.message_thread_id if message.is_topic_message else None,
     )
 
@@ -896,7 +887,7 @@ async def enforce_on_reaction(reaction: MessageReactionUpdated, bot: Bot) -> Non
 # --- /info ----------------------------------------------------------------------------------------------------
 
 async def _info_flags(bot: Bot, user_id: int, chat_id: int | None) -> list[tuple[str, bool]]:
-    return [("Globally Banned", await gbans.is_gbanned(user_id))]
+    return [(tr("gbans.globally_banned"), await gbans.is_gbanned(user_id))]
 
 
 info_hooks.register("gbans", _info_flags)

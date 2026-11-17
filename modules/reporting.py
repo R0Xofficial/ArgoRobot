@@ -19,23 +19,18 @@ from core.moderation import GROUP_TYPES
 from core.roles import Role
 from core.targets import replied_message
 from core.text import esc, truncate, user_link, SWITCH as _ANSWERS
+from core.i18n import tr
 
 log = logging.getLogger(__name__)
 
-HELP_TITLE = "Reporting"
+HELP_TITLE = "reporting.title"
 
-ABOUT = """
-Anyone can call the admins to a message that needs attention: reply to it with /report, or write @admin. I answer in the chat and mention the admins, and I also message the ones who have their report alerts on, with a link to the message. For that an admin has to have started a chat with me first.
-
-Admins can't report, and nobody can report an admin or me. When an admin uses /report or @admin, nothing happens. Without a reply, @admin points at the message that contains it.
-
-Reporting is on by default. A chat admin with the right to change chat info can turn it off for the chat. In a private chat with me, /reports switches your own alerts.
-"""
+ABOUT = "reporting.about"
 
 HELP = [
-    ("/report [reason]", "Reply to a message to report it to the admins, with an optional reason."),
-    ("@admin", "Reply to a message and write @admin to call the admins. It does nothing when an admin writes it."),
-    ("/reports [on|off]", "In a group, turn reporting on or off for the chat. In a private chat with me, turn your own report alerts on or off. Without an argument it shows the setting.", "admins"),
+    ("/report [reason]", "reporting.help.reply_to_a_message_to"),
+    ("@admin", "reporting.help.reply_to_a_message_and"),
+    ("/reports [on|off]", "reporting.help.in_a_group_turn_reporting", "common.admins"),
 ]
 
 router = Router(name="reporting")
@@ -69,9 +64,9 @@ def _sender_link(message: Message) -> str:
     """Who wrote a message, as a link, or the channel or group name."""
     sender_chat = getattr(message, "sender_chat", None)
     if sender_chat is not None:
-        return f"<b>{esc(sender_chat.title or 'a channel')}</b>"
+        return f"<b>{esc(sender_chat.title or tr("reporting.a_channel"))}</b>"
     user = message.from_user
-    return user_link(user.id, user.full_name) if user else "<b>someone</b>"
+    return user_link(user.id, user.full_name) if user else tr("reporting.someone")
 
 
 async def _writes_as_admin(message: Message) -> bool:
@@ -105,16 +100,16 @@ async def _report(message: Message, target: Message | None, reason: str, *, expl
     chat = message.chat
     if chat.type not in GROUP_TYPES:
         if explicit:
-            await reply(message, "This command only works in groups.")
+            await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     if await _writes_as_admin(message):
         return  # admins can't report, and it is not worth an answer
     if not await chatsettings.reports(chat.id):
         if explicit:
-            await reply(message, "Reporting is turned off in this chat.")
+            await reply(message, tr("reporting.reporting_is_turned_off_in_this"))
         return
     if target is None:
-        await reply(message, "Reply to the message you want to report.")
+        await reply(message, tr("reporting.reply_to_the_message_you_want"))
         return
 
     reporter = message.from_user
@@ -123,15 +118,15 @@ async def _report(message: Message, target: Message | None, reason: str, *, expl
         author = target.from_user
         problem = None
         if sender_chat is not None and sender_chat.id == chat.id:
-            problem = "You can't report an admin."
+            problem = tr("reporting.you_can_t_report_an_admin")
         elif author is not None and author.id == message.bot.id:
-            problem = "Report me? I'm the one who does the reporting. 😏"
+            problem = tr("reporting.report_me_i_m_the_one")
         elif author is not None and author.id == reporter.id:
-            problem = "You can't report yourself."
+            problem = tr("reporting.you_can_t_report_yourself")
         elif author is not None and not author.is_bot and await moderation.is_chat_admin(message.bot, chat.id, author.id):
-            problem = "You can't report an admin."
+            problem = tr("reporting.you_can_t_report_an_admin")
         elif author is not None and await approvals.is_approved(chat.id, author.id):
-            problem = "You can't report an approved user."
+            problem = tr("reporting.you_can_t_report_an_approved")
         if problem:
             await reply(message, problem)
             return
@@ -140,7 +135,7 @@ async def _report(message: Message, target: Message | None, reason: str, *, expl
     key = (chat.id, reporter.id)
     if now - _reported_at.get(key, -COOLDOWN) < COOLDOWN:
         if explicit:
-            await reply(message, "You just sent a report. Give the admins a moment.")
+            await reply(message, tr("reporting.you_just_sent_a_report_give"))
         return
     if len(_reported_at) > 5000:
         _reported_at.clear()
@@ -149,14 +144,14 @@ async def _report(message: Message, target: Message | None, reason: str, *, expl
     try:
         admins = await _admins(message.bot, chat.id)
     except TelegramAPIError:
-        await reply(message, "I couldn't read the admins of this chat.")
+        await reply(message, tr("reporting.i_couldn_t_read_the_admins"))
         return
 
     reason = truncate(" ".join(reason.split()), MAX_REASON)
     reported = _sender_link(target)
-    notice = f"Reported {reported} to the admins."
+    notice = tr("reporting.reported_to_the_admins", reported=reported)
     if reason:
-        notice += f"\n• <b>Reason:</b> <code>{esc(reason)}</code>"
+        notice += tr("reporting.reason", reason=esc(reason))
     # Invisible mentions: they notify the admins without cluttering the message.
     notice += "".join(f'<a href="tg://user?id={a.user.id}">​</a>' for a in admins[:MAX_MENTIONED])
     with suppress(TelegramAPIError):
@@ -171,9 +166,9 @@ async def _alert_admins(message: Message, target: Message, admins: list[Any], re
     muted = await reports.opted_out(a.user.id for a in admins[:MAX_ALERTED])
     link = _message_link(chat, target.message_id)
     lines = [
-        f"<b>New report in {esc(chat.title or 'a chat')}</b>",
-        f"• <b>Reporter:</b> {user_link(reporter.id, reporter.full_name)}",
-        f"• <b>Reported:</b> {reported}",
+        tr("reporting.new_report_in", v=esc(chat.title or tr("common.a_chat"))),
+        tr("reporting.reporter", id=user_link(reporter.id, reporter.full_name)),
+        tr("reporting.reported", reported=reported),
     ]
     if reason:
         lines.append(f"• <b>Reason:</b> <code>{esc(reason)}</code>")
@@ -181,7 +176,7 @@ async def _alert_admins(message: Message, target: Message, admins: list[Any], re
     if excerpt:
         lines.append(f"• <b>Message:</b> <code>{esc(excerpt)}</code>")
     keyboard = (
-        InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Go to the message", url=link)]]) if link else None
+        InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=tr("reporting.go_to_the_message"), url=link)]]) if link else None
     )
     for admin in admins[:MAX_ALERTED]:
         if admin.user.id in muted or admin.user.id == reporter.id:
@@ -226,7 +221,7 @@ async def on_call(message: Message) -> None:
 @router.message(cmd("reports"))
 async def cmd_reports(message: Message, command: CommandObject, role: Role | None = None) -> None:
     argument = (command.args or "").strip().lower()
-    usage = "Use /reports on or /reports off."
+    usage = tr("reporting.use_reports_on_or_reports_off")
     if argument and argument not in _ANSWERS:
         await reply(message, usage)
         return
@@ -237,28 +232,28 @@ async def cmd_reports(message: Message, command: CommandObject, role: Role | Non
             return
         if not argument:
             on = await reports.alerts_on(user.id)
-            await reply(message, f"Your report alerts are <b>{'on' if on else 'off'}</b>.\n{usage}")
+            await reply(message, tr("reporting.your_report_alerts_are", opt=tr("common.on") if on else tr("common.off"), usage=usage))
             return
         await reports.set_alerts(user.id, _ANSWERS[argument])
         if _ANSWERS[argument]:
-            await reply(message, "Your report alerts are now <b>on</b>. I'll message you when someone reports something in a chat where you are an admin.")
+            await reply(message, tr("reporting.your_report_alerts_are_now_on"))
         else:
-            await reply(message, "Your report alerts are now <b>off</b>. Reports still mention you in the chat.")
+            await reply(message, tr("reporting.your_report_alerts_are_now_off"))
         return
 
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups and in private.")
+        await reply(message, tr("reporting.this_command_only_works_in_groups"))
         return
     if not argument:
         if await moderation.begin_chat_command(message, role, right=LOOK_RIGHT) is None:
             return
         on = await chatsettings.reports(message.chat.id)
-        await reply(message, f"Reporting is <b>{'on' if on else 'off'}</b> in this chat.\n{usage}")
+        await reply(message, tr("reporting.reporting_is_in_this_chat", opt=tr("common.on") if on else tr("common.off"), usage=usage))
         return
     if await moderation.begin_chat_command(message, role, right=RIGHT) is None:
         return
     await chatsettings.set_reports(message.chat.id, _ANSWERS[argument])
     if _ANSWERS[argument]:
-        await reply(message, "Reporting is now <b>on</b>: anyone can report a message with /report or @admin.")
+        await reply(message, tr("reporting.reporting_is_now_on_anyone_can"))
     else:
-        await reply(message, "Reporting is now <b>off</b>: /report and @admin do nothing.")
+        await reply(message, tr("reporting.reporting_is_now_off_report_and"))

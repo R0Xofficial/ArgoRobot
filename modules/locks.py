@@ -16,49 +16,30 @@ from core.helpers import edit, reply
 from core.moderation import GROUP_TYPES, ModerationError, perform
 from core.roles import Role
 from core.text import duration_text, esc, user_link, SWITCH as _ON_OFF
+from core.i18n import tr, word
 
-ABOUT = """
-Lock a kind of message and I delete every one of them: stickers, links, forwards, voice messages, a whole alphabet... Locks do not affect chat admins, approved users or the bot's staff, and edited messages are checked too. /locktypes explains every kind.
-
-Locks that catch links, forwards, commands, stickers and the like can be eased with the allowlist: whatever is on it stays allowed, so you can lock all links but let one site through.
-
-By default I just delete. With /lockwarns on, whoever breaks a lock also gets a warn, and is punished at the warn limit (see /warnmode). With /lockmode you can pick a punishment instead: mute, ban, kick, or a timed mute or ban.
-
-Everything here is for chat admins with the right to change chat info.
-"""
+ABOUT = "locks.about"
 
 HELP = [
-    ("/lock <item(s)>", "Lock one or more kinds of message. Now only admins can send them.", "admins"),
-    ("/unlock <item(s)>", "Unlock kinds of message. Everyone can send them again.", "admins"),
-    ("/locks", "Show what is locked in this chat.", "admins"),
-    ("/locktypes", "Show every kind of message that can be locked, and what each one means.", "admins"),
-    ("/lockwarns <on|off>", "Warn people who send a locked item, not only delete it.", "admins"),
-    ("/lockmode <del|warn|ban|kick|mute|tban|tmute> [time]", "What happens to someone who sends a locked item, besides the message being deleted. Default: del. tban and tmute need a duration, like 30m, 2h or 3d. Without an answer it shows the setting.", "admins"),
-    ("/allowlist <items>", "Allow a link, site, @name, id, command, $cashtag or sticker pack link even when its lock is on. Separate several with spaces. Without items, shows the allowlist.", "admins"),
-    ("/rmallowlist <items>", "Remove items from the allowlist.", "admins"),
-    ("/rmallowlistall", "Empty the allowlist. Asks for confirmation.", "chat owner"),
+    ("/lock <item(s)>", "locks.help.lock_one_or_more_kinds", "common.admins"),
+    ("/unlock <item(s)>", "locks.help.unlock_kinds_of_message_everyone", "common.admins"),
+    ("/locks", "locks.help.show_what_is_locked_in", "common.admins"),
+    ("/locktypes", "locks.help.show_every_kind_of_message", "common.admins"),
+    ("/lockwarns <on|off>", "locks.help.warn_people_who_send_a", "common.admins"),
+    ("/lockmode <del|warn|ban|kick|mute|tban|tmute> [time]", "locks.help.what_happens_to_someone_who", "common.admins"),
+    ("/allowlist <items>", "locks.help.allow_a_link_site_name", "common.admins"),
+    ("/rmallowlist <items>", "locks.help.remove_items_from_the_allowlist", "common.admins"),
+    ("/rmallowlistall", "locks.help.empty_the_allowlist_asks_for", "common.chat_owner"),
 ]
 
 HELP_NOTES = [
     (
-        "Good to start with",
-        """
-        /lock invitelink botlink - stops advertising of other groups and bots.
-        /lock forwardchannel - stops forwarded channel posts, a favourite of spammers.
-        /lock cyrillic cjk rtl - for chats that stay in one alphabet.
-        /lock bot - only admins can add bots.
-        """,
+        "locks.note.good_to_start_with",
+        "locks.note.lock_invitelink_botlink_stops_advertising",
     ),
     (
-        "The allowlist",
-        """
-        /allowlist example.com - links to that site and its subpages.
-        /allowlist @somechannel - its links and forwards, and writing as that channel.
-        /allowlist -1001234567890 - a chat by id.
-        /allowlist /start - the command.
-        /allowlist $BTC - the cashtag.
-        /allowlist t.me/addstickers/Pack - that sticker pack.
-        """,
+        "locks.note.the_allowlist",
+        "locks.note.allowlist_example_com_links_to",
     ),
 ]
 
@@ -115,7 +96,7 @@ def _chunks(lines: list[str]) -> list[str]:
 
 
 def _yes_no(value: bool) -> str:
-    return "Yes" if value else "No"
+    return tr("common.yes") if value else tr("common.no")
 
 
 # --- Commands ---------------------------------------------------------------------------------
@@ -131,42 +112,42 @@ async def cmd_unlock(message: Message, command: CommandObject, role: Role | None
 
 
 async def _change(message: Message, command: CommandObject, role: Role | None, *, lock: bool) -> None:
-    verb = "lock" if lock else "unlock"
+    verb = tr("locks.lock") if lock else tr("locks.unlock")
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     if not await _admin_only(message, role, change=True):
         return
     items = [word.lower() for word in _words(command.args)]
     if not items:
-        await reply(message, f"Use /{verb} &lt;item&gt;. /locktypes lists them.")
+        await reply(message, tr("locks.use_lt_item_gt_locktypes_lists", verb=verb))
         return
     unknown = [item for item in items if item not in locks.LOCKS]
     if unknown:
         shown = ", ".join(f"<code>{esc(item[:30])}</code>" for item in unknown[:10])
-        await reply(message, f"I don't know {shown}. /locktypes lists everything that can be locked.")
+        await reply(message, tr("locks.i_don_t_know_locktypes_lists", shown=shown))
         return
     if lock:
         await locks.lock(message.chat.id, items)
     else:
         await locks.unlock(message.chat.id, items)
     names = ", ".join(f"<code>{item}</code>" for item in items)
-    await moderation.log_action(message, "LOCKED" if lock else "UNLOCKED", moderation.actor_of(message), None, "", ("Items", names))
-    await reply(message, f"{'Locked' if lock else 'Unlocked'} {names}.")
+    await moderation.log_action(message, "LOCKED" if lock else "UNLOCKED", moderation.actor_of(message), None, "", (tr("common.items"), names))
+    await reply(message, f"{tr("locks.locked") if lock else tr("locks.unlocked")} {names}.")
 
 
 @router.message(cmd("locks"))
 async def cmd_locks(message: Message, role: Role | None = None) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     if not await _admin_only(message, role, change=False):
         return
     cfg = await locks.config(message.chat.id)
     lines = [
-        f"<b>Locks in {esc(message.chat.title or 'this chat')}</b>",
-        f"• <b>Warn on lock:</b> <code>{_yes_no(cfg.warn)}</code>",
-        f"• <b>Allowlisted:</b> <code>{len(cfg.allow)}</code>",
+        tr("locks.locks_in", v=esc(message.chat.title or tr("common.this_chat"))),
+        tr("locks.warn_on_lock", yes_no=_yes_no(cfg.warn)),
+        tr("locks.allowlisted", allow=len(cfg.allow)),
         "",
     ]
     ordered = [name for name in locks.LOCKS if name in cfg.locked]
@@ -179,7 +160,7 @@ async def cmd_locks(message: Message, role: Role | None = None) -> None:
 
 
 def _lock_types_pages() -> list[str]:
-    lines = ["<b>Lockable items</b>", "Items marked * can be eased with /allowlist."]
+    lines = [tr("locks.lockable_items"), tr("locks.items_marked_can_be_eased_with")]
     for group, items in locks.GROUPS.items():
         lines += ["", f"<b>{group}</b>"]
         for name, (text, allowable) in items.items():
@@ -187,13 +168,13 @@ def _lock_types_pages() -> list[str]:
     return _chunks(lines)
 
 
-HELP_PAGES = [("Lock types", _lock_types_pages)]
+HELP_PAGES = [("locks.page.lock_types", _lock_types_pages)]
 
 
 @router.message(cmd("locktypes"))
 async def cmd_locktypes(message: Message, role: Role | None = None) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     if not await _admin_only(message, role, change=False):
         return
@@ -204,36 +185,36 @@ async def cmd_locktypes(message: Message, role: Role | None = None) -> None:
 @router.message(cmd("lockwarns"))
 async def cmd_lockwarns(message: Message, command: CommandObject, role: Role | None = None) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     argument = (command.args or "").strip().lower()
     if not argument:
         if not await _admin_only(message, role, change=False):
             return
         cfg = await locks.config(message.chat.id)
-        await reply(message, f"Warning on locks is <b>{'on' if cfg.warn else 'off'}</b> in this chat.")
+        await reply(message, tr("locks.warning_on_locks_is_in_this", opt=tr("common.on") if cfg.warn else tr("common.off")))
         return
     if argument not in _ON_OFF:
-        await reply(message, "Use /lockwarns on or /lockwarns off.")
+        await reply(message, tr("locks.use_lockwarns_on_or_lockwarns_off"))
         return
     if not await _admin_only(message, role, change=True):
         return
     await locks.set_warn(message.chat.id, _ON_OFF[argument])
-    await reply(message, f"People who send a locked item will {'now be warned' if _ON_OFF[argument] else 'only have it deleted'}.")
+    await reply(message, tr("locks.people_who_send_a_locked_item", opt=tr("locks.now_be_warned") if _ON_OFF[argument] else tr("locks.only_have_it_deleted")))
 
 
 @router.message(cmd("lockmode"))
 async def cmd_lockmode(message: Message, command: CommandObject, role: Role | None = None) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     spec = (command.args or "").strip()
-    usage = "Use /lockmode &lt;del|warn|ban|kick|mute|tban|tmute&gt;. tban and tmute need a duration, like 30m, 2h, 3d or 1w."
+    usage = tr("locks.use_lockmode_lt_del_warn_ban")
     if not spec:
         if not await _admin_only(message, role, change=False):
             return
         cfg = await locks.config(message.chat.id)
-        await reply(message, f"Someone who sends a locked item gets: <b>{esc(_mode_text(cfg.action, cfg.seconds))}</b>.\n{usage}")
+        await reply(message, tr("locks.someone_who_sends_a_locked_item", mode_text=esc(_mode_text(cfg.action, cfg.seconds)), usage=usage))
         return
     if not await _admin_only(message, role, change=True):
         return
@@ -243,13 +224,13 @@ async def cmd_lockmode(message: Message, command: CommandObject, role: Role | No
         await reply(message, f"{esc(exc)}\n{usage}")
         return
     await locks.set_mode(message.chat.id, mode, seconds)
-    await reply(message, f"Someone who sends a locked item now gets: <b>{esc(_mode_text(mode, seconds))}</b>.")
+    await reply(message, tr("locks.someone_who_sends_a_locked_item_2", mode_text=esc(_mode_text(mode, seconds))))
 
 
 def _mode_text(mode: str, seconds: int) -> str:
     if mode == "del":
-        return "the message deleted"
-    return f"{mode} for {duration_text(seconds)}" if mode in enforce.TIMED_MODES else mode
+        return tr("locks.the_message_deleted")
+    return tr("common.for", mode=word(mode), duration_text=duration_text(seconds)) if mode in enforce.TIMED_MODES else word(mode)
 
 
 # --- The allowlist ----------------------------------------------------------------------------
@@ -270,16 +251,16 @@ def _entries(text: str | None) -> tuple[list[str], str | None]:
 @router.message(cmd("allowlist"))
 async def cmd_allowlist(message: Message, command: CommandObject, role: Role | None = None) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     if not (command.args or "").strip():
         if not await _admin_only(message, role, change=False):
             return
         cfg = await locks.config(message.chat.id)
         if not cfg.allow:
-            await reply(message, "The allowlist is empty. Add to it with /allowlist &lt;items&gt;.")
+            await reply(message, tr("locks.the_allowlist_is_empty_add_to"))
             return
-        lines = ["<b>Allowlist</b>"] + [f"• <code>{esc(entry)}</code>" for entry in sorted(cfg.allow)]
+        lines = [tr("locks.allowlist")] + [f"• <code>{esc(entry)}</code>" for entry in sorted(cfg.allow)]
         for part in _chunks(lines):
             await reply(message, part)
         return
@@ -291,28 +272,28 @@ async def cmd_allowlist(message: Message, command: CommandObject, role: Role | N
         return
     cfg = await locks.config(message.chat.id)
     if len(cfg.allow | set(entries)) > locks.MAX_ALLOWED:
-        await reply(message, f"The allowlist is full ({locks.MAX_ALLOWED} items). Remove some with /rmallowlist.")
+        await reply(message, tr("locks.the_allowlist_is_full_items_remove", MAX_ALLOWED=locks.MAX_ALLOWED))
         return
     added = await locks.allow_add(message.chat.id, entries)
-    await reply(message, f"Allowlisted <b>{added}</b> new item{'s' if added != 1 else ''}." if added else "Those were already allowlisted.")
+    await reply(message, tr("locks.allowlisted_new_item", added=added, opt='s' if added != 1 else '') if added else tr("locks.those_were_already_allowlisted"))
 
 
 @router.message(cmd("rmallowlist"))
 async def cmd_rmallowlist(message: Message, command: CommandObject, role: Role | None = None) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     if not await _admin_only(message, role, change=True):
         return
     if not (command.args or "").strip():
-        await reply(message, "Use /rmallowlist &lt;items&gt;. /allowlist shows what is on it.")
+        await reply(message, tr("locks.use_rmallowlist_lt_items_gt_allowlist"))
         return
     entries, problem = _entries(command.args)
     if problem:
         await reply(message, esc(problem))
         return
     removed = await locks.allow_remove(message.chat.id, entries)
-    await reply(message, f"Removed <b>{removed}</b> item{'s' if removed != 1 else ''} from the allowlist." if removed else "None of those were on the allowlist.")
+    await reply(message, tr("locks.removed_item_from_the_allowlist", removed=removed, opt='s' if removed != 1 else '') if removed else tr("locks.none_of_those_were_on_the"))
 
 
 @router.message(cmd("rmallowlistall"))
@@ -324,35 +305,35 @@ async def cmd_rmallowlistall(message: Message) -> None:
         return
     count = len((await locks.config(message.chat.id)).allow)
     if not count:
-        await reply(message, "The allowlist of this chat is empty.")
+        await reply(message, tr("locks.the_allowlist_of_this_chat_is"))
         return
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="Remove all", callback_data=f"{CB_CLEAR}yes"),
-                InlineKeyboardButton(text="Cancel", callback_data=f"{CB_CLEAR}no"),
+                InlineKeyboardButton(text=tr("common.remove_all"), callback_data=f"{CB_CLEAR}yes"),
+                InlineKeyboardButton(text=tr("common.cancel"), callback_data=f"{CB_CLEAR}no"),
             ]
         ]
     )
-    await reply(message, f"Remove all <b>{count}</b> items from the allowlist? This can't be undone.", reply_markup=keyboard)
+    await reply(message, tr("locks.remove_all_items_from_the_allowlist", count=count), reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith(CB_CLEAR))
 async def cb_rmallowlistall(callback: CallbackQuery) -> None:
     message = callback.message if isinstance(callback.message, Message) else None
     if message is None:
-        await callback.answer("This button is no longer valid.", show_alert=True)
+        await callback.answer(tr("common.this_button_is_no_longer_valid"), show_alert=True)
         return
     if await moderation.member_status(callback.bot, message.chat.id, callback.from_user.id) != "creator":
-        await callback.answer("Only the owner of this chat can do this.", show_alert=True)
+        await callback.answer(tr("common.only_the_owner_of_this_chat"), show_alert=True)
         return
     if callback.data == f"{CB_CLEAR}yes":
         removed = await locks.allow_clear(message.chat.id)
         await callback.answer()
-        await edit(message, f"Done. <b>{removed}</b> items removed.", reply_markup=None)
+        await edit(message, tr("locks.done_items_removed", removed=removed), reply_markup=None)
     else:
         await callback.answer()
-        await edit(message, "Cancelled. The allowlist is unchanged.", reply_markup=None)
+        await edit(message, tr("locks.cancelled_the_allowlist_is_unchanged"), reply_markup=None)
 
 
 # --- Enforcement ------------------------------------------------------------------------------
@@ -400,14 +381,14 @@ async def _warn(bot: Bot, message: Message, reason: str) -> str:
     user = message.from_user
     chat_id = message.chat.id
     target = SimpleNamespace(user_id=user.id, name=user.full_name)
-    await warns.add_warn(chat_id, target, reason, moderation.Actor(bot.id, "Locks"))
+    await warns.add_warn(chat_id, target, reason, moderation.Actor(bot.id, tr("locks.locks")))
     count = len(await warns.list_warns(chat_id, user.id))
     limit = await warns.get_limit(chat_id)
     if count < limit:
-        return f"warned ({count}/{limit})"
+        return tr("common.warned", count=count, limit=limit)
     done = await warns.limit_action(bot, chat_id, user.id)
     await warns.clear_warns(chat_id, user.id)
-    return f"{done} after reaching the warn limit ({count}/{limit})"
+    return tr("common.after_reaching_the_warn_limit", done=done, count=count, limit=limit)
 
 
 @router.message(_locked)
@@ -428,17 +409,17 @@ async def on_locked(message: Message, bot: Bot, lock_hit: SimpleNamespace) -> No
     _warned_at[key] = now
     try:
         if lock_hit.action == "warn":
-            done = await _warn(bot, message, f"Sent a locked item: {lock_hit.kind}")
+            done = await _warn(bot, message, tr("locks.sent_a_locked_item", kind=lock_hit.kind))
         else:
             done = await enforce.punish(bot, chat_id, user.id, lock_hit.action, lock_hit.seconds)
     except ModerationError as exc:
         if now - _complained.get(chat_id, -FAILURE_COOLDOWN) >= FAILURE_COOLDOWN:
             _complained[chat_id] = now
-            await reply(message, f"{user_link(user.id, user.full_name)} sent a locked item, but I can't act: {esc(exc)}", quote=False)
+            await reply(message, tr("locks.sent_a_locked_item_but_i", id=user_link(user.id, user.full_name), exc=esc(exc)), quote=False)
         return
     await reply(
         message,
-        f"{user_link(user.id, user.full_name)} has been {done}.\nReason: sent a locked item (<code>{lock_hit.kind}</code>).",
+        tr("locks.has_been_reason_sent_a_locked", id=user_link(user.id, user.full_name), done=done, kind=lock_hit.kind),
         quote=False,
     )
 
@@ -471,10 +452,10 @@ async def on_bots_added(message: Message, bot: Bot, added_bots: list) -> None:
         now = time.monotonic()
         if now - _complained.get(chat_id, -FAILURE_COOLDOWN) >= FAILURE_COOLDOWN:
             _complained[chat_id] = now
-            await reply(message, f"Bots are locked here, but I can't remove them: {esc(exc)}", quote=False)
+            await reply(message, tr("locks.bots_are_locked_here_but_i", exc=esc(exc)), quote=False)
         return
     names = ", ".join(esc(m.full_name) for m in added_bots)
-    await reply(message, f"Bots are locked in this chat, so {names} was removed. Only admins can add bots.", quote=False)
+    await reply(message, tr("locks.bots_are_locked_in_this_chat", names=names), quote=False)
     if (await greetings.get(chat_id))["clean_service"]:  # this handler takes the message away from the greetings one
         with suppress(TelegramAPIError):
             await message.delete()

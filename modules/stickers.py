@@ -22,30 +22,21 @@ from core.filters import cmd
 from core.helpers import reply
 from core.targets import replied_message
 from core.text import esc
+from core.i18n import tr
 
 log = logging.getLogger(__name__)
 
-ABOUT = """
-Two tools for stickers. Both work in groups and in private chat, and both need you to reply to what they should act on.
-
-/getsticker gives you a sticker as a PNG file. Only still stickers can become images: animated and video stickers are sent as the file they are.
-
-/kang copies a sticker, or a picture, into your own sticker pack, which I create the first time. Telegram keeps still, animated and video stickers in separate packs, so you get one of each kind, and a new one is started when a pack is full.
-"""
+ABOUT = "stickers.about"
 
 HELP = [
-    ("/getsticker", "Reply to a sticker to get it as a PNG image. Animated and video stickers come as their original file."),
-    ("/kang [emoji]", "Reply to a sticker or a picture to add it to your sticker pack. The emoji is optional: a sticker keeps its own."),
+    ("/getsticker", "stickers.help.reply_to_a_sticker_to"),
+    ("/kang [emoji]", "stickers.help.reply_to_a_sticker_or"),
 ]
 
 HELP_NOTES = [
     (
-        "Good to know",
-        """
-        Pictures are scaled to fit a sticker, 512 pixels on the longest side.
-        The pack belongs to you, not to me: you can rename or delete it with @Stickers.
-        A pack holds up to 120 stickers.
-        """,
+        "stickers.note.good_to_know",
+        "stickers.note.pictures_are_scaled_to_fit",
     ),
 ]
 
@@ -95,13 +86,13 @@ def _pack_name(user_id: int, kind: str, number: int, bot_username: str) -> str:
     return f"{_KINDS[kind][0]}{user_id}_{number}_by_{bot_username}"
 
 
-_TITLE_KIND = {"static": "sticker", "animated": "animated sticker", "video": "video sticker"}
+_TITLE_KIND = {"static": "stickers.title_kind.static", "animated": "stickers.title_kind.animated", "video": "stickers.title_kind.video"}
 
 
 def _pack_title(user, kind: str, number: int) -> str:
     """Like "Ann's sticker kang pack #1" (Telegram allows 64 characters)."""
-    name = (user.first_name or "My").strip() or "My"
-    tail = f"'s {_TITLE_KIND[kind]} kang pack #{number}"
+    name = (user.first_name or tr("stickers.my")).strip() or tr("stickers.my")
+    tail = tr("stickers.s_kang_pack", v=tr(_TITLE_KIND[kind]), number=number)
     return name[: 64 - len(tail)] + tail
 
 
@@ -112,7 +103,7 @@ async def cmd_getsticker(message: Message) -> None:
     replied = replied_message(message)
     sticker = getattr(replied, "sticker", None)
     if sticker is None:
-        await reply(message, "Reply to the sticker you want as an image.")
+        await reply(message, tr("stickers.reply_to_the_sticker_you_want"))
         return
     try:
         data = await _download(message, sticker.file_id)
@@ -120,7 +111,7 @@ async def cmd_getsticker(message: Message) -> None:
         if kind == "static":
             name, data = f"{sticker.file_unique_id}.png", await asyncio.to_thread(_png, data, False)
         else:
-            name = f"{sticker.file_unique_id}.{'tgs' if kind == 'animated' else 'webm'}"
+            name = f"{sticker.file_unique_id}.{"tgs" if kind == 'animated' else "webm"}"
         await message.bot.send_document(
             message.chat.id,
             BufferedInputFile(data, filename=name),
@@ -129,7 +120,7 @@ async def cmd_getsticker(message: Message) -> None:
         )
     except Exception as exc:  # a broken file or Telegram refusing it: say so instead of staying silent
         log.warning("getsticker failed: %s", exc)
-        await reply(message, "I couldn't turn that sticker into a file.")
+        await reply(message, tr("stickers.i_couldn_t_turn_that_sticker"))
 
 
 # --- /kang ------------------------------------------------------------------------------------
@@ -152,7 +143,7 @@ async def _find_pack(bot, user_id: int, kind: str, username: str) -> tuple[str, 
             return name, number, False
         if len(pack.stickers) < PACK_LIMIT:
             return name, number, True
-    raise RuntimeError("no room")
+    raise RuntimeError(tr("stickers.no_room"))
 
 
 @router.message(cmd("kang"))
@@ -160,16 +151,16 @@ async def cmd_kang(message: Message, command: CommandObject) -> None:
     user = message.from_user
     replied = replied_message(message)
     if user is None or message.sender_chat is not None:
-        await reply(message, "I need to know who you are to make a pack for you. Send this as yourself, not anonymously.")
+        await reply(message, tr("stickers.i_need_to_know_who_you"))
         return
     sticker = getattr(replied, "sticker", None)
     photo = getattr(replied, "photo", None)
     if sticker is None and not photo:
-        await reply(message, "Reply to a sticker or a picture to add it to your pack.")
+        await reply(message, tr("stickers.reply_to_a_sticker_or_a"))
         return
     now = time.monotonic()
     if now - _kanged_at.get(user.id, -COOLDOWN) < COOLDOWN:
-        await reply(message, "Slow down, one sticker at a time.")
+        await reply(message, tr("stickers.slow_down_one_sticker_at_a"))
         return
     if len(_kanged_at) > 5000:
         _kanged_at.clear()
@@ -193,26 +184,26 @@ async def cmd_kang(message: Message, command: CommandObject) -> None:
                 user_id=user.id, name=name, title=_pack_title(user, kind, number), stickers=[item]
             )
     except RuntimeError:
-        await reply(message, "All your packs are full. Delete some stickers with @Stickers first.")
+        await reply(message, tr("stickers.all_your_packs_are_full_delete"))
         return
     except TelegramAPIError as exc:
         _kanged_at.pop(user.id, None)
         log.warning("kang for %s failed: %s", user.id, exc)
-        await reply(message, f"Telegram refused it: {esc(_reason(exc))}")
+        await reply(message, tr("stickers.telegram_refused_it", reason=esc(_reason(exc))))
         return
     except Exception as exc:
         _kanged_at.pop(user.id, None)
         log.warning("kang for %s failed: %s", user.id, exc)
-        await reply(message, "I couldn't use that picture.")
+        await reply(message, tr("stickers.i_couldn_t_use_that_picture"))
         return
 
     keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="Open the pack", url=f"https://t.me/addstickers/{name}")]]
+        inline_keyboard=[[InlineKeyboardButton(text=tr("stickers.open_the_pack"), url=f"https://t.me/addstickers/{name}")]]
     )
-    text = f"Sticker {emoji} added to your pack." if exists else f"Sticker {emoji} added to your new pack."
+    text = tr("stickers.sticker_added_to_your_pack", emoji=emoji) if exists else tr("stickers.sticker_added_to_your_new_pack", emoji=emoji)
     await reply(message, text, reply_markup=keyboard)
 
 
 def _reason(exc: TelegramAPIError) -> str:
     text = str(getattr(exc, "message", None) or exc)
-    return text.split(":", 1)[-1].strip() or "unknown error"
+    return text.split(":", 1)[-1].strip() or tr("stickers.unknown_error")

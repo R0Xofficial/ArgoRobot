@@ -14,24 +14,21 @@ from core.moderation import ModerationError, perform
 from core.roles import Role
 from core.targets import replied_message
 from core.text import esc, truncate, user_link, SWITCH as _ANSWERS
+from core.i18n import tr, word
 
-ABOUT = """
-Tools for looking after the chat itself.
-
-The settings /adminerror, /anonadmin and /staffhelp belong to the chat owner: any admin can see the current value by sending the command with no argument, but only the owner can change it, my staff included.
-"""
+ABOUT = "admin.about"
 
 HELP = [
-    ("/link [request|count <number>]", "Get the chat's invite link. /link request makes one where joining needs an admin's approval, /link count <number> makes one that stops working after that many uses. Needs the right to invite users.", "admins"),
-    ("/gtitle <new title>", "Change the chat's title (up to 128 characters). Needs the right to change chat info.", "admins"),
-    ("/adminlist", "List the admins of this chat."),
-    ("/pin [loud]", "Reply to a message to pin it. People are not notified unless you add loud (or notify). Needs the right to pin messages.", "admins"),
-    ("/unpinall", "Unpin every pinned message of the chat. Asks for confirmation. Needs the right to pin messages.", "admins"),
-    ("/unpin", "Reply to a pinned message to unpin it. Without a reply, the most recent pinned message is unpinned. Needs the right to pin messages.", "admins"),
-    ("/cleanbluetext [on|off]", "Delete commands after I have dealt with them, so only my answers stay in the chat. Off by default. I need the right to delete messages; commands meant for other bots are left alone. Needs the right to change chat info.", "admins"),
-    ("/adminerror [on|off]", "Choose whether I answer people who try admin commands without being admins. On by default; off makes me ignore them silently.", "chat owner"),
-    ("/anonadmin [on|off]", "Let anonymous admins use every command without their rights being checked, because Telegram hides who they are. Off by default and not recommended: anyone who can post anonymously gets full use of my commands.", "chat owner"),
-    ("/staffhelp [on|off]", "Let my staff (Sudo and up) help moderate this chat, or not. On by default. Staff can never change this setting or the other owner-only ones.", "chat owner"),
+    ("/link [request|count <number>]", "admin.help.get_the_chat_s_invite", "common.admins"),
+    ("/gtitle <new title>", "admin.help.change_the_chat_s_title", "common.admins"),
+    ("/adminlist", "admin.help.list_the_admins_of_this"),
+    ("/pin [loud]", "admin.help.reply_to_a_message_to", "common.admins"),
+    ("/unpinall", "admin.help.unpin_every_pinned_message_of", "common.admins"),
+    ("/unpin", "admin.help.reply_to_a_pinned_message", "common.admins"),
+    ("/cleanbluetext [on|off]", "admin.help.delete_commands_after_i_have", "common.admins"),
+    ("/adminerror [on|off]", "admin.help.choose_whether_i_answer_people", "common.chat_owner"),
+    ("/anonadmin [on|off]", "admin.help.let_anonymous_admins_use_every", "common.chat_owner"),
+    ("/staffhelp [on|off]", "admin.help.let_my_staff_sudo_and", "common.chat_owner"),
 ]
 
 router = Router(name="admin")
@@ -45,7 +42,7 @@ MAX_ADMINS_SHOWN = 80
 
 
 def _state(enabled: bool) -> str:
-    return "on" if enabled else "off"
+    return tr("common.on") if enabled else tr("common.off")
 
 
 # --- Switches the chat's owner controls -------------------------------------------------
@@ -102,12 +99,10 @@ async def cmd_staffhelp(message: Message, command: CommandObject, role: Role | N
     def changed(enabled: bool) -> str:
         if enabled:
             return (
-                "Help from the bot's staff is now <b>on</b>. Developers and Sudo users can use "
-                "this chat's admin commands. Their actions end with a note that the bot's staff did it."
+                tr("admin.help_from_the_bot_s_staff")
             )
         return (
-            "Help from the bot's staff is now <b>off</b>. Their commands are treated like "
-            "those of any other member."
+            tr("admin.help_from_the_bot_s_staff_2")
         )
 
     await _switch(
@@ -115,11 +110,10 @@ async def cmd_staffhelp(message: Message, command: CommandObject, role: Role | N
         read=chatsettings.staff_help,
         write=chatsettings.set_staff_help,
         status_text=lambda enabled: (
-            f"Help from the bot's staff is <b>{_state(enabled)}</b> in this chat.\n"
-            "The chat owner can change it with /staffhelp on or /staffhelp off."
+            tr("admin.help_from_the_bot_s_staff_3", state=_state(enabled))
         ),
         changed_text=changed,
-        usage="Use /staffhelp on or /staffhelp off.",
+        usage=tr("admin.use_staffhelp_on_or_staffhelp_off"),
     )
 
 
@@ -131,15 +125,14 @@ async def cmd_adminerror(message: Message, command: CommandObject, role: Role | 
         read=chatsettings.admin_errors,
         write=chatsettings.set_admin_errors,
         status_text=lambda enabled: (
-            f"Error replies are <b>{_state(enabled)}</b> in this chat.\n"
-            "The chat owner can change it with /adminerror on or /adminerror off."
+            tr("admin.error_replies_are_in_this_chat", state=_state(enabled))
         ),
         changed_text=lambda enabled: (
-            "Error replies are now <b>on</b>: people who are not admins are told so when they try an admin command."
+            tr("admin.error_replies_are_now_on_people")
             if enabled
-            else "Error replies are now <b>off</b>: admin commands from people who are not admins are ignored silently."
+            else tr("admin.error_replies_are_now_off_admin")
         ),
-        usage="Use /adminerror on or /adminerror off.",
+        usage=tr("admin.use_adminerror_on_or_adminerror_off"),
     )
 
 
@@ -155,16 +148,14 @@ async def cmd_anonadmin(message: Message, command: CommandObject, role: Role | N
         read=chatsettings.anon_admin,
         write=chatsettings.set_anon_admin,
         status_text=lambda enabled: (
-            f"Trust in anonymous admins is <b>{_state(enabled)}</b> in this chat.\n"
-            "The chat owner can change it with /anonadmin on or /anonadmin off."
+            tr("admin.trust_in_anonymous_admins_is_in", state=_state(enabled))
         ),
         changed_text=lambda enabled: (
-            "Anonymous admins can now use all commands without their permissions being checked. "
-            "This is not recommended: anyone who can post anonymously is trusted completely."
+            tr("admin.anonymous_admins_can_now_use_all")
             if enabled
-            else "Anonymous admins are no longer trusted: they have to send commands as themselves."
+            else tr("admin.anonymous_admins_are_no_longer_trusted")
         ),
-        usage="Use /anonadmin on or /anonadmin off.",
+        usage=tr("admin.use_anonadmin_on_or_anonadmin_off"),
     )
 
 
@@ -182,7 +173,7 @@ def _parse_link_options(argument: str) -> tuple[bool, int | None]:
         words = words[1:]
     if len(words) == 1 and words[0].isdigit() and 1 <= int(words[0]) <= MAX_LINK_USES:
         return False, int(words[0])
-    raise ModerationError(f"Use /link, /link request, or /link count <number> with a number from 1 to {MAX_LINK_USES}.")
+    raise ModerationError(tr("admin.use_link_link_request_or_link", MAX_LINK_USES=MAX_LINK_USES))
 
 
 @router.message(cmd("link"))
@@ -197,8 +188,8 @@ async def cmd_link(message: Message, command: CommandObject, role: Role | None =
         needs_approval, limit = _parse_link_options(command.args or "")
         me = await moderation.get_member(bot, chat.id, (await bot.me()).id)
         if me is None or not (getattr(me, "status", None) == "creator" or getattr(me, "can_invite_users", False) is True):
-            raise ModerationError("I need the admin right to invite users to do that.")
-        rights = "I don't have the right to create invite links. Make me an admin with permission to invite users."
+            raise ModerationError(tr("admin.i_need_the_admin_right_to"))
+        rights = tr("admin.i_don_t_have_the_right")
 
         if not needs_approval and limit is None:
             # The chat's usual link: public chats have one; otherwise use the existing
@@ -208,13 +199,13 @@ async def cmd_link(message: Message, command: CommandObject, role: Role | None =
             else:
                 full = await perform(bot.get_chat(chat.id), rights)
                 link = getattr(full, "invite_link", None) or await perform(bot.export_chat_invite_link(chat.id), rights)
-            await reply(message, f"Invite link: {esc(link)}", link_preview_options=NO_PREVIEW)
+            await reply(message, tr("admin.invite_link", link=esc(link)), link_preview_options=NO_PREVIEW)
             return
 
         created = await perform(
             bot.create_chat_invite_link(
                 chat.id,
-                name=truncate(f"By {actor.name}", 32),
+                name=truncate(tr("admin.by", name=actor.name), 32),
                 creates_join_request=needs_approval or None,
                 member_limit=limit,
             ),
@@ -225,12 +216,12 @@ async def cmd_link(message: Message, command: CommandObject, role: Role | None =
         return
 
     if needs_approval:
-        kind = "Invite link that requires approval to join"
+        kind = tr("admin.invite_link_that_requires_approval_to")
     else:
-        kind = f"Invite link for {limit} {'person' if limit == 1 else 'people'}"
+        kind = tr("admin.invite_link_for", limit=limit, opt=tr("admin.person") if limit == 1 else tr("admin.people"))
     await reply(
         message,
-        f"{kind} was created{moderation.by(actor)}:\n{esc(created.invite_link)}",
+        tr("admin.was_created", kind=kind, by=moderation.by(actor), invite_link=esc(created.invite_link)),
         link_preview_options=NO_PREVIEW,
     )
 
@@ -245,20 +236,20 @@ async def cmd_gtitle(message: Message, command: CommandObject, role: Role | None
     title = (command.args or "").strip()
     try:
         if not title:
-            raise ModerationError("Give the new title, for example: /gtitle My Chat")
+            raise ModerationError(tr("admin.give_the_new_title_for_example"))
         if len(title) > MAX_TITLE:
-            raise ModerationError(f"A chat title can have at most {MAX_TITLE} characters.")
+            raise ModerationError(tr("admin.a_chat_title_can_have_at", MAX_TITLE=MAX_TITLE))
         me = await moderation.get_member(message.bot, message.chat.id, (await message.bot.me()).id)
         if me is None or not (getattr(me, "status", None) == "creator" or getattr(me, "can_change_info", False) is True):
-            raise ModerationError("I need the admin right to change the chat info to do that.")
+            raise ModerationError(tr("admin.i_need_the_admin_right_to_2"))
         await perform(
             message.bot.set_chat_title(message.chat.id, title),
-            "I can't change the title. Make me an admin with permission to change the chat info.",
+            tr("admin.i_can_t_change_the_title"),
         )
     except ModerationError as exc:
         await moderation.deny(message, exc)
         return
-    await reply(message, f"The chat title was changed to <b>{esc(title)}</b>{moderation.by(actor)}")
+    await reply(message, tr("admin.the_chat_title_was_changed_to", title=esc(title), by=moderation.by(actor)))
 
 
 # --- /adminlist ---------------------------------------------------------------------------------
@@ -266,31 +257,31 @@ async def cmd_gtitle(message: Message, command: CommandObject, role: Role | None
 @router.message(cmd("adminlist"))
 async def cmd_adminlist(message: Message) -> None:
     if message.chat.type not in moderation.GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     try:
         admins = await message.bot.get_chat_administrators(message.chat.id)
     except TelegramAPIError:
-        await reply(message, "I couldn't read the list of admins of this chat.")
+        await reply(message, tr("admin.i_couldn_t_read_the_list"))
         return
 
     def line(admin) -> str:
         text = f"• {user_link(admin.user.id, admin.user.full_name)}"
         if admin.user.is_bot:
-            text += " (bot)"
+            text += tr("admin.bot")
         if getattr(admin, "is_anonymous", False):
-            text += " (anonymous)"
+            text += tr("admin.anonymous")
         if getattr(admin, "custom_title", None):
             text += f" — {esc(admin.custom_title)}"
         return text
 
     owners = [a for a in admins if getattr(a.status, "value", a.status) == "creator"]
     others = [a for a in admins if a not in owners]
-    lines = [f"<b>Admins in {esc(message.chat.title)}:</b>"]
+    lines = [tr("admin.admins_in", title=esc(message.chat.title))]
     if owners:
-        lines += ["", "<b>Owner</b>", *[line(a) for a in owners]]
+        lines += ["", tr("admin.owner"), *[line(a) for a in owners]]
     if others:
-        lines += ["", "<b>Admins</b>", *[line(a) for a in others[:MAX_ADMINS_SHOWN]]]
+        lines += ["", tr("admin.admins"), *[line(a) for a in others[:MAX_ADMINS_SHOWN]]]
         if len(others) > MAX_ADMINS_SHOWN:
             lines.append(f"…and {len(others) - MAX_ADMINS_SHOWN} more.")
     await reply(message, "\n".join(lines), link_preview_options=NO_PREVIEW)
@@ -309,15 +300,15 @@ async def _bot_can_delete(message: Message) -> bool:
 @router.message(cmd("cleanbluetext"))
 async def cmd_cleanbluetext(message: Message, command: CommandObject, role: Role | None = None) -> None:
     if message.chat.type not in moderation.GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     if await moderation.begin_chat_command(message, role, right=CLEAN_RIGHT) is None:
         return
-    usage = "Use /cleanbluetext on or /cleanbluetext off."
+    usage = tr("admin.use_cleanbluetext_on_or_cleanbluetext_off")
     argument = (command.args or "").strip().lower()
     if not argument:
         current = await chatsettings.clean_commands(message.chat.id)
-        await reply(message, f"Commands are {'<b>deleted</b> after they run' if current else '<b>kept</b>'}.\n{usage}")
+        await reply(message, tr("admin.commands_are", opt=tr("admin.deleted_after_they_run") if current else tr("admin.kept"), usage=usage))
         return
     if argument not in _ANSWERS:
         await reply(message, usage)
@@ -325,18 +316,18 @@ async def cmd_cleanbluetext(message: Message, command: CommandObject, role: Role
     enabled = _ANSWERS[argument]
     await chatsettings.set_clean_commands(message.chat.id, enabled)
     if not enabled:
-        await reply(message, "Commands will be <b>kept</b>.")
+        await reply(message, tr("admin.commands_will_be_kept"))
         return
-    text = "Commands will be <b>deleted</b> after they run."
+    text = tr("admin.commands_will_be_deleted_after_they")
     if not await _bot_can_delete(message):
-        text += "\nI can't delete messages here yet. Give me that admin right."
+        text += tr("admin.i_can_t_delete_messages_here")
     await reply(message, text)
 
 
 # --- /pin and /unpin --------------------------------------------------------------------------------
 
 PIN_RIGHT = "can_pin_messages"
-PIN_REFUSED = "I can't pin messages here. Make me an admin with permission to pin messages."
+PIN_REFUSED = "admin.pin_refused"
 _LOUD = ("loud", "notify", "violent")
 
 
@@ -347,7 +338,7 @@ async def cmd_pin(message: Message, command: CommandObject, role: Role | None = 
         return
     argument = (command.args or "").strip().lower()
     if argument and argument not in _LOUD:
-        await reply(message, "Use /pin as a reply to a message. Add loud to notify everyone: /pin loud.")
+        await reply(message, tr("admin.use_pin_as_a_reply_to"))
         return
     target = await moderation.require_reply(message)
     if target is None:
@@ -365,7 +356,7 @@ async def cmd_pin(message: Message, command: CommandObject, role: Role | None = 
         return
     await reply(
         message,
-        "The message was pinned" + moderation.by(actor) + (" and everyone was notified." if argument else "."),
+        tr("admin.the_message_was_pinned") + moderation.by(actor) + (tr("admin.and_everyone_was_notified") if argument else "."),
     )
 
 
@@ -386,8 +377,8 @@ async def cmd_unpin(message: Message, role: Role | None = None) -> None:
     except TelegramBadRequest as exc:
         await reply(message, esc(_pin_problem(exc, "unpin")))
         return
-    what = "The message" if target else "The most recent pinned message"
-    await reply(message, f"{what} was unpinned{moderation.by(actor)}.")
+    what = tr("admin.the_message") if target else tr("admin.the_most_recent_pinned_message")
+    await reply(message, tr("admin.was_unpinned", what=what, by=moderation.by(actor)))
 
 
 CB_UNPINALL = "unpinall:"  # unpinall:yes / unpinall:no
@@ -400,12 +391,12 @@ async def cmd_unpinall(message: Message, role: Role | None = None) -> None:
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="Unpin all", callback_data=f"{CB_UNPINALL}yes"),
-                InlineKeyboardButton(text="Cancel", callback_data=f"{CB_UNPINALL}no"),
+                InlineKeyboardButton(text=tr("admin.unpin_all"), callback_data=f"{CB_UNPINALL}yes"),
+                InlineKeyboardButton(text=tr("common.cancel"), callback_data=f"{CB_UNPINALL}no"),
             ]
         ]
     )
-    await reply(message, "Unpin <b>every</b> pinned message of this chat? This can't be undone.", reply_markup=keyboard)
+    await reply(message, tr("admin.unpin_every_pinned_message_of_this"), reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith(CB_UNPINALL))
@@ -416,7 +407,7 @@ async def cb_unpinall(callback: CallbackQuery, role: Role | None = None) -> None
     message, actor = allowed
     if callback.data == f"{CB_UNPINALL}no":
         await callback.answer()
-        await edit(message, "Cancelled. Nothing was unpinned.")
+        await edit(message, tr("admin.cancelled_nothing_was_unpinned"))
         return
     try:
         await perform(callback.bot.unpin_all_chat_messages(message.chat.id), PIN_REFUSED)
@@ -427,14 +418,14 @@ async def cb_unpinall(callback: CallbackQuery, role: Role | None = None) -> None
         await callback.answer(_pin_problem(exc, "unpin"), show_alert=True)
         return
     await callback.answer()
-    await edit(message, f"Every pinned message was unpinned{moderation.by(actor)}.{moderation.staff_note(actor)}")
+    await edit(message, tr("admin.every_pinned_message_was_unpinned", by=moderation.by(actor), staff_note=moderation.staff_note(actor)))
 
 
 def _pin_problem(exc: Exception, action: str) -> str:
     """A sentence for the failures Telegram reports as plain bad requests."""
     problem = str(exc).lower()
     if "not found" in problem or "message_id_invalid" in problem:
-        return "That message isn't pinned." if action == "unpin" else "I can't find that message to pin."
+        return tr("admin.that_message_isn_t_pinned") if action == "unpin" else tr("admin.i_can_t_find_that_message")
     if "chat_not_modified" in problem or "not modified" in problem:
-        return "That message is already pinned."
-    return f"I couldn't {action} that message."
+        return tr("admin.that_message_is_already_pinned")
+    return tr("admin.i_couldn_t_that_message", action=word(action))

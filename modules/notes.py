@@ -17,75 +17,44 @@ from core.notestore import NoteNameError
 from core.roles import Role
 from core.targets import replied_message
 from core.text import esc
+from core.i18n import tr
 
 log = logging.getLogger(__name__)
 
-ABOUT = """
-Save a message under a name, and anyone in the chat can ask for it later with /get name or by writing #name. Good for rules, links and answers to questions that keep coming back.
-
-A note can be text, or any media: a photo, video, GIF, sticker, document, audio or voice message, with text as its caption. Write the text after the name, or reply to a message to save that message as it is. The commands that change notes are for chat admins with the right to change chat info.
-
-Names are one word, and case does not matter. Under the text, formatting, fillings, buttons and random variants work as described below.
-"""
+ABOUT = "notes.about"
 
 HELP = [
-    ("/notes", "List every note in this chat."),
-    ("/get <name>", "Get a saved note. Writing #name does the same."),
-    ("/save <name> <reply or text>", "Save a note. Reply to a message instead of writing text to save that message, media included. Saving under an existing name replaces the note.", "admins"),
-    ("/clear <name>", "Remove a note.", "admins"),
-    ("/clearAll", "Delete every note in this chat. Asks for confirmation.", "chat owner"),
+    ("/notes", "notes.help.list_every_note_in_this"),
+    ("/get <name>", "notes.help.get_a_saved_note_writing"),
+    ("/save <name> <reply or text>", "notes.help.save_a_note_reply_to", "common.admins"),
+    ("/clear <name>", "notes.help.remove_a_note", "common.admins"),
+    ("/clearAll", "notes.help.delete_every_note_in_this", "common.chat_owner"),
 ]
 
 HELP_NOTES = [
     (
-        "Formatting",
-        """
-        <b>bold</b>  <i>italic</i>  <u>underline</u>  <s>strike</s>  <tg-spoiler>spoiler</tg-spoiler>
-        <code>code</code>  <pre>pre</pre>  <blockquote>quote</blockquote>  <a href="https://link">text</a>
-        The formatting menu of Telegram works as well: select the text and pick Bold, Italic, Link...
-        Anything that is not one of these tags is shown as typed.
-        """,
+        "common.formatting",
+        "common.bold_italic_underline_strike_spoiler_code",
     ),
     (
-        "Fillings",
-        """
-        Replaced by facts about whoever asks for the note:
-        {first} {last} {fullname} {username} {mention} {id} {chatname} {count}
-        {username} falls back to a mention for people without one. {count} is the number of members.
-        """,
+        "common.fillings",
+        "notes.note.replaced_by_facts_about_whoever",
     ),
     (
-        "Options",
-        """
-        Put these anywhere in the text; they are removed and change how the note is sent:
-        {preview} - show link previews.
-        {protect} - forbid forwarding and saving.
-        {nonotif} - send silently.
-        {mediaspoiler} - hide a photo, GIF or video behind a spoiler.
-        """,
+        "common.options",
+        "notes.note.put_these_anywhere_in_the",
     ),
     (
-        "Buttons",
-        """
-        [Text](buttonurl://example.com) - a button under the note, on its own row.
-        [Text](buttonurl://example.com:same) - a button on the row of the previous one.
-        """,
+        "common.buttons",
+        "notes.note.text_buttonurl_example_com_a",
     ),
     (
-        "Random content",
-        """
-        Separate variants with %%% and I send one of them at random each time.
-        """,
+        "common.random_content",
+        "common.separate_variants_with_and_i_send",
     ),
     (
-        "Examples",
-        """
-        /save rules <b>Be kind, {first}.</b> [Full rules](buttonurl://example.com/rules)
-        /save logo - reply to a photo to save the photo.
-        /save faq - reply to a document to save the file.
-        /get rules
-        #rules
-        """,
+        "common.examples",
+        "notes.note.save_rules_be_kind_full",
     ),
 ]
 
@@ -118,26 +87,26 @@ def _split_name(args: str) -> tuple[str, str]:
 @router.message(cmd("notes"))
 async def cmd_notes(message: Message) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     found = await notestore.names(message.chat.id)
-    title = f"<b>Notes in {esc(message.chat.title or 'this chat')}</b>"
+    title = tr("notes.notes_in", v=esc(message.chat.title or tr("common.this_chat")))
     if not found:
-        await reply(message, f"{title}\n\nThere are none yet. Add one with /save.")
+        await reply(message, tr("notes.there_are_none_yet_add_one", title=title))
         return
     lines = [title, ""] + [f"• <code>{esc(name)}</code>" for name in found[:MAX_LISTED]]
-    lines += ["", "Get one with /get &lt;name&gt; or #name."]
+    lines += ["", tr("notes.get_one_with_get_lt_name")]
     await reply(message, "\n".join(lines))
 
 
 @router.message(cmd("get"))
 async def cmd_get(message: Message, command: CommandObject) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     word, _ = _split_name(command.args or "")
     if not word:
-        await reply(message, "Use /get &lt;name&gt;. /notes lists them.")
+        await reply(message, tr("notes.use_get_lt_name_gt_notes"))
         return
     try:
         name = notestore.check_name(word)
@@ -145,18 +114,18 @@ async def cmd_get(message: Message, command: CommandObject) -> None:
         await reply(message, esc(exc))
         return
     if not await _send_note(message, name):
-        await reply(message, f"There is no note called <code>{esc(name)}</code>. /notes lists them.")
+        await reply(message, tr("notes.there_is_no_note_called_notes", name=esc(name)))
 
 
 @router.message(cmd("save"))
 async def cmd_save(message: Message, command: CommandObject, role: Role | None = None) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     if not await _admin_only(message, role):
         return
     word, text = _split_name(sender.args_of(message, command))
-    usage = "Use /save &lt;name&gt; &lt;text&gt;, or reply to a message with /save &lt;name&gt;."
+    usage = tr("notes.use_save_lt_name_gt_lt")
     if not word:
         await reply(message, usage)
         return
@@ -171,7 +140,7 @@ async def cmd_save(message: Message, command: CommandObject, role: Role | None =
     if not text and replied is not None:
         text = sender.text_of(replied)
     if not text and media is None:
-        await reply(message, f"Tell me what to save: write the text after the name, or reply to a message.\n{usage}")
+        await reply(message, tr("notes.tell_me_what_to_save_write", usage=usage))
         return
     try:
         sender.validate(text, media is not None)
@@ -183,22 +152,22 @@ async def cmd_save(message: Message, command: CommandObject, role: Role | None =
         message.chat.id, name, text, media[0] if media else None, media[1] if media else None, message.from_user.id
     )
     if outcome == "full":
-        await reply(message, f"This chat is full ({notestore.MAX_NOTES} notes). Remove one with /clear first.")
+        await reply(message, tr("notes.this_chat_is_full_notes_remove", MAX_NOTES=notestore.MAX_NOTES))
     else:
-        verb = "Saved" if outcome == "added" else "Updated"
-        await reply(message, f"{verb} the note <code>{esc(name)}</code>. Get it with /get {esc(name)} or #{esc(name)}.")
+        verb = tr("notes.saved") if outcome == "added" else tr("common.updated")
+        await reply(message, tr("notes.the_note_get_it_with_get", verb=verb, name=esc(name)))
 
 
 @router.message(cmd("clear"))
 async def cmd_clear(message: Message, command: CommandObject, role: Role | None = None) -> None:
     if message.chat.type not in GROUP_TYPES:
-        await reply(message, "This command only works in groups.")
+        await reply(message, tr("common.this_command_only_works_in_groups"))
         return
     if not await _admin_only(message, role):
         return
     word, _ = _split_name(command.args or "")
     if not word:
-        await reply(message, "Use /clear &lt;name&gt;.")
+        await reply(message, tr("notes.use_clear_lt_name_gt"))
         return
     try:
         name = notestore.check_name(word)
@@ -206,9 +175,9 @@ async def cmd_clear(message: Message, command: CommandObject, role: Role | None 
         await reply(message, esc(exc))
         return
     if await notestore.remove(message.chat.id, name):
-        await reply(message, f"Removed the note <code>{esc(name)}</code>.")
+        await reply(message, tr("notes.removed_the_note", name=esc(name)))
     else:
-        await reply(message, f"There is no note called <code>{esc(name)}</code>.")
+        await reply(message, tr("notes.there_is_no_note_called", name=esc(name)))
 
 
 @router.message(cmd("clearall"))
@@ -220,13 +189,13 @@ async def cmd_clearall(message: Message) -> None:
         return
     count = len(await notestore.names(message.chat.id))
     if not count:
-        await reply(message, "There are no notes in this chat.")
+        await reply(message, tr("notes.there_are_no_notes_in_this"))
         return
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(text="Delete all", callback_data=f"{CB_CLEAR}yes"),
-                InlineKeyboardButton(text="Cancel", callback_data=f"{CB_CLEAR}no"),
+                InlineKeyboardButton(text=tr("common.cancel"), callback_data=f"{CB_CLEAR}no"),
             ]
         ]
     )
@@ -237,18 +206,18 @@ async def cmd_clearall(message: Message) -> None:
 async def cb_clearall(callback: CallbackQuery) -> None:
     message = callback.message if isinstance(callback.message, Message) else None
     if message is None:
-        await callback.answer("This button is no longer valid.", show_alert=True)
+        await callback.answer(tr("common.this_button_is_no_longer_valid"), show_alert=True)
         return
     if await moderation.member_status(callback.bot, message.chat.id, callback.from_user.id) != "creator":
-        await callback.answer("Only the owner of this chat can do this.", show_alert=True)
+        await callback.answer(tr("common.only_the_owner_of_this_chat"), show_alert=True)
         return
     if callback.data == f"{CB_CLEAR}yes":
         removed = await notestore.clear(message.chat.id)
         await callback.answer()
-        await edit(message, f"Done. <b>{removed}</b> notes deleted.", reply_markup=None)
+        await edit(message, tr("notes.done_notes_deleted", removed=removed), reply_markup=None)
     else:
         await callback.answer()
-        await edit(message, "Cancelled. The notes are unchanged.", reply_markup=None)
+        await edit(message, tr("notes.cancelled_the_notes_are_unchanged"), reply_markup=None)
 
 
 # --- Sending a note ---------------------------------------------------------------------------
@@ -259,7 +228,7 @@ async def _send_note(message: Message, name: str) -> bool:
     if row is None:
         return False
     await sender.send(
-        message, message.from_user, row["content"], row["media_type"], row["media_file_id"], label=f"note {name!r}"
+        message, message.from_user, row["content"], row["media_type"], row["media_file_id"], label=tr("notes.note", name=name)
     )
     return True
 
