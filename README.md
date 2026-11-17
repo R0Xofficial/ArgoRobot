@@ -254,7 +254,11 @@ A module is a file in `modules/` with a `router` (an aiogram `Router`). It may a
 
 Drop a new file into `modules/` and restart: no other file needs to change. A module that fails to load is logged and skipped; it never stops the bot from starting. Write commands with `core.filters.cmd()`, so that prefixes, case-insensitivity and the "switch off" feature work for them, and answer with `core.helpers.reply()`.
 
-All text the bot writes is in English.
+## Languages
+
+The bot speaks English (the default) and Polish. The language belongs to the chat: `/setlang` shows it and offers buttons, `/setlang pl` or `/setlang en` sets it directly. In a group it needs the right to change chat info; in a private chat anyone sets their own. It is stored in `chat_settings.language`.
+
+Command names, developer logs and tags such as `#GBANNED` always stay in English. The code holds no texts, only tags: `tr("bans.was_banned", who=name)` (from `core.i18n`). The texts are in `locales/en.json` and `locales/pl.json`, as `{"tag": "text with {placeholders}"}`. `en.json` has every tag; a tag missing from another language is shown in English, so a language can be translated bit by bit. To add a language: copy `en.json` to `<code>.json`, translate it, and add the code to `LANGUAGES` in `core/i18n.py`. In help, a module's name and its one-line description are `help.title.<module>` and `help.description.<module>` (a missing title falls back to the module name). Federation and global-ban notices are written in the language of the chat where the action took place.
 
 ## 13. Antiraid and nightmode
 

@@ -32,7 +32,7 @@ import modules
 from config import settings
 from core import captchas, chats, database, logreport, logs, mtproto, nightmode, registry, users
 from core.errors import setup_error_handling
-from core.middlewares import CleanCommandsMiddleware, ConnectionMiddleware, LoggingMiddleware, RolesMiddleware, UsersMiddleware
+from core.middlewares import CleanCommandsMiddleware, ConnectionMiddleware, LanguageMiddleware, LoggingMiddleware, RolesMiddleware, UsersMiddleware
 from core.text import esc
 
 log = logging.getLogger("main")
@@ -161,6 +161,7 @@ async def main() -> None:
     # Core layer: always active, cannot be disabled. (The management commands live
     # in modules/root.py, which is a protected module.)
     dp.update.outer_middleware(LoggingMiddleware())
+    dp.update.outer_middleware(LanguageMiddleware())
     dp.update.outer_middleware(RolesMiddleware())
     dp.update.outer_middleware(UsersMiddleware())
     dp.update.outer_middleware(CleanCommandsMiddleware())
