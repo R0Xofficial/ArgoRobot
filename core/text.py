@@ -64,9 +64,7 @@ def at_name(username: str | None) -> str:
 
 
 def user_ref(user_id: int, name: str | None) -> str:
-    """Profile link followed by the id: Name [123456789]. Without a known name plain user[123456789]."""
-    if not (name or "").strip():
-        return user_link(user_id, name)
+    """Profile link followed by the id: Name [123456789]. Without a known name the link is plain user[123456789]."""
     return f"{user_link(user_id, name)} [<code>{int(user_id)}</code>]"
 
 
