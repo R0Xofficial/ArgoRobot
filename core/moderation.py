@@ -425,7 +425,7 @@ async def log_action(
             _user_ref(target) if target is not None else None,
             reason,
             details,
-            tr(STAFF_NOTE) if actor.staff else "",
+            (lambda: tr(STAFF_NOTE)) if actor.staff else "",
         )
     except Exception:
         log.exception("Could not log %s", tag)

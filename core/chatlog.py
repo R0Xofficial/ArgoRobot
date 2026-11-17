@@ -13,7 +13,8 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import LinkPreviewOptions
 
-from core import database
+from core import database, i18n
+from core.i18n import tr
 from core.text import esc
 from core.users import CACHE_LIMIT
 
@@ -75,18 +76,25 @@ def entry(
     Admin, user and details are HTML made by the caller; the reason is plain text.
     A note (plain text) goes last, in italics, after an empty line.
     """
-    title = esc(getattr(chat, "title", None) or "Chat")
-    lines = [f"<b>#{tag}</b>", f"<b>Chat:</b> {title} [<code>{chat.id}</code>]"]
+    reason, note = _resolve(reason), _resolve(note)
+    title = esc(getattr(chat, "title", None) or tr("chatlog.chat"))
+    lines = [f"<b>#{tag}</b>", f"<b>{tr('chatlog.chat')}:</b> {title} [<code>{chat.id}</code>]"]
     if admin:
-        lines.append(f"<b>Admin:</b> {admin}")
+        lines.append(f"<b>{tr('chatlog.admin')}:</b> {admin}")
     if user:
-        lines.append(f"<b>User:</b> {user}")
-    for label, value in details:
+        lines.append(f"<b>{tr('chatlog.user')}:</b> {user}")
+    for item in details:
+        label, value = item() if callable(item) else item
         lines.append(f"<b>{esc(label)}:</b> {value}")
     if reason.strip():
-        lines.append(f"<b>Reason:</b> {esc(reason.strip()[:300])}")
+        lines.append(f"<b>{tr('chatlog.reason')}:</b> {esc(reason.strip()[:300])}")
     text = "\n".join(lines)
     return f"{text}\n\n<i>{esc(note)}</i>" if note else text
+
+
+def _resolve(value) -> str:
+    """Texts that need translating come as functions, called while the entry is being written in the log chat's language."""
+    return value() if callable(value) else value
 
 
 async def record(
@@ -108,9 +116,11 @@ async def record(
     if target is None:
         return False
     try:
+        async with i18n.speaking(target):  # the entry is written in the language of the log chat
+            text = entry(tag, chat, admin, user, reason, details, note)
         await bot.send_message(
             chat_id=target,
-            text=entry(tag, chat, admin, user, reason, details, note),
+            text=text,
             link_preview_options=LinkPreviewOptions(is_disabled=True),
         )
         return True

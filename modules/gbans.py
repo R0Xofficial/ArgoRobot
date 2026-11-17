@@ -31,6 +31,7 @@ from core.moderation import GROUP_TYPES, ModerationError
 from core.roles import Role
 from core.targets import Target, TargetError, display_name, replied_message, resolve_target, sender_as_target
 from core.text import at_name, esc, user_ref, SWITCH as _ANSWERS
+from core import i18n
 from core.i18n import tr
 
 log = logging.getLogger(__name__)
@@ -128,8 +129,11 @@ def _done_text(old: dict | None) -> str:
     return tr("gbans.done_gbanned")
 
 
-async def _notify(bot: Bot, chat_id: int, text: str, msg_id: int | None = None, thread_id: int | None = None) -> None:
+async def _notify(bot: Bot, chat_id: int, text, msg_id: int | None = None, thread_id: int | None = None) -> None:
     """Say something in the chat a command came from, in its topic, never failing."""
+    if callable(text):  # written in the language of the chat it goes to
+        async with i18n.speaking(chat_id):
+            text = text()
     params: dict[str, Any] = {
         "chat_id": chat_id,
         "text": text,
@@ -269,7 +273,7 @@ async def _propagate_unban(bot: Bot, user_id: int, origin: tuple[int, int | None
         chat_id, msg_id, thread_id = origin
         seconds = round(time.monotonic() - started, 2)
         await _notify(
-            bot, chat_id, tr("gbans.user_has_been_un_gbanned_time", seconds=seconds), msg_id, thread_id
+            bot, chat_id, lambda: tr("gbans.user_has_been_un_gbanned_time", seconds=seconds), msg_id, thread_id
         )
 
 
@@ -335,7 +339,7 @@ async def _ask_sudo(
 ) -> None:
     """A Support user's request: log it with Approve / Decline buttons for Sudo users."""
     actor = message.from_user
-    origin = _origin_html(message)
+    origin = await logs.render(lambda: _origin_html(message))
     request_id = await gbans.create_request(
         target_id=target.user_id,
         target_name=target.name,
@@ -353,7 +357,7 @@ async def _ask_sudo(
         await reply(message, tr("gbans.there_is_already_a_pending_request", user_id=user_ref(target.user_id, target.name)))
         return
 
-    text = _log_text(
+    text = await logs.render(lambda: _log_text(
         tag,
         origin,
         user_ref(target.user_id, target.name),
@@ -361,8 +365,8 @@ async def _ask_sudo(
         user_ref(actor.id, actor.full_name),
         old_reason=old["reason"] if old else None,
         timestamp=False,
-    )
-    if not await logs.role_log(message.bot, text, _request_keyboard(request_id)):
+    ))
+    if not await logs.role_log(message.bot, text, await logs.render(lambda: _request_keyboard(request_id))):
         await gbans.drop_request(request_id)
         await reply(message, tr("gbans.i_couldn_t_deliver_your_request"))
         return
@@ -443,14 +447,14 @@ async def cmd_gban(message: Message, command: CommandObject, role: Role) -> None
     )
     await logs.role_log(
         bot,
-        _log_text(
+        await logs.render(lambda: _log_text(
             _tag_for(old),
             _origin_html(message),
             who,
             reason,
             user_ref(admin.id, admin.full_name),
             old_reason=old["reason"] if old else None,
-        ),
+        )),
     )
     await reply(message, _done_text(old))
 
@@ -507,7 +511,7 @@ async def cmd_ungban(message: Message, command: CommandObject, role: Role) -> No
         return
     await logs.role_log(
         bot,
-        _log_text("#UNGBANNED", _origin_html(message), who, reason, user_ref(admin.id, admin.full_name)),
+        await logs.render(lambda: _log_text("#UNGBANNED", _origin_html(message), who, reason, user_ref(admin.id, admin.full_name))),
     )
     await reply(message, tr("gbans.let_s_give_them_another_chance"))
     _spawn(_propagate_unban(bot, target.user_id, _reply_place(message)))
@@ -552,16 +556,16 @@ async def cb_request(callback: CallbackQuery, role: Role | None = None) -> None:
     if not approving:
         await callback.answer(tr("gbans.request_declined"))
         if message is not None:
-            await finish(tr("gbans.declined_by", html_text=message.html_text, id=user_ref(approver.id, approver.full_name)))
-        await _notify(bot, chat_id, tr("gbans.request_declined_2"), msg_id, thread_id)
+            await finish(await logs.render(lambda: tr("gbans.declined_by", html_text=message.html_text, id=user_ref(approver.id, approver.full_name))))
+        await _notify(bot, chat_id, lambda: tr("gbans.request_declined_2"), msg_id, thread_id)
         return
 
     if request["kind"] in ("gban", "dgban"):
         problem = await _protection(bot, target_id)
         if problem is not None:
             await callback.answer(tr("gbans.this_user_can_no_longer_be"), show_alert=True)
-            await finish(tr("gbans.cancelled", opt=message.html_text if message else '', problem=problem))
-            await _notify(bot, chat_id, tr("gbans.request_cancelled", problem=problem), msg_id, thread_id)
+            await finish(await logs.render(lambda: tr("gbans.cancelled", opt=message.html_text if message else '', problem=problem)))
+            await _notify(bot, chat_id, lambda: tr("gbans.request_cancelled", problem=problem), msg_id, thread_id)
             return
         await callback.answer(tr("gbans.approved"))
         chat_type = "private" if chat_id > 0 else "supergroup"  # only groups matter for banning
@@ -578,37 +582,33 @@ async def cb_request(callback: CallbackQuery, role: Role | None = None) -> None:
             if request["kind"] == "dgban" and request["target_msg_id"]
             else None,
         )
-        await finish(
-            _log_text(
-                _tag_for(old),
-                origin,
-                who,
-                reason,
-                requester,
-                old_reason=old["reason"] if old else None,
-                approved_by=user_ref(approver.id, approver.full_name),
-            )
-        )
-        await _notify(bot, chat_id, _done_text(old), msg_id, thread_id)
+        await finish(await logs.render(lambda: _log_text(
+            _tag_for(old),
+            origin,
+            who,
+            reason,
+            requester,
+            old_reason=old["reason"] if old else None,
+            approved_by=user_ref(approver.id, approver.full_name),
+        )))
+        await _notify(bot, chat_id, lambda: _done_text(old), msg_id, thread_id)
         return
 
     # ungban
     removed = await gbans.remove(target_id)
     if removed is None:
         await callback.answer(tr("gbans.this_user_is_not_globally_banned"), show_alert=True)
-        await finish(tr("gbans.cancelled_not_globally_banned_any_more", opt=message.html_text if message else ''))
+        await finish(await logs.render(lambda: tr("gbans.cancelled_not_globally_banned_any_more", opt=message.html_text if message else '')))
         return
     await callback.answer(tr("gbans.approved"))
-    await finish(
-        _log_text(
-            "#UNGBANNED",
-            origin,
-            who,
-            reason,
-            requester,
-            approved_by=user_ref(approver.id, approver.full_name),
-        )
-    )
+    await finish(await logs.render(lambda: _log_text(
+        "#UNGBANNED",
+        origin,
+        who,
+        reason,
+        requester,
+        approved_by=user_ref(approver.id, approver.full_name),
+    )))
     _spawn(_propagate_unban(bot, target_id, (chat_id, msg_id if chat_id < 0 else None, thread_id)))
 
 
@@ -765,7 +765,7 @@ async def cmd_gimport(message: Message, command: CommandObject) -> None:
     admin = message.from_user
     await logs.role_log(
         message.bot,
-        tr("gbans.gbanimport_added_timestamp_admin", added=added, timestamp=logs.timestamp(), id=user_ref(admin.id, admin.full_name)),
+        await logs.render(lambda: tr("gbans.gbanimport_added_timestamp_admin", added=added, timestamp=logs.timestamp(), id=user_ref(admin.id, admin.full_name))),
     )
 
 

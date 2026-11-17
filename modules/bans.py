@@ -77,7 +77,7 @@ async def cmd_ban(message: Message, command: CommandObject, role: Role | None = 
         await reply(message, esc(exc))
         return
 
-    await moderation.log_action(message, "BANNED", actor, target, target.extra, *((("Silent", "yes"),) if silent else ()))
+    await moderation.log_action(message, "BANNED", actor, target, target.extra, *(((lambda: (tr("chatlog.silent"), tr("common.yes"))),) if silent else ()))
     if silent:
         await _silently(message, replied)
         return
@@ -107,7 +107,7 @@ async def cmd_tban(message: Message, command: CommandObject, role: Role | None =
         await reply(message, esc(exc))
         return
 
-    await moderation.log_action(message, "TBANNED", actor, target, reason, ("Duration", moderation.format_duration(duration)))
+    await moderation.log_action(message, "TBANNED", actor, target, reason, lambda: (tr("chatlog.duration"), moderation.format_duration(duration)))
     await reply(
         message,
         tr("bans.was_banned_for", who=moderation.who(target), format_duration=moderation.format_duration(duration), by=moderation.by(actor), reason_line=moderation.reason_line(reason), staff_note=moderation.staff_note(actor)),
@@ -173,7 +173,7 @@ async def cb_unban(callback: CallbackQuery, role: Role | None = None) -> None:
         await callback.answer(str(exc), show_alert=True)
         return
     await callback.answer()
-    await moderation.log_action(message, "UNBANNED", actor, target, "", ("Undo", "yes"))
+    await moderation.log_action(message, "UNBANNED", actor, target, "", lambda: (tr("chatlog.undo"), tr("common.yes")))
     await edit(message, tr("bans.was_unbanned", who=moderation.who(target), by=moderation.by(actor), staff_note=moderation.staff_note(actor)), reply_markup=None)
 
 
@@ -219,5 +219,5 @@ async def cmd_kickme(message: Message) -> None:
         await reply(message, esc(exc))
         return
     me = moderation.Actor(user.id, user.full_name)
-    await moderation.log_action(message, "KICKED", me, moderation.Target(user.id, user.full_name), tr("bans.used_kickme"))
+    await moderation.log_action(message, "KICKED", me, moderation.Target(user.id, user.full_name), lambda: tr("bans.used_kickme"))
     await reply(message, tr("bans.kicked_themselves_out_they_can_come", id=user_link(user.id, user.full_name)), quote=False)

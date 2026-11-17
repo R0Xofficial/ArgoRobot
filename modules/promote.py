@@ -231,7 +231,7 @@ async def cmd_promote(message: Message, command: CommandObject, role: Role | Non
 
     kind = tr("promote.to_admin_with_full_rights") if full else tr("promote.to_admin")
     await moderation.log_action(
-        message, "PROMOTED", actor, target, "", (tr("promote.rights"), esc(_rights_text(rights))), *(((tr("common.title"), esc(title)),) if title else ())
+        message, "PROMOTED", actor, target, "", lambda: (tr("promote.rights"), esc(_rights_text(rights))), *(((lambda: (tr("common.title"), esc(title))),) if title else ())
     )
     await reply(
         message,

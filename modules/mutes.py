@@ -65,7 +65,7 @@ async def cmd_mute(message: Message, command: CommandObject, role: Role | None =
         await reply(message, esc(exc))
         return
 
-    await moderation.log_action(message, "MUTED", actor, target, target.extra, *((("Silent", "yes"),) if silent else ()))
+    await moderation.log_action(message, "MUTED", actor, target, target.extra, *(((lambda: (tr("chatlog.silent"), tr("common.yes"))),) if silent else ()))
     if silent:
         await _silently(message)
         return
@@ -96,7 +96,7 @@ async def cmd_tmute(message: Message, command: CommandObject, role: Role | None 
         await reply(message, esc(exc))
         return
 
-    await moderation.log_action(message, "TMUTED", actor, target, reason, ("Duration", moderation.format_duration(duration)), *((("Silent", "yes"),) if silent else ()))
+    await moderation.log_action(message, "TMUTED", actor, target, reason, lambda: (tr("chatlog.duration"), moderation.format_duration(duration)), *(((lambda: (tr("chatlog.silent"), tr("common.yes"))),) if silent else ()))
     if silent:
         await _silently(message)
         return
@@ -133,7 +133,7 @@ async def cmd_unmute(message: Message, command: CommandObject, role: Role | None
         await reply(message, esc(exc))
         return
 
-    await moderation.log_action(message, "UNMUTED", actor, target, "", *((("Silent", "yes"),) if silent else ()))
+    await moderation.log_action(message, "UNMUTED", actor, target, "", *(((lambda: (tr("chatlog.silent"), tr("common.yes"))),) if silent else ()))
     if silent:
         await _silently(message)
         return
@@ -167,5 +167,5 @@ async def cb_unmute(callback: CallbackQuery, role: Role | None = None) -> None:
         await callback.answer(str(exc), show_alert=True)
         return
     await callback.answer()
-    await moderation.log_action(message, "UNMUTED", actor, target, "", ("Undo", "yes"))
+    await moderation.log_action(message, "UNMUTED", actor, target, "", lambda: (tr("chatlog.undo"), tr("common.yes")))
     await edit(message, tr("mutes.was_unmuted", who=moderation.who(target), by=moderation.by(actor), staff_note=moderation.staff_note(actor)), reply_markup=None)

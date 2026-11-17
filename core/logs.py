@@ -18,6 +18,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.types import BufferedInputFile, LinkPreviewOptions
 
 from config import settings
+from core import i18n
 from core.text import user_ref
 
 log = logging.getLogger(__name__)
@@ -74,6 +75,12 @@ async def dev_file(bot: Bot, filename: str, content: bytes, caption: str) -> boo
     except TelegramAPIError as exc:
         log.warning("Could not send developer log file to %s: %s", chat_id, exc)
         return False
+
+
+async def render(build):
+    """Run `build()` (it writes texts with tr()) in English: the logs are always English, whatever chat is being handled."""
+    with i18n.english():
+        return build()
 
 
 async def role_log(bot: Bot, text: str, reply_markup=None) -> bool:

@@ -32,6 +32,7 @@ from core.helpers import edit, reply
 from core.moderation import GROUP_TYPES, ModerationError
 from core.targets import TargetError, replied_message, resolve_target, sender_as_target
 from core.text import esc, user_link, user_ref, SWITCH as _ON_OFF
+from core import i18n
 from core.i18n import tr
 
 log = logging.getLogger(__name__)
@@ -161,12 +162,12 @@ def _fed_name(fed: dict[str, Any]) -> str:
     return f"<b>{esc(fed['name'])}</b>"
 
 
-async def _own_line(bot: Bot, fed: dict[str, Any]) -> str:
+def _own_line(bot: Bot, fed: dict[str, Any]) -> str:
     """Fed: the name as its owner set it (a @tag in it is theirs; nothing is added)."""
     return _item(tr("federations.fed"), esc(fed["name"]))
 
 
-async def _other_lines(bot: Bot, label: str, fed: dict[str, Any] | None, fed_id: str | None = None) -> str:
+def _other_lines(bot: Bot, label: str, fed: dict[str, Any] | None, fed_id: str | None = None) -> str:
     """The other federation of a subscription, as two lines: <label>: its name and <label>ID: <code>id</code>."""
     name = esc(fed["name"]) if fed else tr("federations.that_federation")
     identifier = fed["fed_id"] if fed else fed_id
@@ -177,24 +178,33 @@ def _owner_link(fed: dict[str, Any]) -> str:
     return user_link(fed["owner_id"], fed["owner_name"])
 
 
-async def _event(bot: Bot, fed: dict[str, Any], text: str) -> None:
-    """Tell the log chat of the federation, and its owner when they asked for private messages."""
+async def _event(bot: Bot, fed: dict[str, Any], text) -> None:
+    """
+    Tell the log chat of the federation, and its owner when they asked for private messages.
+    `text` is a function that writes the message: each one is written in the language of the chat it goes to (the federation log chat, the owner's private chat).
+    """
     sent = False
     if fed["log_chat_id"]:
         try:
-            await bot.send_message(fed["log_chat_id"], text, link_preview_options=LinkPreviewOptions(is_disabled=True))
+            async with i18n.speaking(fed["log_chat_id"]):
+                body = text()
+            await bot.send_message(fed["log_chat_id"], body, link_preview_options=LinkPreviewOptions(is_disabled=True))
             sent = True
         except TelegramAPIError as exc:
             log.debug("Federation log %s unreachable: %s", fed["log_chat_id"], exc)
     if fed["notify"] and not (sent and fed["log_chat_id"] == fed["owner_id"]):
         with suppress(TelegramAPIError):
-            await bot.send_message(fed["owner_id"], text, link_preview_options=LinkPreviewOptions(is_disabled=True))
+            async with i18n.speaking(fed["owner_id"]):
+                body = text()
+            await bot.send_message(fed["owner_id"], body, link_preview_options=LinkPreviewOptions(is_disabled=True))
 
 
 async def _admin_event(bot: Bot, fed: dict[str, Any], promoted: bool, user_id: int, who: str) -> None:
     """Tell the federation's log that someone became or stopped being one of its admins."""
-    title, label = (tr("federations.new_fed_promotion"), tr("federations.promoted_fedadmin")) if promoted else (tr("federations.new_fed_demotion"), tr("federations.demoted_fedadmin"))
-    text = f"<b>{title}</b>\n{await _own_line(bot, fed)}\n{_item(label, who)}\n{_item(tr("federations.user_id"), f'<code>{user_id}</code>')}"
+    def text() -> str:
+        title, label = (tr("federations.new_fed_promotion"), tr("federations.promoted_fedadmin")) if promoted else (tr("federations.new_fed_demotion"), tr("federations.demoted_fedadmin"))
+        return f"<b>{title}</b>\n{_own_line(bot, fed)}\n{_item(label, who)}\n{_item(tr("federations.user_id"), f'<code>{user_id}</code>')}"
+
     await _event(bot, fed, text)
 
 
@@ -397,7 +407,7 @@ async def cb_fedtransfer(callback: CallbackQuery) -> None:
     await _event(
         callback.bot,
         {**fed, "owner_id": callback.from_user.id},
-        tr("federations.new_fedowner", v=await _own_line(callback.bot, fed), item=_item(tr("federations.previous_owner"), user_ref(fed['owner_id'], fed['owner_name'])), item2=_item(tr("federations.new_owner"), user_ref(callback.from_user.id, callback.from_user.full_name))),
+        lambda: tr("federations.new_fedowner", v=_own_line(callback.bot, fed), item=_item(tr("federations.previous_owner"), user_ref(fed['owner_id'], fed['owner_name'])), item2=_item(tr("federations.new_owner"), user_ref(callback.from_user.id, callback.from_user.full_name))),
     )
 
 
@@ -546,8 +556,8 @@ async def cmd_subfed(message: Message, command: CommandObject) -> None:
     await reply(message, tr("federations.now_inherits_the_bans_of_your", fed=_fed_name(fed), other=_fed_name(other)))
     by = _item(tr("federations.by"), user_ref(message.from_user.id, message.from_user.full_name))
     bot = message.bot
-    await _event(bot, fed, tr("federations.new_fedsubscribed", v=await _own_line(bot, fed), v2=await _other_lines(bot, "SubbedFed", other), by=by))
-    await _event(bot, other, tr("federations.new_fedsubscriber", v=await _own_line(bot, other), v2=await _other_lines(bot, "SubbedFed", fed), by=by))
+    await _event(bot, fed, lambda: tr("federations.new_fedsubscribed", v=_own_line(bot, fed), v2=_other_lines(bot, "SubbedFed", other), by=by))
+    await _event(bot, other, lambda: tr("federations.new_fedsubscriber", v=_own_line(bot, other), v2=_other_lines(bot, "SubbedFed", fed), by=by))
 
 
 @router.message(cmd("unsubfed"))
@@ -568,9 +578,9 @@ async def cmd_unsubfed(message: Message, command: CommandObject) -> None:
     await reply(message, tr("federations.no_longer_inherits_the_bans_of", fed=_fed_name(fed), name=name))
     by = _item(tr("federations.by"), user_ref(message.from_user.id, message.from_user.full_name))
     bot = message.bot
-    await _event(bot, fed, tr("federations.un_fedsubscribed", v=await _own_line(bot, fed), v2=await _other_lines(bot, "UnsubbedFed", other, argument.lower()), by=by))
+    await _event(bot, fed, lambda: tr("federations.un_fedsubscribed", v=_own_line(bot, fed), v2=_other_lines(bot, "UnsubbedFed", other, argument.lower()), by=by))
     if other is not None:
-        await _event(bot, other, tr("federations.un_fedsubscriber", v=await _own_line(bot, other), v2=await _other_lines(bot, "UnsubbedFed", fed), by=by))
+        await _event(bot, other, lambda: tr("federations.un_fedsubscriber", v=_own_line(bot, other), v2=_other_lines(bot, "UnsubbedFed", fed), by=by))
 
 
 @router.message(cmd("setfedlog"))
@@ -668,7 +678,7 @@ async def cmd_fedimport(message: Message, command: CommandObject) -> None:
         tr("federations.imported_ban_into", added=added, opt='s' if added != 1 else '', fed=_fed_name(fed))
         + (tr("common.skipped_already_banned_or_protected", skipped=skipped) if skipped else ""),
     )
-    await _event(message.bot, fed, tr("federations.new_fedbans", v=await _own_line(message.bot, fed), item=_item(tr("common.added"), f'<code>{added}</code>')))
+    await _event(message.bot, fed, lambda: tr("federations.new_fedbans", v=_own_line(message.bot, fed), item=_item(tr("common.added"), f'<code>{added}</code>')))
 
 
 # --- Fed admin commands -----------------------------------------------------------------------
@@ -778,9 +788,11 @@ async def cmd_fban(message: Message, command: CommandObject) -> None:
         return
     await federations.ban(fed["fed_id"], target.user_id, target.name, reason, user.id, user.full_name)
     await _ban_here(message, target.user_id)
-    text = _ban_text(tr("federations.new_fedban"), fed, user, target.user_id, target.name, reason, await _own_line(message.bot, fed))
-    await reply(message, text)
-    await _event(message.bot, fed, text)
+    def build() -> str:
+        return _ban_text(tr("federations.new_fedban"), fed, user, target.user_id, target.name, reason, _own_line(message.bot, fed))
+
+    await reply(message, build())
+    await _event(message.bot, fed, build)
 
 
 @router.callback_query(F.data.startswith(CB_REASON))
@@ -806,9 +818,12 @@ async def cb_fedreason_update(callback: CallbackQuery) -> None:
     name, reason, by_id, by_name, _ = pending
     old = await federations.ban(fed_id, int(user_id), name, reason, by_id, by_name)
     previous = ((old or {}).get("reason") or None,)  # what the reason was until now: nobody should have to wonder
-    text = _ban_text(tr("federations.fedban_reason_update"), fed, SimpleNamespace(id=by_id, full_name=by_name), int(user_id), name, reason, await _own_line(callback.bot, fed), previous=previous)
+    def build() -> str:
+        return _ban_text(tr("federations.fedban_reason_update"), fed, SimpleNamespace(id=by_id, full_name=by_name), int(user_id), name, reason, _own_line(callback.bot, fed), previous=previous)
+
+    text = build()
     await edit(message, text, reply_markup=None)
-    await _event(callback.bot, fed, text)
+    await _event(callback.bot, fed, build)
 
 
 @router.message(cmd("unfban"))
@@ -825,9 +840,11 @@ async def cmd_unfban(message: Message, command: CommandObject) -> None:
     if await federations.unban(fed["fed_id"], target.user_id) is None:
         await reply(message, tr("federations.is_not_banned_in", user_id=user_link(target.user_id, target.name), fed=_fed_name(fed)))
         return
-    text = _ban_text(tr("federations.un_fedban"), fed, user, target.user_id, target.name, None, await _own_line(message.bot, fed))
-    await reply(message, text)
-    await _event(message.bot, fed, text)
+    def build() -> str:
+        return _ban_text(tr("federations.un_fedban"), fed, user, target.user_id, target.name, None, _own_line(message.bot, fed))
+
+    await reply(message, build())
+    await _event(message.bot, fed, build)
     _spawn(_lift(message.bot, fed["fed_id"], target.user_id))
 
 
@@ -871,7 +888,7 @@ async def cmd_clearfban(message: Message, command: CommandObject) -> None:
         if fed is not None:
             await _event(
                 message.bot, fed,
-                _ban_text(tr("federations.un_fedban"), fed, user, target.user_id, target.name, reason, await _own_line(message.bot, fed))
+                lambda fed=fed: _ban_text(tr("federations.un_fedban"), fed, user, target.user_id, target.name, reason, _own_line(message.bot, fed))
                 + f"\n\n<i>{tr(moderation.STAFF_NOTE)}</i>",
             )
         _spawn(_lift(message.bot, row["fed_id"], target.user_id))
@@ -1004,7 +1021,7 @@ async def cmd_joinfed(message: Message, command: CommandObject) -> None:
         return
     await federations.join(message.chat.id, fed["fed_id"])
     await reply(message, tr("federations.this_chat_joined_the_federation_people", fed=_fed_name(fed)))
-    await _event(message.bot, fed, tr("federations.new_fedchat", v=await _own_line(message.bot, fed), item=_item(tr("federations.chat"), _chat_ref(message.chat.title, message.chat.username, message.chat.id)), item2=_item(tr("common.chat_id"), f'<code>{message.chat.id}</code>'), item3=_item(tr("federations.by"), user_ref(message.from_user.id, message.from_user.full_name))))
+    await _event(message.bot, fed, lambda: tr("federations.new_fedchat", v=_own_line(message.bot, fed), item=_item(tr("federations.chat"), _chat_ref(message.chat.title, message.chat.username, message.chat.id)), item2=_item(tr("common.chat_id"), f'<code>{message.chat.id}</code>'), item3=_item(tr("federations.by"), user_ref(message.from_user.id, message.from_user.full_name))))
 
 
 @router.message(cmd("leavefed"))
@@ -1020,7 +1037,7 @@ async def cmd_leavefed(message: Message) -> None:
         return
     await federations.leave(message.chat.id)
     await reply(message, tr("federations.this_chat_left_the_federation_nobody", fed=_fed_name(fed)))
-    await _event(message.bot, fed, tr("federations.un_fedchat", v=await _own_line(message.bot, fed), item=_item(tr("federations.chat"), _chat_ref(message.chat.title, message.chat.username, message.chat.id)), item2=_item(tr("common.chat_id"), f'<code>{message.chat.id}</code>'), item3=_item(tr("federations.by"), user_ref(message.from_user.id, message.from_user.full_name))))
+    await _event(message.bot, fed, lambda: tr("federations.un_fedchat", v=_own_line(message.bot, fed), item=_item(tr("federations.chat"), _chat_ref(message.chat.title, message.chat.username, message.chat.id)), item2=_item(tr("common.chat_id"), f'<code>{message.chat.id}</code>'), item3=_item(tr("federations.by"), user_ref(message.from_user.id, message.from_user.full_name))))
 
 
 @router.message(cmd("quietfed"))
@@ -1175,11 +1192,12 @@ async def _enforce(bot: Bot, chat_id: int, user, found: tuple[dict[str, Any], di
         return False
     if await federations.is_quiet(chat_id):
         return True
-    lines = [
-        tr("federations.is_banned_in_this_chat_s", id=user_ref(user.id, user.full_name), name=esc(fed['name']))
-    ]
-    if ban["reason"]:
-        lines.append(f"Reason: <code>{esc(ban['reason'])}</code>")
+    async with i18n.speaking(chat_id):
+        lines = [
+            tr("federations.is_banned_in_this_chat_s", id=user_ref(user.id, user.full_name), name=esc(fed['name']))
+        ]
+        if ban["reason"]:
+            lines.append(f"{tr('common.reason_label')}: <code>{esc(ban['reason'])}</code>")
     with suppress(TelegramAPIError):
         await bot.send_message(chat_id, "\n".join(lines), message_thread_id=thread_id, link_preview_options=LinkPreviewOptions(is_disabled=True))
     return True
@@ -1290,14 +1308,13 @@ async def _leave_federation(bot: Bot, chat_id: int, title: str | None, username:
             found = await bot.get_chat(chat_id)
             title, username = found.title, found.username
     with suppress(TelegramAPIError):
-        await bot.send_message(
-            chat_id,
-            tr("federations.i_can_t_remove_people_from", fed=_fed_name(fed)),
-        )
+        async with i18n.speaking(chat_id):
+            notice = tr("federations.i_can_t_remove_people_from", fed=_fed_name(fed))
+        await bot.send_message(chat_id, notice)
     await _event(
         bot,
         fed,
-        tr("federations.un_fedchat", v=await _own_line(bot, fed), item=_item(tr("federations.chat"), _chat_ref(title, username, chat_id)), item2=_item(tr("common.chat_id"), f'<code>{chat_id}</code>'), item3=_item(tr("federations.reason"), tr("federations.i_lost_the_right_to_ban"))),
+        lambda: tr("federations.un_fedchat", v=_own_line(bot, fed), item=_item(tr("federations.chat"), _chat_ref(title, username, chat_id)), item2=_item(tr("common.chat_id"), f'<code>{chat_id}</code>'), item3=_item(tr("federations.reason"), tr("federations.i_lost_the_right_to_ban"))),
     )
     return True
 

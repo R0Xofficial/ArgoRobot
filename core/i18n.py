@@ -16,6 +16,7 @@ Logs for developers, command names and tags like #GBANNED are not translated.
 
 import json
 import logging
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from contextvars import ContextVar
 
@@ -142,3 +143,33 @@ async def use_chat(chat_id: int | None) -> str:
             log.exception("Could not read the language of %s", chat_id)
     _current.set(code)
     return code
+
+
+@contextmanager
+def english():
+    """Inside this block texts are in English: for log chats, which are always English whatever the chat being handled speaks."""
+    token = _current.set(DEFAULT)
+    try:
+        yield
+    finally:
+        _current.reset(token)
+
+
+@asynccontextmanager
+async def speaking(chat_id: int | None):
+    """Inside this block texts are written in the language of `chat_id`: for a message sent to another chat than the one being handled."""
+    token = _current.set(await chat_language_safe(chat_id))
+    try:
+        yield
+    finally:
+        _current.reset(token)
+
+
+async def chat_language_safe(chat_id: int | None) -> str:
+    if chat_id is None:
+        return DEFAULT
+    try:
+        return await chat_language(chat_id)
+    except Exception:
+        log.exception("Could not read the language of %s", chat_id)
+        return DEFAULT

@@ -184,7 +184,7 @@ async def cmd_warn(message: Message, command: CommandObject, role: Role | None =
     count = len(await list_warns(chat_id, target.user_id))
     limit = await get_limit(chat_id)
     who = moderation.who(target)
-    await moderation.log_action(message, "WARNED", actor, target, reason, (tr("warns.warns"), f"<code>{count}/{limit}</code>"))
+    await moderation.log_action(message, "WARNED", actor, target, reason, lambda: (tr("warns.warns"), f"<code>{count}/{limit}</code>"))
     text = tr("warns.was_warned", who=who, count=count, limit=limit, by=moderation.by(actor), reason_line=moderation.reason_line(reason), staff_note=moderation.staff_note(actor))
 
     if count < limit:
@@ -193,6 +193,7 @@ async def cmd_warn(message: Message, command: CommandObject, role: Role | None =
 
     # The limit is reached: ban (or kick), and start them from zero if they ever come back.
     try:
+        mode_now, seconds_now = await get_mode(chat_id)
         done = await limit_action(message.bot, chat_id, target.user_id)
     except ModerationError as exc:
         # The warns stay, so the situation is not lost; the button still works.
@@ -204,7 +205,7 @@ async def cmd_warn(message: Message, command: CommandObject, role: Role | None =
         return
 
     await clear_warns(chat_id, target.user_id)
-    await moderation.log_action(message, "WARNLIMIT", actor, target, reason, (tr("warns.result"), done))
+    await moderation.log_action(message, "WARNLIMIT", actor, target, reason, lambda: (tr("warns.result"), enforce.outcome(mode_now, seconds_now)))
     await reply(
         message,
         tr("warns.reached_the_warn_limit_and_was", who=who, count=count, limit=limit, done=done, by=moderation.by(actor), reason_line=moderation.reason_line(reason), staff_note=moderation.staff_note(actor)),
@@ -319,7 +320,7 @@ async def cmd_resetwarns(message: Message, command: CommandObject, role: Role | 
     if removed == 0:
         await reply(message, tr("warns.has_no_warns", who=who))
     else:
-        await moderation.log_action(message, "WARNSRESET", actor, target, "", (tr("warns.removed"), f"<code>{removed}</code>"))
+        await moderation.log_action(message, "WARNSRESET", actor, target, "", lambda: (tr("warns.removed"), f"<code>{removed}</code>"))
         await reply(message, tr("warns.all_warns_of_were_removed", who=who, removed=removed, by=moderation.by(actor), staff_note=moderation.staff_note(actor)))
 
 
@@ -339,7 +340,7 @@ async def cmd_unwarn(message: Message, command: CommandObject, role: Role | None
         return
     await delete_warn(message.chat.id, warns[-1]["id"])
     limit = await get_limit(message.chat.id)
-    await moderation.log_action(message, "UNWARNED", actor, target, "", (tr("warns.warns"), f"<code>{len(warns) - 1}/{limit}</code>"))
+    await moderation.log_action(message, "UNWARNED", actor, target, "", lambda: (tr("warns.warns"), f"<code>{len(warns) - 1}/{limit}</code>"))
     await reply(
         message,
         tr("warns.the_latest_warn_of_was_removed", who=who, by=moderation.by(actor), v=len(warns) - 1, limit=limit, staff_note=moderation.staff_note(actor)),
