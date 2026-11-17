@@ -134,12 +134,17 @@ async def on_startup(bot: Bot) -> None:
 
 async def on_shutdown(bot: Bot) -> None:
     log.info("Shutting down")
+    # The notice goes first: the container is killed when stopping takes too long, and what comes
+    # after it (closing the MTProto connection, for one) can be slow.
+    await logreport.stop_schedule(bot)   # the last report, with everything since the previous one
+    await logs.dev_log(bot, "Bot stopped.")
     await chats.stop_cleanup_schedule()
     await captchas.stop_sweeper()
     await nightmode.stop_sweeper()
-    await mtproto.stop()
-    await logreport.stop_schedule(bot)   # the last report, with everything since the previous one
-    await logs.dev_log(bot, "Bot stopped.")
+    try:
+        await asyncio.wait_for(mtproto.stop(), timeout=5)
+    except Exception:
+        log.warning("Closing the MTProto client took too long")
     try:
         await database.close()
     except Exception:
