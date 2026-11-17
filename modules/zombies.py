@@ -13,7 +13,7 @@ from core.helpers import reply
 from core.moderation import ModerationError, perform
 from core.roles import Role
 from core.text import esc
-from core.i18n import plural, tr
+from core.i18n import plural_tag, tr
 
 log = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ async def _sweep(message: Message, progress: Message, user_ids: list[int]) -> No
     if found == 0:
         text = tr("zombies.no_deleted_accounts_found")
     else:
-        text = tr("zombies.removed_deleted_account", removed=removed, opt='' if removed == 1 else 's', noun=plural(removed, "usunięte konto", "usunięte konta", "usuniętych kont"))
+        text = tr("zombies.removed_deleted_account", removed=removed, noun=plural_tag("zombies.noun", removed))
         if failed:
             text += tr("zombies.i_couldn_t_remove", failed=failed) + "; ".join(esc(reason) for reason in reasons)
     try:

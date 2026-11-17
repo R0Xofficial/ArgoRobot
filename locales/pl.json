@@ -1,4 +1,11 @@
 {
+ "meta.name": "Polski",
+ "meta.flag": "🇵🇱",
+ "meta.plural": "one-few-many",
+ "time.day": "dzień|dni|dni",
+ "time.hour": "godzina|godziny|godzin",
+ "time.minute": "minuta|minuty|minut",
+ "time.second": "sekunda|sekundy|sekund",
  "admin.a_chat_title_can_have_at": "Nazwa czatu może mieć najwyżej {MAX_TITLE} znaków.",
  "admin.about": "\nNarzędzia do opieki nad samym czatem.\n\nUstawienia /adminerror, /anonadmin i /staffhelp należą do właściciela czatu: każdy admin może zobaczyć aktualną wartość, wysyłając polecenie bez argumentu, ale zmienić ją może tylko właściciel, także moja obsługa nie.\n",
  "admin.admins": "<b>Administratorzy</b>",
@@ -1693,5 +1700,6 @@
  "zombies.i_m_already_checking_this_chat": "Już sprawdzam ten czat.",
  "zombies.looking_for_deleted_accounts_this_can": "Szukam usuniętych kont. To może potrwać.",
  "zombies.no_deleted_accounts_found": "Nie znaleziono usuniętych kont.",
+ "zombies.noun": "usunięte konto|usunięte konta|usuniętych kont",
  "zombies.removed_deleted_account": "Wyrzucono <b>{removed}</b> {noun}."
 }

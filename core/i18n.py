@@ -5,8 +5,10 @@ Code never contains the text itself, only a tag: tr("bans.was_banned", who=name)
 The texts live in locales/<code>.json, one file per language, as {"tag": "text"}
 with {placeholders}. locales/en.json is the reference and has every tag; another
 language may lack some, and a missing tag is shown in English, so a missing line
-is never an error. To add a language: copy en.json to <code>.json, translate it, and
-add the language to LANGUAGES below.
+is never an error. A language is a single file and nothing else: the files in locales/
+are found at start-up, so to add one, copy en.json to <code>.json and translate it. Besides
+the texts the file holds its own settings: meta.name (its name), meta.flag (its flag),
+meta.plural ("one-other" or "one-few-many") and the forms of the time units, time.day ...
 
 The language belongs to a chat (a private chat is a chat too, its id is the user's id)
 and is chosen with /setlang. A middleware (core/middlewares.py) sets it for the update
@@ -24,8 +26,8 @@ log = logging.getLogger(__name__)
 
 CACHE_LIMIT = 20000
 DEFAULT = "en"
-LANGUAGES = {"en": "English", "pl": "Polski"}
-FLAGS = {"en": "🇬🇧", "pl": "🇵🇱"}
+LANGUAGES: dict[str, str] = {}   # code -> its own name, found in locales/
+FLAGS: dict[str, str] = {}       # code -> flag
 
 
 def label(code: str) -> str:
@@ -50,6 +52,21 @@ def _catalog(code: str) -> dict[str, str]:
             found = {}
         _catalogs[code] = found
     return found
+
+
+def discover() -> None:
+    """Find every language in locales/: a <code>.json file is a language. English comes first, then by code."""
+    LANGUAGES.clear()
+    FLAGS.clear()
+    _catalogs.clear()
+    codes = sorted((path.stem for path in LOCALES.glob("*.json")), key=lambda code: (code != DEFAULT, code))
+    for code in codes:
+        found = _catalog(code)
+        if not found:
+            continue
+        LANGUAGES[code] = found.get("meta.name") or code
+        if found.get("meta.flag"):
+            FLAGS[code] = found["meta.flag"]
 
 
 def current() -> str:
@@ -93,14 +110,28 @@ def word(value: str) -> str:
 
 
 def plural(count: int, one: str, few: str, many: str) -> str:
-    """Pick the Polish form for a number: 1 konto, 2 konta, 5 kont. English uses `one` for 1 and `many` otherwise."""
-    if _current.get() != "pl":
+    """Pick the form for a number by the language's meta.plural. "one-few-many" (Polish): 1 konto, 2 konta, 5 kont.
+    "one-other" (the default, English): `one` for 1 and `many` otherwise."""
+    if _catalog(_current.get()).get("meta.plural") != "one-few-many":
         return one if count == 1 else many
     if count == 1:
         return one
     if 2 <= count % 10 <= 4 and not 12 <= count % 100 <= 14:
         return few
     return many
+
+
+def forms(tag: str) -> tuple[str, str, str]:
+    """The three forms of a tag written as "one|few|many" (a language with two forms writes "one|other")."""
+    parts = tr(tag).split("|")
+    while len(parts) < 3:
+        parts.append(parts[-1])
+    return parts[0], parts[1], parts[2]
+
+
+def plural_tag(tag: str, count: int) -> str:
+    """The form of a "one|few|many" tag that fits the number."""
+    return plural(count, *forms(tag))
 
 
 # --- Which language a chat uses ---------------------------------------------------------------
@@ -173,3 +204,6 @@ async def chat_language_safe(chat_id: int | None) -> str:
     except Exception:
         log.exception("Could not read the language of %s", chat_id)
         return DEFAULT
+
+
+discover()

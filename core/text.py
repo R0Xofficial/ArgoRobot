@@ -71,21 +71,13 @@ def user_ref(user_id: int, name: str | None) -> str:
 
 
 def duration_text(seconds: int) -> str:
-    """90 -> '1 minute 30 seconds'."""
+    """90 -> '1 minute 30 seconds' (the unit words come from the language's time.* tags)."""
     parts = []
-    forms = _UNIT_FORMS.get(i18n.current(), _UNIT_FORMS["en"])
     for name, size in (("day", 86400), ("hour", 3600), ("minute", 60), ("second", 1)):
         count, seconds = divmod(seconds, size)
         if count:
-            parts.append(f"{count} {i18n.plural(count, *forms[name])}")
+            parts.append(f"{count} {i18n.plural_tag('time.' + name, count)}")
     return " ".join(parts)
-
-
-# (one, few, many) for each unit; English only tells one from many.
-_UNIT_FORMS = {
-    "en": {"day": ("day", "days", "days"), "hour": ("hour", "hours", "hours"), "minute": ("minute", "minutes", "minutes"), "second": ("second", "seconds", "seconds")},
-    "pl": {"day": ("dzień", "dni", "dni"), "hour": ("godzina", "godziny", "godzin"), "minute": ("minuta", "minuty", "minut"), "second": ("sekunda", "sekundy", "sekund")},
-}
 
 
 # Every on/off setting of the bot understands the same words.
