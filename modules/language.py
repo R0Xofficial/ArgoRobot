@@ -25,6 +25,7 @@ router = Router(name="language")
 
 CB = "lang:"
 RIGHT = "can_change_info"
+COLUMNS = 2
 
 
 def _keyboard(current: str) -> InlineKeyboardMarkup:
@@ -32,7 +33,8 @@ def _keyboard(current: str) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text=("✓ " if code == current else "") + i18n.label(code), callback_data=f"{CB}{code}")
         for code in i18n.LANGUAGES
     ]
-    return InlineKeyboardMarkup(inline_keyboard=[buttons])
+    rows = [buttons[i:i + COLUMNS] for i in range(0, len(buttons), COLUMNS)]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _status(code: str) -> str:
