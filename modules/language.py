@@ -38,7 +38,7 @@ def _keyboard(current: str) -> InlineKeyboardMarkup:
 
 
 def _status(code: str) -> str:
-    listing = "\n".join(i18n.label(known) for known in i18n.LANGUAGES)
+    listing = "\n".join(f"{esc(i18n.label(known))} (<code>{known}</code>)" for known in i18n.LANGUAGES)
     return tr("language.the_language_of_this_chat_is", language=esc(i18n.label(code)), listing=listing)
 
 
