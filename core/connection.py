@@ -18,6 +18,7 @@ from typing import Any
 
 from core import database, disabled
 from core.users import CACHE_LIMIT
+from core.i18n import tr
 
 log = logging.getLogger(__name__)
 
@@ -102,9 +103,9 @@ async def switched_off(chat_id: int | None = None) -> str | None:
 
     info = registry.get("connection")
     if info is not None and not info.enabled:
-        return "Connections are switched off."
+        return tr("connection.connections_are_switched_off")
     if chat_id is not None and await disabled.module_off(chat_id, "connection"):
-        return "Connections are switched off in that group."
+        return tr("connection.connections_are_switched_off_in_that")
     return None
 
 
@@ -126,19 +127,19 @@ async def connect(bot, user_id: int, reference: int | str) -> dict[str, Any]:
     try:
         chat = await bot.get_chat(reference)
     except TelegramAPIError:
-        raise ConnectError("I can't find that chat. Check the ID or username, and make sure I am in the group.") from None
+        raise ConnectError(tr("connection.i_can_t_find_that_chat")) from None
     if getattr(chat, "type", None) not in GROUP_TYPES:
-        raise ConnectError("You can only connect to a group.")
+        raise ConnectError(tr("connection.you_can_only_connect_to_a"))
     why = await switched_off(chat.id)
     if why:
         raise ConnectError(why)
     if await moderation.member_status(bot, chat.id, bot.id) in (None, "left", "kicked"):
-        raise ConnectError("I am not in that group.")
+        raise ConnectError(tr("connection.i_am_not_in_that_group"))
     status = await moderation.member_status(bot, chat.id, user_id)
     if status is None:
-        raise ConnectError("I couldn't check your rights in that group.")
+        raise ConnectError(tr("connection.i_couldn_t_check_your_rights"))
     if status not in ("creator", "administrator"):
-        raise ConnectError("Only admins of that group can connect to it.")
+        raise ConnectError(tr("connection.only_admins_of_that_group_can"))
     await save(user_id, chat.id, getattr(chat, "title", None), chat.type)
     return _cache[user_id]
 

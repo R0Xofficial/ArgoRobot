@@ -12,6 +12,7 @@ from aiogram.types import ChatPermissions
 
 from core.moderation import perform
 from core.text import duration_text
+from core.i18n import tr
 
 MUTED = ChatPermissions(can_send_messages=False)
 
@@ -29,10 +30,10 @@ async def punish(bot, chat_id: int, user_id: int, mode: str, seconds: int = 0) -
         await perform(bot.ban_chat_member(chat_id, user_id))
         if mode == "kick":
             await perform(bot.unban_chat_member(chat_id, user_id, only_if_banned=True))
-        return "banned" if mode == "ban" else "kicked"
+        return tr("enforce.banned") if mode == "ban" else tr("enforce.kicked")
     if mode == "tban":
         await perform(bot.ban_chat_member(chat_id, user_id, until_date=until))
-        return f"banned for {duration_text(seconds)}"
+        return tr("enforce.banned_for", duration_text=duration_text(seconds))
     kwargs = {"until_date": until} if until else {}
     await perform(bot.restrict_chat_member(chat_id, user_id, permissions=MUTED, **kwargs))
-    return f"muted for {duration_text(seconds)}" if until else "muted"
+    return tr("enforce.muted_for", duration_text=duration_text(seconds)) if until else tr("enforce.muted")

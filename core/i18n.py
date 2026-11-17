@@ -1,0 +1,144 @@
+"""
+Languages of the bot's texts.
+
+Code never contains the text itself, only a tag: tr("bans.was_banned", who=name).
+The texts live in locales/<code>.json, one file per language, as {"tag": "text"}
+with {placeholders}. locales/en.json is the reference and has every tag; another
+language may lack some, and a missing tag is shown in English, so a missing line
+is never an error. To add a language: copy en.json to <code>.json, translate it, and
+add the language to LANGUAGES below.
+
+The language belongs to a chat (a private chat is a chat too, its id is the user's id)
+and is chosen with /setlang. A middleware (core/middlewares.py) sets it for the update
+being handled; code that runs later on its own (sweepers, timers) calls use_chat().
+Logs for developers, command names and tags like #GBANNED are not translated.
+"""
+
+import json
+import logging
+from pathlib import Path
+from contextvars import ContextVar
+
+log = logging.getLogger(__name__)
+
+CACHE_LIMIT = 20000
+DEFAULT = "en"
+LANGUAGES = {"en": "English", "pl": "Polski"}
+FLAGS = {"en": "🇬🇧", "pl": "🇵🇱"}
+
+
+def label(code: str) -> str:
+    """A language as shown to people: its flag and its own name."""
+    return f"{FLAGS[code]} {LANGUAGES[code]}" if code in FLAGS else LANGUAGES[code]
+
+_current: ContextVar[str] = ContextVar("language", default=DEFAULT)
+_catalogs: dict[str, dict[str, str]] = {}
+_cache: dict[int, str] = {}
+
+
+LOCALES = Path(__file__).resolve().parent.parent / "locales"
+
+
+def _catalog(code: str) -> dict[str, str]:
+    found = _catalogs.get(code)
+    if found is None:
+        try:
+            found = json.loads((LOCALES / f"{code}.json").read_text(encoding="utf8"))
+        except Exception:
+            log.exception("Could not load the language %s", code)
+            found = {}
+        _catalogs[code] = found
+    return found
+
+
+def current() -> str:
+    return _current.get()
+
+
+def _find(tag: str) -> tuple[str | None, bool]:
+    """The text of a tag in the current language, else in English. Second value: it came from the current language."""
+    code = _current.get()
+    if code != DEFAULT:
+        text = _catalog(code).get(tag)
+        if text is not None:
+            return text, True
+    return _catalog(DEFAULT).get(tag), False
+
+
+def tr(tag: str, /, **values) -> str:
+    """The text behind a tag, in the language of the update being handled. {name} placeholders are filled from `values`."""
+    text, local = _find(tag)
+    if text is None:
+        text = tag  # not a known tag: show it as it is
+    if not values:
+        return text
+    try:
+        return text.format(**values)
+    except (KeyError, IndexError, ValueError):
+        log.warning("Broken text for %r (%s)", tag, _current.get())
+        english = _catalog(DEFAULT).get(tag, tag) if local else tag
+        return english.format(**values)
+
+
+def tr_or(tag: str, default: str, /, **values) -> str:
+    """Like tr(), but a tag with no text anywhere gives `default` (for names that are the same in every language)."""
+    text, _ = _find(tag)
+    return tr(tag, **values) if text is not None else (default.format(**values) if values else default)
+
+
+def word(value: str) -> str:
+    """A word from a fixed list (ban, kick, mute ...) in the current language; one that is not listed stays as it is."""
+    return tr_or(f"word.{value}", value)
+
+
+def plural(count: int, one: str, few: str, many: str) -> str:
+    """Pick the Polish form for a number: 1 konto, 2 konta, 5 kont. English uses `one` for 1 and `many` otherwise."""
+    if _current.get() != "pl":
+        return one if count == 1 else many
+    if count == 1:
+        return one
+    if 2 <= count % 10 <= 4 and not 12 <= count % 100 <= 14:
+        return few
+    return many
+
+
+# --- Which language a chat uses ---------------------------------------------------------------
+
+async def chat_language(chat_id: int) -> str:
+    from core import database
+    code = _cache.get(chat_id)
+    if code is None:
+        row = await database.fetch_one("SELECT language FROM chat_settings WHERE chat_id = $1", chat_id)
+        code = row["language"] if row and row["language"] in LANGUAGES else DEFAULT
+        if len(_cache) >= CACHE_LIMIT:
+            _cache.clear()
+        _cache[chat_id] = code
+    return code
+
+
+async def set_chat_language(chat_id: int, code: str) -> None:
+    from core import database
+
+    await database.execute(
+        "INSERT INTO chat_settings (chat_id, language) VALUES ($1, $2) "
+        "ON CONFLICT (chat_id) DO UPDATE SET language = EXCLUDED.language",
+        chat_id,
+        code,
+    )
+    _cache[chat_id] = code
+
+
+def forget_chat(chat_id: int) -> None:
+    _cache.pop(chat_id, None)
+
+
+async def use_chat(chat_id: int | None) -> str:
+    """Speak the language of this chat from here on (in the current task)."""
+    code = DEFAULT
+    if chat_id is not None:
+        try:
+            code = await chat_language(chat_id)
+        except Exception:
+            log.exception("Could not read the language of %s", chat_id)
+    _current.set(code)
+    return code

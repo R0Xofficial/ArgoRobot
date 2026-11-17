@@ -36,7 +36,7 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
 )
 
-from core import blacklist, captchas, chatsettings, connection, database, disabled, filterstore, flood, federations, joinblacklist, locks, logs
+from core import i18n, blacklist, captchas, chatsettings, connection, database, disabled, filterstore, flood, federations, joinblacklist, locks, logs
 from core.errors import report_exception
 from core.text import esc
 from core.users import CACHE_LIMIT, IGNORED_IDS, REFRESH_SECONDS
@@ -160,6 +160,7 @@ DELETE FROM chats WHERE chat_id = $1
 def _forget(chat_id: int) -> None:
     """Drop the in-memory copies, so a chat the bot rejoins is written again."""
     _chats.pop(chat_id, None)
+    i18n.forget_chat(chat_id)
     for key in [key for key in _presence if key[1] == chat_id]:
         del _presence[key]
 

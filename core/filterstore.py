@@ -21,6 +21,7 @@ from typing import Any
 
 from core import database
 from core.users import CACHE_LIMIT
+from core.i18n import tr
 
 MAX_FILTERS = 300
 MAX_PATTERN = 100
@@ -56,7 +57,7 @@ def _read_one(text: str) -> tuple[str, str]:
         closing = _CLOSING[text[0]]
         end = text.find(closing, 1)
         if end == -1:
-            raise FilterError("A quote is not closed. Close the phrase with another double quote.")
+            raise FilterError(tr("filterstore.a_quote_is_not_closed_close"))
         body, rest = text[1:end], text[end + 1:]
     else:
         parts = text.split(None, 1)
@@ -64,10 +65,10 @@ def _read_one(text: str) -> tuple[str, str]:
         rest = text[len(body):]
     body = _normalize(body)
     if not body:
-        raise FilterError("The keyword is empty.")
+        raise FilterError(tr("filterstore.the_keyword_is_empty"))
     pattern = modifier + body
     if len(pattern) > MAX_PATTERN:
-        raise FilterError(f"A keyword can be at most {MAX_PATTERN} characters.")
+        raise FilterError(tr("filterstore.a_keyword_can_be_at_most", MAX_PATTERN=MAX_PATTERN))
     return pattern, rest
 
 
@@ -87,7 +88,7 @@ def _split_group(inner: str) -> list[str]:
         else:
             current.append(ch)
     if quote:
-        raise FilterError("A quote is not closed. Close the phrase with another double quote.")
+        raise FilterError(tr("filterstore.a_quote_is_not_closed_close"))
     items.append("".join(current))
     return items
 
@@ -102,7 +103,7 @@ def parse_triggers(args: str) -> tuple[list[str], str]:
     """
     text = (args or "").lstrip()
     if not text:
-        raise FilterError("Give me a keyword.")
+        raise FilterError(tr("filterstore.give_me_a_keyword"))
     if text[0] != "(":
         pattern, rest = _read_one(text)
         return [pattern], rest.strip()
@@ -118,20 +119,20 @@ def parse_triggers(args: str) -> tuple[list[str], str]:
             end = index
             break
     if end is None:
-        raise FilterError("A parenthesis is not closed. Finish the list of keywords with ).")
+        raise FilterError(tr("filterstore.a_parenthesis_is_not_closed_finish"))
     patterns: list[str] = []
     for item in _split_group(text[1:end]):
         if not item.strip():
             continue
         pattern, rest = _read_one(item)
         if rest.strip():
-            raise FilterError(f"Put keywords with spaces in double quotes: \"{item.strip()}\".")
+            raise FilterError(tr("filterstore.put_keywords_with_spaces_in_double", strip=item.strip()))
         if pattern not in patterns:
             patterns.append(pattern)
     if not patterns:
-        raise FilterError("The list of keywords is empty.")
+        raise FilterError(tr("filterstore.the_list_of_keywords_is_empty"))
     if len(patterns) > MAX_GROUP:
-        raise FilterError(f"At most {MAX_GROUP} keywords in one filter.")
+        raise FilterError(tr("filterstore.at_most_keywords_in_one_filter", MAX_GROUP=MAX_GROUP))
     return patterns, text[end + 1:].strip()
 
 

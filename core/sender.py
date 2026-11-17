@@ -25,6 +25,7 @@ from core import markup
 from core.helpers import reply
 from core.markup import MarkupError
 from core.text import esc
+from core.i18n import tr
 
 log = logging.getLogger(__name__)
 
@@ -94,14 +95,14 @@ _FORMATTING = frozenset((
 def validate(text: str, has_media: bool) -> None:
     """Raise MarkupError (with a sentence for people) when this could not be sent."""
     if len(text) > MAX_CONTENT:
-        raise MarkupError(f"That message is too long: at most {MAX_CONTENT} characters.")
+        raise MarkupError(tr("sender.that_message_is_too_long_at", MAX_CONTENT=MAX_CONTENT))
     markup.check(text)
     for variant in markup.variants(text):
         html = markup.parse(variant).html
         if len(html) > MESSAGE_LIMIT:
-            raise MarkupError("A variant is too long once formatted.")
+            raise MarkupError(tr("sender.a_variant_is_too_long_once"))
         if not html and not has_media:
-            raise MarkupError("A message needs some text (buttons alone are not enough).")
+            raise MarkupError(tr("sender.a_message_needs_some_text_buttons"))
 
 
 # --- Sending ---------------------------------------------------------------------------
@@ -155,7 +156,7 @@ async def send(
     media_file_id: str | None,
     *,
     raw: bool = False,
-    label: str = "saved message",
+    label: str = tr("sender.saved_message"),
     chat=None,
     extra_button: InlineKeyboardButton | None = None,
 ) -> Message | None:

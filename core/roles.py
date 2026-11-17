@@ -18,6 +18,7 @@ from enum import IntEnum
 
 from config import settings
 from core import database
+from core.i18n import tr
 
 log = logging.getLogger(__name__)
 
@@ -82,9 +83,9 @@ async def set_role(
     added_by_name: str | None = None,
 ) -> None:
     if role is Role.OWNER:
-        raise ValueError("The OWNER role is set in the configuration and can't be assigned.")
+        raise ValueError(tr("roles.the_owner_role_is_set_in"))
     if user_id == settings.OWNER_ID:
-        raise ValueError("The owner's role can't be changed.")
+        raise ValueError(tr("common.the_owner_s_role_can_t"))
 
     await database.execute(
         "INSERT INTO roles (user_id, role, added_by, name, added_by_name) "
@@ -103,7 +104,7 @@ async def set_role(
 
 async def remove_role(user_id: int) -> None:
     if user_id == settings.OWNER_ID:
-        raise ValueError("The owner can't be demoted.")
+        raise ValueError(tr("roles.the_owner_can_t_be_demoted"))
 
     await database.execute("DELETE FROM roles WHERE user_id = $1", user_id)
     await _load()

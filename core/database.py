@@ -141,6 +141,7 @@ CREATE TABLE IF NOT EXISTS chat_settings (
 );
 -- More switches of the chat's owner (see core/chatsettings.py).
 ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS gban_enforce BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'en';
 ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS admin_errors BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE chat_settings ALTER COLUMN admin_errors SET DEFAULT TRUE;  -- I answer people without rights unless the chat owner turns it off
 ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS anon_admin BOOLEAN NOT NULL DEFAULT FALSE;

@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from core import database
+from core.i18n import tr
 
 MAX_NOTES = 300
 MAX_NAME = 64
@@ -25,10 +26,10 @@ def check_name(text: str) -> str:
     """The stored form of a name typed by a person (a leading # is allowed). Raises NoteNameError."""
     name = text.strip().lstrip("#").lower()
     if not name:
-        raise NoteNameError("A note needs a name.")
+        raise NoteNameError(tr("notestore.a_note_needs_a_name"))
     if not _NAME.match(name):
         raise NoteNameError(
-            f"A note name is a single word of at most {MAX_NAME} letters, digits, dots, dashes or underscores."
+            tr("notestore.a_note_name_is_a_single", MAX_NAME=MAX_NAME)
         )
     return name
 

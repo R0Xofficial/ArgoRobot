@@ -19,6 +19,7 @@ from aiogram import Router
 from core import database
 from core import disabled
 from core.disabled import CommandGuard
+from core.i18n import tr
 
 log = logging.getLogger(__name__)
 
@@ -102,7 +103,7 @@ async def set_enabled(name: str, enabled: bool) -> bool:
         return False
 
     if info.protected and not enabled:
-        raise ProtectedModuleError(f"Module '{info.name}' is protected and can't be disabled.")
+        raise ProtectedModuleError(tr("registry.module_is_protected_and_can_t", name=info.name))
 
     info.enabled = enabled
     await database.execute(
@@ -111,7 +112,7 @@ async def set_enabled(name: str, enabled: bool) -> bool:
         info.name,
         enabled,
     )
-    log.info("Module '%s' %s", info.name, "enabled" if enabled else "disabled")
+    log.info("Module '%s' %s", info.name, tr("common.enabled") if enabled else tr("common.disabled"))
     return True
 
 

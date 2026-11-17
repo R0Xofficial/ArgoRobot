@@ -26,6 +26,7 @@ from typing import Any, Iterator
 from core import database
 from core.moderation import MAX_DURATION, MIN_DURATION, parse_duration
 from core.users import CACHE_LIMIT
+from core.i18n import tr
 
 MAX_TRIGGERS = 500
 MAX_PATTERN = 100
@@ -74,20 +75,20 @@ def check(text: str) -> str:
     """Validate a trigger as typed and return its stored form. Raises TriggerError."""
     pattern = normalize(text)
     if not pattern:
-        raise TriggerError("The trigger is empty.")
+        raise TriggerError(tr("common.the_trigger_is_empty"))
     if len(pattern) > MAX_PATTERN:
-        raise TriggerError(f"A trigger can be at most {MAX_PATTERN} characters.")
+        raise TriggerError(tr("common.a_trigger_can_be_at_most", MAX_PATTERN=MAX_PATTERN))
     kind, body = split_modifier(pattern)
     if not body:
-        raise TriggerError(f"{kind}: needs something after it.")
+        raise TriggerError(tr("blacklist.needs_something_after_it", kind=kind))
     if kind == "stickerpack":
         body = body.rstrip("/").rsplit("/", 1)[-1]  # accept t.me/addstickers/name
         if not re.fullmatch(r"\w{1,64}", body):
-            raise TriggerError("A sticker pack name has only letters, digits and underscores.")
+            raise TriggerError(tr("blacklist.a_sticker_pack_name_has_only"))
         return f"stickerpack:{body}"
     if kind == "sticker":
         if any(ch.isspace() for ch in body):
-            raise TriggerError("sticker: takes one emoji.")
+            raise TriggerError(tr("blacklist.sticker_takes_one_emoji"))
         return f"sticker:{body}"
     _glob(body)  # raises if the wildcards are too many
     return f"{kind}:{body}" if kind != "plain" else body
@@ -124,7 +125,7 @@ def _glob(body: str) -> str:
             i += 1
     if runs > MAX_WILDCARDS or long_runs > MAX_LONG_WILDCARDS:
         raise TriggerError(
-            f"Too many wildcards: at most {MAX_WILDCARDS}, and at most {MAX_LONG_WILDCARDS} of them **."
+            tr("blacklist.too_many_wildcards_at_most_and", MAX_WILDCARDS=MAX_WILDCARDS, MAX_LONG_WILDCARDS=MAX_LONG_WILDCARDS)
         )
     return "".join(out)
 
@@ -244,7 +245,7 @@ async def settings(chat_id: int) -> dict[str, Any]:
 
 async def update_settings(chat_id: int, **fields: Any) -> dict[str, Any]:
     if not fields or not set(fields) <= set(DEFAULT_SETTINGS):
-        raise ValueError(f"unknown blacklist setting in {sorted(fields)}")
+        raise ValueError(tr("blacklist.unknown_blacklist_setting_in", fields=sorted(fields)))
     names = list(fields)
     await database.execute(
         f"INSERT INTO blacklist_settings (chat_id, {', '.join(names)}) "
@@ -266,18 +267,18 @@ def parse_action(spec: str, *, allow_off: bool = False) -> tuple[str, int]:
     """'ban', 'delete', 'tmute 30m' -> ('ban', 0), ('del', 0), ('tmute', 1800)."""
     words = spec.lower().split()
     if not words:
-        raise TriggerError("The action is empty.")
+        raise TriggerError(tr("blacklist.the_action_is_empty"))
     name = ALIASES.get(words[0], words[0])
     if name == "off" and not allow_off:
         name = ""
     if name not in ACTIONS and not (allow_off and name == "off"):
         options = "delete, ban, mute, kick, warn, tban <time>, tmute <time>"
-        raise TriggerError(f"Unknown action \"{words[0]}\". Use one of: {options}.")
+        raise TriggerError(tr("blacklist.unknown_action_use_one_of", v=words[0], options=options))
     if name in TIMED:
         duration = parse_duration(words[1]) if len(words) == 2 else None
         if duration is None or not MIN_DURATION <= duration <= MAX_DURATION:
-            raise TriggerError(f"{name} needs a duration, like 30m, 2h, 3d or 1w (from 1 minute to 365 days).")
+            raise TriggerError(tr("blacklist.needs_a_duration_like_30m_2h", name=name))
         return name, int(duration.total_seconds())
     if len(words) > 1:
-        raise TriggerError(f"{name} doesn't take a duration. Use tban or tmute for a temporary action.")
+        raise TriggerError(tr("blacklist.doesn_t_take_a_duration_use", name=name))
     return name, 0

@@ -36,6 +36,7 @@ from typing import Any, Callable
 from urllib.parse import urlparse
 
 from core.text import esc, esc_attr
+from core.i18n import tr
 
 MAX_BUTTONS = 20
 MAX_BUTTONS_PER_ROW = 8
@@ -270,13 +271,13 @@ def parse(source: str, values: dict[str, str] | None = None) -> Parsed:
         if same:
             url_raw = url_raw[: -len(":same")]
         if not label:
-            raise MarkupError("A button needs a text.")
+            raise MarkupError(tr("markup.a_button_needs_a_text"))
         if len(label) > MAX_BUTTON_TEXT:
-            raise MarkupError(f"A button text can be at most {MAX_BUTTON_TEXT} characters.")
+            raise MarkupError(tr("markup.a_button_text_can_be_at", MAX_BUTTON_TEXT=MAX_BUTTON_TEXT))
         url = _button_url(url_raw)
         count += 1
         if count > MAX_BUTTONS:
-            raise MarkupError(f"At most {MAX_BUTTONS} buttons per message.")
+            raise MarkupError(tr("markup.at_most_buttons_per_message", MAX_BUTTONS=MAX_BUTTONS))
         if same and rows and len(rows[-1]) < MAX_BUTTONS_PER_ROW:
             rows[-1].append((label, url))
         else:
@@ -294,6 +295,6 @@ def check(source: str) -> None:
     """Raise MarkupError when a saved message could not be sent (every variant is tried)."""
     parts = variants(source)
     if len(parts) > MAX_VARIANTS:
-        raise MarkupError(f"At most {MAX_VARIANTS} random variants (separated by %%%).")
+        raise MarkupError(tr("markup.at_most_random_variants_separated_by", MAX_VARIANTS=MAX_VARIANTS))
     for part in parts:
         parse(part)

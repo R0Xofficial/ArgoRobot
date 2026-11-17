@@ -32,6 +32,7 @@ from core.helpers import reply
 from core.roles import Role
 from core.targets import Target, TargetError, replied_message, resolve_target
 from core.text import esc, truncate, user_link, user_ref
+from core.i18n import tr
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ STAFF_ROLE = Role.SUDO
 
 MAX_REASON_LENGTH = 300
 
-RIGHTS_MESSAGE = "I don't have the rights to do that. Make me an admin with permission to restrict users."
+RIGHTS_MESSAGE = "moderation.rights_message"
 
 
 class ModerationError(Exception):
@@ -71,7 +72,7 @@ class Actor:
 
     @property
     def link(self) -> str:
-        return "Anonymous admin" if self.anonymous else user_link(self.id, self.name)
+        return tr("moderation.anonymous_admin") if self.anonymous else user_link(self.id, self.name)
 
 
 def actor_of(message: Message) -> Actor:
@@ -79,7 +80,7 @@ def actor_of(message: Message) -> Actor:
     sender_chat = getattr(message, "sender_chat", None)
     if sender_chat is not None and sender_chat.id == chat.id:
         # An admin writing as the group itself: Telegram hides who it is.
-        return Actor(None, "Anonymous admin", anonymous=True)
+        return Actor(None, tr("moderation.anonymous_admin"), anonymous=True)
     return Actor(message.from_user.id, message.from_user.full_name)
 
 
@@ -88,11 +89,11 @@ def _status(member: Any) -> str:
 
 
 RIGHT_TEXT = {
-    "can_restrict_members": "ban users",
-    "can_invite_users": "invite users",
-    "can_change_info": "change the chat info",
-    "can_promote_members": "add new admins",
-    "can_manage_chat": "manage the chat",
+    "can_restrict_members": "moderation.right_text.can_restrict_members",
+    "can_invite_users": "common.invite_users",
+    "can_change_info": "moderation.right_text.can_change_info",
+    "can_promote_members": "moderation.right_text.can_promote_members",
+    "can_manage_chat": "moderation.right_text.can_manage_chat",
 }
 
 
@@ -122,14 +123,13 @@ async def authorize(
     refused unless the chat's owner trusts them all with /anonadmin.
     """
     if chat.type not in GROUP_TYPES:
-        raise ModerationError("This command only works in groups.")
+        raise ModerationError(tr("common.this_command_only_works_in_groups"))
     if anonymous:
         # Only admins can write as the group, but which admin and with which rights is hidden.
         if await chatsettings.anon_admin(chat.id):
             return "admin"
         raise NotAllowed(
-            "I can't check the rights of anonymous admins. Send the command as yourself, "
-            "or let the chat owner trust anonymous admins with /anonadmin on."
+            tr("moderation.i_can_t_check_the_rights")
         )
 
     def staff_may_help() -> bool:
@@ -140,7 +140,7 @@ async def authorize(
     except TelegramAPIError:
         if staff_may_help() and await chatsettings.staff_help(chat.id):
             return "staff"
-        raise ModerationError("I couldn't check your rights in this chat.") from None
+        raise ModerationError(tr("common.i_couldn_t_check_your_rights")) from None
 
     status = _status(member)
     if status == "creator":
@@ -150,8 +150,8 @@ async def authorize(
     if staff_may_help() and await chatsettings.staff_help(chat.id):
         return "staff"
     if status == "administrator":
-        raise NotAllowed(f"You need the admin right to {RIGHT_TEXT.get(right, right)} to use this command.")
-    raise NotAllowed("Only chat admins can use this command.")
+        raise NotAllowed(tr("moderation.you_need_the_admin_right_to", get=tr(RIGHT_TEXT.get(right, right))))
+    raise NotAllowed(tr("moderation.only_chat_admins_can_use_this"))
 
 
 async def member_status(bot, chat_id: int, user_id: int) -> str | None:
@@ -203,20 +203,20 @@ async def check_target(
     if target.is_chat:
         # Only channels writing into the chat can be banned; never the group itself.
         if target.kind != "channel" or target.user_id == chat.id:
-            raise ModerationError("Only channels can be banned that way.")
+            raise ModerationError(tr("moderation.only_channels_can_be_banned_that"))
         return
 
     if not allow_self and actor.id is not None and actor.id == target.user_id:
-        raise ModerationError("You can't do that to yourself.")
+        raise ModerationError(tr("moderation.you_can_t_do_that_to"))
     if target.user_id == (await bot.me()).id:
-        raise ModerationError("I can't take action against myself.")
+        raise ModerationError(tr("moderation.i_can_t_take_action_against"))
     if immunity.is_immune(target.user_id):
-        raise ModerationError("I can't take action against that account.")
+        raise ModerationError(tr("common.i_can_t_take_action_against"))
     if not punitive:
         return
 
     if await is_chat_admin(bot, chat.id, target.user_id):
-        raise ModerationError("I can't take action against a chat admin.")
+        raise ModerationError(tr("common.i_can_t_take_action_against_2"))
 
 
 async def begin(
@@ -284,21 +284,21 @@ async def begin_chat_command(
 async def require_chat_owner(message: Message) -> None:
     """Raise ModerationError unless the command was given by the owner of the chat."""
     if message.chat.type not in GROUP_TYPES:
-        raise ModerationError("This command only works in groups.")
+        raise ModerationError(tr("common.this_command_only_works_in_groups"))
     if actor_of(message).anonymous:
-        raise ModerationError("Send this command as yourself, not as an anonymous admin.")
+        raise ModerationError(tr("common.send_this_command_as_yourself_not"))
     status = await member_status(message.bot, message.chat.id, message.from_user.id)
     if status is None:
-        raise ModerationError("I couldn't check your rights in this chat.")
+        raise ModerationError(tr("common.i_couldn_t_check_your_rights"))
     if status != "creator":
-        raise NotAllowed("Only the owner of this chat can change this.")
+        raise NotAllowed(tr("moderation.only_the_owner_of_this_chat"))
 
 
 async def require_reply(message: Message) -> Message | None:
     """The message a command replies to; answers with a hint when there is none."""
     found = replied_message(message)
     if found is None:
-        await reply(message, "Reply to the message you want to act on.")
+        await reply(message, tr("moderation.reply_to_the_message_you_want"))
     return found
 
 
@@ -307,17 +307,17 @@ async def perform(call: Awaitable[Any], rights_message: str = RIGHTS_MESSAGE) ->
     try:
         return await call
     except TelegramForbiddenError:
-        raise ModerationError(rights_message) from None
+        raise ModerationError(tr(rights_message)) from None
     except TelegramBadRequest as exc:
         problem = str(exc).lower()
         if any(key in problem for key in ("not enough rights", "need administrator rights", "chat_admin_required", "have no rights")):
-            raise ModerationError(rights_message) from None
+            raise ModerationError(tr(rights_message)) from None
         if any(key in problem for key in ("can't remove chat owner", "can't restrict self", "user is an administrator", "administrator of the chat")):
-            raise ModerationError("I can't take action against a chat admin.") from None
+            raise ModerationError(tr("common.i_can_t_take_action_against_2")) from None
         if any(key in problem for key in ("user not found", "participant_id_invalid", "user_not_participant", "member not found")):
-            raise ModerationError("That user isn't in this chat.") from None
+            raise ModerationError(tr("common.that_user_isn_t_in_this")) from None
         if "supergroup" in problem and "only" in problem:
-            raise ModerationError("This only works in supergroups.") from None
+            raise ModerationError(tr("moderation.this_only_works_in_supergroups")) from None
         raise
 
 
@@ -328,7 +328,7 @@ CB_UNDO = "undo:"  # undo:<ban|mute>:<user or channel id>, the button under a ba
 
 def undo_keyboard(kind: str, target: Target) -> InlineKeyboardMarkup:
     """The "Unban" / "Unmute" button under a ban or a mute: no need to look up the id."""
-    text = "Unban" if kind == "ban" else "Unmute"
+    text = tr("moderation.unban") if kind == "ban" else tr("moderation.unmute")
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=text, callback_data=f"{CB_UNDO}{kind}:{target.user_id}")]])
 
 
@@ -343,7 +343,7 @@ async def authorize_callback(callback: CallbackQuery, role: Role | None, right: 
     """The message a button is under and who pressed it, if they may moderate there."""
     message = callback.message
     if not isinstance(message, Message):
-        await callback.answer("This message is too old.", show_alert=True)
+        await callback.answer(tr("moderation.this_message_is_too_old"), show_alert=True)
         return None
     try:
         capacity = await authorize(callback.bot, message.chat, callback.from_user, role, right=right)
@@ -371,29 +371,29 @@ async def target_by_id(bot, chat_id: int, user_id: int) -> Target:
 def who(target: Target) -> str:
     """The target as a link: a user by account, a channel by its public link."""
     if target.is_chat:
-        title = esc(target.title or target.name or "Channel")
+        title = esc(target.title or target.name or tr("common.channel"))
         if target.username:
             return f'<a href="https://t.me/{esc(target.username)}">{title}</a>'
         return f"<b>{title}</b>"
     return user_link(target.user_id, target.name)
 
 
-STAFF_NOTE = "Done by the bot's staff."
+STAFF_NOTE = "moderation.staff_note"
 
 
 def attribution(actor: Actor) -> str:
     """Who did it, shown under every moderation message."""
-    return f"\nBy: {actor.link}"
+    return tr("moderation.by", link=actor.link)
 
 
 def by(actor: Actor) -> str:
     """" by Name": who did it, written into the sentence ("King was banned by Jey"). No ids."""
-    return f" by {actor.link}"
+    return tr("moderation.by_2", link=actor.link)
 
 
 def staff_note(actor: Actor) -> str:
     """A short italic note on its own line when the bot's staff did it (added at the end of the message)."""
-    return f"\n\n<i>{STAFF_NOTE}</i>" if actor.staff else ""
+    return f"\n\n<i>{tr(STAFF_NOTE)}</i>" if actor.staff else ""
 
 
 def admin_ref(actor: Actor) -> str:
@@ -425,7 +425,7 @@ async def log_action(
             _user_ref(target) if target is not None else None,
             reason,
             details,
-            STAFF_NOTE if actor.staff else "",
+            tr(STAFF_NOTE) if actor.staff else "",
         )
     except Exception:
         log.exception("Could not log %s", tag)
@@ -433,7 +433,7 @@ async def log_action(
 
 def reason_line(reason: str) -> str:
     reason = reason.strip()
-    return f"\nReason: {esc(truncate(reason, MAX_REASON_LENGTH))}" if reason else ""
+    return tr("common.reason", reason=esc(truncate(reason, MAX_REASON_LENGTH))) if reason else ""
 
 
 # --- Durations ----------------------------------------------------------------
@@ -444,7 +444,7 @@ _UNITS = {"m": timedelta(minutes=1), "h": timedelta(hours=1), "d": timedelta(day
 MIN_DURATION = timedelta(minutes=1)
 MAX_DURATION = timedelta(days=365)  # Telegram treats anything longer as "forever"
 
-DURATION_HELP = "Give a duration like 30m, 2h, 3d or 1w (from 1 minute to 365 days)."
+DURATION_HELP = "moderation.duration_help"
 
 
 def parse_duration(text: str) -> timedelta | None:
@@ -460,7 +460,7 @@ def split_duration(extra: str) -> tuple[timedelta, str]:
     first, _, rest = extra.strip().partition(" ")
     duration = parse_duration(first) if first else None
     if duration is None or not MIN_DURATION <= duration <= MAX_DURATION:
-        raise ModerationError(DURATION_HELP)
+        raise ModerationError(tr(DURATION_HELP))
     return duration, rest.strip()
 
 

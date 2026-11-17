@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 
 from core import database
 from core.users import CACHE_LIMIT
+from core.i18n import tr
 
 MAX_ALLOWED = 200
 MAX_ENTRY = 200
@@ -231,23 +232,23 @@ def normalize_entry(token: str) -> str:
     """The stored form of an allowlist entry typed by a person. Raises ValueError with a sentence."""
     token = token.strip()
     if not token or len(token) > MAX_ENTRY:
-        raise ValueError(f"\"{token[:30]}\" is not a valid entry.")
+        raise ValueError(tr("locks.is_not_a_valid_entry", v=token[:30]))
     if re.fullmatch(r"-?\d+", token):
         return str(int(token))
     if token.startswith("@"):
         name = token[1:].lower()
         if not re.fullmatch(r"[a-z0-9_]{3,32}", name):
-            raise ValueError(f"\"{token}\" is not a valid @name.")
+            raise ValueError(tr("locks.is_not_a_valid_name", token=token))
         return "@" + name
     if token.startswith("/"):
         name = token[1:].split("@", 1)[0].lower()
         if not re.fullmatch(r"\w{1,32}", name):
-            raise ValueError(f"\"{token}\" is not a valid command.")
+            raise ValueError(tr("locks.is_not_a_valid_command", token=token))
         return "/" + name
     if token.startswith("$"):
         tag = token[1:].upper()
         if not re.fullmatch(r"[A-Z]{1,8}", tag):
-            raise ValueError(f"\"{token}\" is not a valid cashtag.")
+            raise ValueError(tr("locks.is_not_a_valid_cashtag", token=token))
         return "$" + tag
     target = _telegram_target(token)
     if target and target[0] == "pack":
@@ -256,7 +257,7 @@ def normalize_entry(token: str) -> str:
         return "@" + target[1]
     plain = _plain_url(token)
     if "." not in plain.split("/")[0]:
-        raise ValueError(f"\"{token[:30]}\" is not a link, id, @name, command or cashtag.")
+        raise ValueError(tr("locks.is_not_a_link_id_name", v=token[:30]))
     return plain
 
 

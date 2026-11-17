@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo, available_timezones
 
 from core import web
 from core.text import esc
+from core.i18n import tr
 
 MAX_TRANSLATE = 1500
 
@@ -62,15 +63,12 @@ async def translate(text: str, target: str = "en") -> str:
         translated = "".join(part[0] for part in data[0] if isinstance(part, list) and part and part[0])
         source = data[2] if len(data) > 2 and isinstance(data[2], str) else "auto"
     except (TypeError, IndexError, KeyError):
-        raise web.WebError(web.UNAVAILABLE) from None
+        raise web.WebError(tr(web.UNAVAILABLE)) from None
     if not translated:
-        raise web.NotFound("I couldn't translate that.")
-    source_name = "Unknown" if source == "auto" else language_name("he" if source == "iw" else source)
+        raise web.NotFound(tr("lookup.i_couldn_t_translate_that"))
+    source_name = tr("common.unknown") if source == "auto" else language_name("he" if source == "iw" else source)
     return (
-        "<b>Translation</b>\n"
-        f"• <b>From:</b> <code>{esc(source_name)}</code>\n"
-        f"• <b>To:</b> <code>{esc(language_name(target))}</code>\n\n"
-        f"{esc(translated)}"
+        tr("lookup.translation_from_to", source_name=esc(source_name), language_name=esc(language_name(target)), translated=esc(translated))
     )
 
 
@@ -85,10 +83,10 @@ async def dictionary(word: str) -> str:
     try:
         data = await web.get_json(f"https://api.dictionaryapi.dev/api/v2/entries/en/{quote(word, safe='')}")
     except web.NotFound:
-        raise web.NotFound("I couldn't find that word. I only know English words.") from None
+        raise web.NotFound(tr("lookup.i_couldn_t_find_that_word")) from None
     try:
         entry = data[0]
-        lines = ["<b>Dictionary</b>", f"• <b>Word:</b> <code>{esc(entry.get('word') or word)}</code>"]
+        lines = [tr("lookup.dictionary"), tr("lookup.word", v=esc(entry.get('word') or word))]
         phonetic = entry.get("phonetic") or next((p["text"] for p in entry.get("phonetics", []) if p.get("text")), None)
         if phonetic:
             lines.append(f"• <b>Pronunciation:</b> <code>{esc(phonetic)}</code>")
@@ -99,7 +97,7 @@ async def dictionary(word: str) -> str:
                 if number == 0 and item.get("example"):
                     lines.append(f"<i>{esc(item['example'])}</i>")
     except (TypeError, IndexError, KeyError, AttributeError):
-        raise web.WebError(web.UNAVAILABLE) from None
+        raise web.WebError(tr(web.UNAVAILABLE)) from None
     return "\n".join(lines)
 
 
@@ -114,7 +112,7 @@ async def _place(query: str) -> dict:
     )
     found = (data or {}).get("results") or [] if isinstance(data, dict) else []
     if not found:
-        raise web.NotFound("I couldn't find that place.")
+        raise web.NotFound(tr("lookup.i_couldn_t_find_that_place"))
     rest = rest.strip().lower()
     if rest:
         for item in found:
@@ -149,26 +147,23 @@ async def time_in(query: str) -> str:
         place = await _place(query)
         title, zone_name = _place_title(place), place.get("timezone")
         if not zone_name:
-            raise web.NotFound("I couldn't find the timezone of that place.")
+            raise web.NotFound(tr("lookup.i_couldn_t_find_the_timezone"))
     try:
         now = datetime.now(ZoneInfo(zone_name))
     except Exception:
-        raise web.NotFound("I couldn't find the timezone of that place.") from None
+        raise web.NotFound(tr("lookup.i_couldn_t_find_the_timezone")) from None
     return (
-        f"<b>Time in {esc(title)}</b>\n"
-        f"• <b>Time:</b> <code>{now:%H:%M}</code>\n"
-        f"• <b>Date:</b> <code>{now:%A, %d %B %Y}</code>\n"
-        f"• <b>Timezone:</b> <code>{esc(zone_name)} ({_offset_text(now)})</code>"
+        tr("lookup.time_in_time_date_timezone", title=esc(title), now=now, zone_name=esc(zone_name), offset_text=_offset_text(now))
     )
 
 
 WEATHER_CODES = {
-    0: "Clear sky", 1: "Mostly clear", 2: "Partly cloudy", 3: "Overcast", 45: "Fog", 48: "Rime fog",
-    51: "Light drizzle", 53: "Drizzle", 55: "Heavy drizzle", 56: "Freezing drizzle", 57: "Heavy freezing drizzle",
-    61: "Light rain", 63: "Rain", 65: "Heavy rain", 66: "Freezing rain", 67: "Heavy freezing rain",
-    71: "Light snow", 73: "Snow", 75: "Heavy snow", 77: "Snow grains",
-    80: "Light showers", 81: "Showers", 82: "Heavy showers", 85: "Snow showers", 86: "Heavy snow showers",
-    95: "Thunderstorm", 96: "Thunderstorm with hail", 99: "Thunderstorm with heavy hail",
+    0: "lookup.weather_codes.0", 1: "lookup.weather_codes.1", 2: "lookup.weather_codes.2", 3: "lookup.weather_codes.3", 45: "lookup.weather_codes.45", 48: "lookup.weather_codes.48",
+    51: "lookup.weather_codes.51", 53: "lookup.weather_codes.53", 55: "lookup.weather_codes.55", 56: "lookup.weather_codes.56", 57: "lookup.weather_codes.57",
+    61: "lookup.weather_codes.61", 63: "lookup.weather_codes.63", 65: "lookup.weather_codes.65", 66: "lookup.weather_codes.66", 67: "lookup.weather_codes.67",
+    71: "lookup.weather_codes.71", 73: "lookup.weather_codes.73", 75: "lookup.weather_codes.75", 77: "lookup.weather_codes.77",
+    80: "lookup.weather_codes.80", 81: "lookup.weather_codes.81", 82: "lookup.weather_codes.82", 85: "lookup.weather_codes.85", 86: "lookup.weather_codes.86",
+    95: "lookup.weather_codes.95", 96: "lookup.weather_codes.96", 99: "lookup.weather_codes.99",
 }
 _COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
 
@@ -195,16 +190,16 @@ async def weather(query: str) -> str:
         wind = float(now["wind_speed_10m"])
         direction = _COMPASS[int((float(now["wind_direction_10m"]) + 22.5) // 45) % 8]
         lines = [
-            f"<b>Weather in {esc(_place_title(place))}</b>",
-            f"• <b>Conditions:</b> <code>{WEATHER_CODES.get(int(now['weather_code']), 'Unknown')}</code>",
-            f"• <b>Temperature:</b> <code>{temp:.1f}°C / {_fahrenheit(temp):.1f}°F</code>",
-            f"• <b>Feels like:</b> <code>{feels:.1f}°C / {_fahrenheit(feels):.1f}°F</code>",
-            f"• <b>Humidity:</b> <code>{float(now['relative_humidity_2m']):.0f}%</code>",
-            f"• <b>Wind:</b> <code>{wind:.0f} km/h / {wind / 1.609344:.0f} mph from {direction}</code>",
-            f"• <b>Precipitation:</b> <code>{float(now['precipitation']):.1f} mm</code>",
+            tr("lookup.weather_in", place_title=esc(_place_title(place))),
+            tr("lookup.conditions", get=tr(WEATHER_CODES.get(int(now['weather_code']), 'Unknown'))),
+            tr("lookup.temperature_c_f", temp=temp, fahrenheit=_fahrenheit(temp)),
+            tr("lookup.feels_like_c_f", feels=feels, fahrenheit=_fahrenheit(feels)),
+            tr("lookup.humidity", float=float(now['relative_humidity_2m'])),
+            tr("lookup.wind_km_h_mph_from", wind=wind, v=wind / 1.609344, direction=direction),
+            tr("lookup.precipitation_mm", float=float(now['precipitation'])),
         ]
     except (TypeError, KeyError, ValueError):
-        raise web.WebError(web.UNAVAILABLE) from None
+        raise web.WebError(tr(web.UNAVAILABLE)) from None
     return "\n".join(lines)
 
 
@@ -231,17 +226,17 @@ async def currency(amount: float, source: str, target: str) -> str:
     data = await web.get_json(f"https://open.er-api.com/v6/latest/{source}")
     if not isinstance(data, dict) or data.get("result") != "success":
         if isinstance(data, dict) and data.get("error-type") == "unsupported-code":
-            raise web.NotFound(f"I don't know the currency {esc(source)}.")
-        raise web.WebError(web.UNAVAILABLE)
+            raise web.NotFound(tr("lookup.i_don_t_know_the_currency", source=esc(source)))
+        raise web.WebError(tr(web.UNAVAILABLE))
     rate = (data.get("rates") or {}).get(target)
     if not isinstance(rate, (int, float)):
-        raise web.NotFound(f"I don't know the currency {esc(target)}.")
+        raise web.NotFound(tr("lookup.i_don_t_know_the_currency_2", target=esc(target)))
     updated = (data.get("time_last_update_utc") or "")[:16]
     lines = [
-        "<b>Currency</b>",
-        f"• <b>Amount:</b> <code>{_money(amount)} {source}</code>",
-        f"• <b>Result:</b> <code>{_money(amount * rate)} {target}</code>",
-        f"• <b>Rate:</b> <code>1 {source} = {rate:.6g} {target}</code>",
+        tr("lookup.currency"),
+        tr("lookup.amount", money=_money(amount), source=source),
+        tr("lookup.result", money=_money(amount * rate), target=target),
+        tr("lookup.rate_1", source=source, rate=rate, target=target),
     ]
     if updated:
         lines.append(f"• <b>Updated:</b> <code>{esc(updated)}</code>")
@@ -263,18 +258,18 @@ async def urban(term: str) -> str:
     data = await web.get_json("https://api.urbandictionary.com/v0/define", {"term": term.strip()})
     entries = data.get("list") if isinstance(data, dict) else None
     if not isinstance(entries, list) or not entries:
-        raise web.NotFound("Urban Dictionary doesn't know that one.")
+        raise web.NotFound(tr("lookup.urban_dictionary_doesn_t_know_that"))
     try:
         best = max((e for e in entries if isinstance(e, dict)), key=lambda e: int(e.get("thumbs_up") or 0))
         lines = [
-            "<b>Urban Dictionary</b>",
-            f"• <b>Term:</b> <code>{esc(best.get('word') or term)}</code>",
-            f"• <b>Votes:</b> <code>{int(best.get('thumbs_up') or 0)} up, {int(best.get('thumbs_down') or 0)} down</code>",
+            tr("lookup.urban_dictionary"),
+            tr("lookup.term", v=esc(best.get('word') or term)),
+            tr("lookup.votes_up_down", v=int(best.get('thumbs_up') or 0), v2=int(best.get('thumbs_down') or 0)),
             "",
             esc(_clean_ud(best["definition"])),
         ]
         if best.get("example"):
             lines += ["", f"<i>{esc(_clean_ud(best['example']))}</i>"]
     except (KeyError, ValueError, TypeError):
-        raise web.WebError(web.UNAVAILABLE) from None
+        raise web.WebError(tr(web.UNAVAILABLE)) from None
     return "\n".join(lines)

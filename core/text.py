@@ -15,6 +15,8 @@ unreadable output this module exists to prevent.
 import html
 import re
 
+from core import i18n
+
 _TAG_RE = re.compile(r"<[^>]*>")
 
 
@@ -71,11 +73,19 @@ def user_ref(user_id: int, name: str | None) -> str:
 def duration_text(seconds: int) -> str:
     """90 -> '1 minute 30 seconds'."""
     parts = []
+    forms = _UNIT_FORMS.get(i18n.current(), _UNIT_FORMS["en"])
     for name, size in (("day", 86400), ("hour", 3600), ("minute", 60), ("second", 1)):
         count, seconds = divmod(seconds, size)
         if count:
-            parts.append(f"{count} {name}{'' if count == 1 else 's'}")
+            parts.append(f"{count} {i18n.plural(count, *forms[name])}")
     return " ".join(parts)
+
+
+# (one, few, many) for each unit; English only tells one from many.
+_UNIT_FORMS = {
+    "en": {"day": ("day", "days", "days"), "hour": ("hour", "hours", "hours"), "minute": ("minute", "minutes", "minutes"), "second": ("second", "seconds", "seconds")},
+    "pl": {"day": ("dzień", "dni", "dni"), "hour": ("godzina", "godziny", "godzin"), "minute": ("minuta", "minuty", "minut"), "second": ("sekunda", "sekundy", "sekund")},
+}
 
 
 # Every on/off setting of the bot understands the same words.

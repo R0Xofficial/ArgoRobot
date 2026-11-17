@@ -12,10 +12,12 @@ from typing import Any
 
 import aiohttp
 
+from core.i18n import tr
+
 log = logging.getLogger(__name__)
 
 TIMEOUT_SECONDS = 10
-UNAVAILABLE = "The service behind this command is not answering right now. Try again in a moment."
+UNAVAILABLE = "web.unavailable"
 
 
 class WebError(Exception):
@@ -35,10 +37,10 @@ async def get_json(url: str, params: dict[str, Any] | None = None) -> Any:
                     raise NotFound("Nothing found.")
                 if response.status >= 400:
                     log.warning("GET %s answered %s", url, response.status)
-                    raise WebError(UNAVAILABLE)
+                    raise WebError(tr(UNAVAILABLE))
                 return await response.json(content_type=None)
     except WebError:
         raise
     except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
         log.warning("GET %s failed", url, exc_info=True)
-        raise WebError(UNAVAILABLE) from None
+        raise WebError(tr(UNAVAILABLE)) from None

@@ -38,6 +38,8 @@ from aiogram.types import BufferedInputFile, ChatPermissions, InlineKeyboardButt
 from core import antiraid, approvals, database, disabled, banguard, immunity, markup, registry, roles, rulestore
 from core import greetings as welcome_store
 from core.text import duration_text, esc, user_link
+from core import i18n
+from core.i18n import tr
 
 log = logging.getLogger(__name__)
 
@@ -51,8 +53,8 @@ DEFAULTS: dict[str, Any] = {
     "kick_seconds": 300,
     "button_text": None,
 }
-DEFAULT_BUTTON = "I'm not a bot"
-ACCEPT_BUTTON = "I accept the rules"
+DEFAULT_BUTTON = "captchas.default_button"
+ACCEPT_BUTTON = "captchas.accept_button"
 
 CODE_LENGTH = 5
 ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # nothing that looks like something else
@@ -93,7 +95,7 @@ async def update(chat_id: int, **columns: Any) -> None:
     """Change some settings of a chat; the others keep their value."""
     unknown = set(columns) - set(DEFAULTS)
     if unknown or not columns:
-        raise ValueError(f"unknown captcha settings: {sorted(unknown)}")
+        raise ValueError(tr("captchas.unknown_captcha_settings", unknown=sorted(unknown)))
     names = list(columns)
     marks = ", ".join(f"${i + 2}" for i in range(len(names)))
     sets = ", ".join(f"{name} = EXCLUDED.{name}" for name in names)
@@ -248,54 +250,54 @@ def _rules_html(rules: dict[str, Any] | None, chat_title: str, name: str) -> str
 
 async def body(row: dict[str, Any]) -> str:
     """The text of the captcha message for the person's current state."""
-    title = esc(row["title"] or "this chat")
+    title = esc(row["title"] or tr("common.this_chat"))
     name = row["name"] or "there"
     if row["phase"] == "rules":
         rules = _rules_html(await rulestore.get(row["chat_id"]), row["title"] or "", name)
-        shown = rules if rules is not None else "Read the rules of the chat with /rules there, then come back to accept them."
+        shown = rules if rules is not None else tr("captchas.read_the_rules_of_the_chat")
         if row["kind"] == "request":
-            lead = f"Hi {esc(name)}! You sent a request to join <b>{title}</b>. Read the rules and accept them, and I'll accept it right away."
+            lead = tr("captchas.hi_you_sent_a_request_to", name=esc(name), title=title)
         elif row["message_chat_id"] == row["chat_id"]:
-            lead = f"{user_link(row['user_id'], name)}, one last thing: read the rules of <b>{title}</b> and accept them."
+            lead = tr("captchas.one_last_thing_read_the_rules", user_id=user_link(row['user_id'], name), title=title)
         elif row["mode"] == "button":
-            lead = f"Hi {esc(name)}! To speak in <b>{title}</b>, read the rules and accept them."
+            lead = tr("captchas.hi_to_speak_in_read_the", name=esc(name), title=title)
         else:
-            lead = f"Last step: read the rules of <b>{title}</b> and accept them."
+            lead = tr("captchas.last_step_read_the_rules_of", title=title)
         return f"{lead}\n\n{shown}"
 
     if row["kind"] == "request":
-        lead = f"Hi {esc(name)}! You sent a request to join <b>{title}</b>. Pass this captcha and I'll accept it right away."
+        lead = tr("captchas.hi_you_sent_a_request_to_2", name=esc(name), title=title)
     elif row["message_chat_id"] != row["chat_id"]:
-        lead = f"Hi {esc(name)}! To speak in <b>{title}</b>, prove you're human first."
+        lead = tr("captchas.hi_to_speak_in_prove_you", name=esc(name), title=title)
     else:
-        lead = f"{user_link(row['user_id'], name)}, welcome to <b>{title}</b>! Prove you're human before you speak."
+        lead = tr("captchas.welcome_to_prove_you_re_human", user_id=user_link(row['user_id'], name), title=title)
 
     mode = row["mode"]
     if mode == "button":
-        task = "Press the button below."
+        task = tr("captchas.press_the_button_below")
     elif mode == "math":
-        task = f"Solve this and press the answer:\n\n<b>{esc(row['question'])}</b>"
+        task = tr("captchas.solve_this_and_press_the_answer", question=esc(row['question']))
     else:
         typed = "".join(row["layout"][i] for i in _taken(row))
         progress = typed + "•" * (len(row["answer"]) - len(typed))
         if mode == "text":
-            task = f"Press the characters in this order:\n\n<code>{esc(row['answer'])}</code>\n\nSo far: <code>{progress}</code>"
+            task = tr("captchas.press_the_characters_in_this_order", answer=esc(row['answer']), progress=progress)
         else:
-            task = f"Press the characters of the code in the picture, in order.\n\nSo far: <code>{progress}</code>"
+            task = tr("captchas.press_the_characters_of_the_code", progress=progress)
     note = ""
     if row["kick_at"] is not None:
-        note = f"\n\nYou have {_pretty((row['kick_at'] - row['created_at']).total_seconds())} to do this or you'll be removed."
+        note = tr("captchas.you_have_to_do_this_or", pretty=_pretty((row['kick_at'] - row['created_at']).total_seconds()))
     return f"{lead}\n\n{task}{note}"
 
 
 def keyboard(row: dict[str, Any], button_text: str | None) -> InlineKeyboardMarkup:
     pid = row["id"]
     if row["phase"] == "rules":
-        return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=ACCEPT_BUTTON, callback_data=f"{RULES_PREFIX}:{pid}")]])
+        return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=tr(ACCEPT_BUTTON), callback_data=f"{RULES_PREFIX}:{pid}")]])
     mode = row["mode"]
     if mode == "button":
         return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=button_text or DEFAULT_BUTTON, callback_data=f"{PREFIX}:{pid}:0")]
+            [InlineKeyboardButton(text=button_text or tr(DEFAULT_BUTTON), callback_data=f"{PREFIX}:{pid}:0")]
         ])
     if mode == "math":
         options = row["layout"].split(",")
@@ -467,7 +469,7 @@ async def release(bot: Bot, row: dict[str, Any], user: User | None = None, *, gr
     _passed(row["chat_id"], row["user_id"])
     await _delete(row["id"])
     if row["message_id"] and row["message_chat_id"] != row["chat_id"] and row["kind"] == "join":
-        await _say(bot, row, f"Done! You can speak in <b>{esc(row['title'] or 'the chat')}</b> now.")  # solved in a private chat
+        await _say(bot, row, tr("captchas.done_you_can_speak_in_now", v=esc(row['title'] or tr("captchas.the_chat"))))  # solved in a private chat
     else:
         await _remove_message(bot, row)
     if row["kind"] == "request":
@@ -493,9 +495,9 @@ async def approve_request(bot: Bot, row: dict[str, Any]) -> None:
         await bot.approve_chat_join_request(row["chat_id"], row["user_id"])
     except TelegramAPIError as exc:
         log.info("Could not approve the join request of %s in %s: %s", row["user_id"], row["chat_id"], exc)
-        await _say(bot, row, "You passed, but I couldn't approve your request. Ask the admins to do it.")
+        await _say(bot, row, tr("captchas.you_passed_but_i_couldn_t"))
         return
-    await _say(bot, row, f"Done. Welcome to <b>{esc(row['title'] or 'the chat')}</b>!")
+    await _say(bot, row, tr("captchas.done_welcome_to", v=esc(row['title'] or tr("captchas.the_chat"))))
 
 
 async def kick(bot: Bot, row: dict[str, Any]) -> None:
@@ -504,7 +506,7 @@ async def kick(bot: Bot, row: dict[str, Any]) -> None:
     if row["kind"] == "request":
         with suppress(TelegramAPIError):
             await bot.decline_chat_join_request(row["chat_id"], row["user_id"])
-        await _say(bot, row, f"Time's up. Your request to join <b>{esc(row['title'] or 'the chat')}</b> was dismissed. You can ask again.")
+        await _say(bot, row, tr("captchas.time_s_up_your_request_to", v=esc(row['title'] or tr("captchas.the_chat"))))
         return
     await _remove_message(bot, row)
     status, _member = await _status_of(bot, row["chat_id"], row["user_id"])
@@ -621,7 +623,7 @@ async def welcome_button(bot: Bot, chat_id: int) -> InlineKeyboardButton:
     presses it is looked up, so a person who is already verified is only told so, in a pop-up.
     """
     config = await settings(chat_id)
-    return InlineKeyboardButton(text=config["button_text"] or DEFAULT_BUTTON, callback_data=f"{WELCOME_PREFIX}:{chat_id}")
+    return InlineKeyboardButton(text=config["button_text"] or tr(DEFAULT_BUTTON), callback_data=f"{WELCOME_PREFIX}:{chat_id}")
 
 
 async def welcome_for(bot: Bot, chat_id: int, user_id: int) -> tuple[bool, InlineKeyboardButton | None]:
@@ -644,7 +646,7 @@ async def welcome_pressed(bot: Bot, chat_id: int, user: User) -> tuple[str | Non
     """
     row = await find(chat_id, user.id)
     if row is None or row["kind"] != "join":
-        return "You're already verified.", True, None
+        return tr("captchas.you_re_already_verified"), True, None
     config = await settings(chat_id)
     simple = row["mode"] == "button" and not (config["rules"] and _rules_exist(await rulestore.get(chat_id)))
     if simple:
@@ -661,10 +663,10 @@ async def open_in_private(bot: Bot, user: User, chat_id: int, private_chat_id: i
     """The person came to the private chat from the button under a welcome message. None, or what to tell them."""
     row = await find(chat_id, user.id)
     if row is None or row["kind"] != "join":
-        return "You're already verified, or this captcha has expired."
+        return tr("common.you_re_already_verified_or_this")
     config = await active(row["chat_id"])
     if config is None:
-        return "Captchas are switched off in that chat now."
+        return tr("captchas.captchas_are_switched_off_in_that")
     if row["message_id"]:
         await _remove_message(bot, row)
     await database.execute(
@@ -674,7 +676,7 @@ async def open_in_private(bot: Bot, user: User, chat_id: int, private_chat_id: i
     row.update(message_chat_id=private_chat_id, message_id=None, is_photo=False)
     await _rules_only(row, config)
     if not await _present(bot, row, config):
-        return "I couldn't send you the captcha. Try again."
+        return tr("captchas.i_couldn_t_send_you_the")
     return None
 
 
@@ -721,14 +723,14 @@ async def press(bot: Bot, row: dict[str, Any], index: int, user: User) -> str | 
     async with _lock(row["id"]):
         row = await get(row["id"])
         if row is None or row["phase"] != "captcha":
-            return "This captcha is no longer valid."
+            return tr("captchas.this_captcha_is_no_longer_valid")
         config = await settings(row["chat_id"])
         mode = row["mode"]
 
         if mode == "button":
             from_welcome = row["attached"] and row["message_chat_id"] == row["chat_id"]
             await _after_test(bot, row, config, user)
-            return "You're verified. Welcome!" if from_welcome else None
+            return tr("captchas.you_re_verified_welcome") if from_welcome else None
 
         if mode == "math":
             options = row["layout"].split(",")
@@ -742,7 +744,7 @@ async def press(bot: Bot, row: dict[str, Any], index: int, user: User) -> str | 
             )
             row.update(question=fresh["question"], answer=fresh["answer"], layout=fresh["layout"])
             await _show(bot, row, config["button_text"])
-            return "Wrong. Here's a new one."
+            return tr("captchas.wrong_here_s_a_new_one")
 
         # text and text2
         taken = _taken(row)
@@ -752,7 +754,7 @@ async def press(bot: Bot, row: dict[str, Any], index: int, user: User) -> str | 
             await database.execute("UPDATE captcha_pending SET taken = '' WHERE id = $1", row["id"])
             row["taken"] = ""
             await _show(bot, row, config["button_text"])
-            return "Wrong order. Start again."
+            return tr("captchas.wrong_order_start_again")
         taken.append(index)
         row["taken"] = ",".join(str(i) for i in taken)
         await database.execute("UPDATE captcha_pending SET taken = $2 WHERE id = $1", row["id"], row["taken"])
@@ -767,7 +769,7 @@ async def accept_rules(bot: Bot, row: dict[str, Any], user: User) -> str | None:
     async with _lock(row["id"]):
         row = await get(row["id"])
         if row is None or row["phase"] != "rules":
-            return "This is no longer valid."
+            return tr("captchas.this_is_no_longer_valid")
         await _finish(bot, row, user)
         return None
 
@@ -790,6 +792,7 @@ async def sweep(bot: Bot) -> None:
     now = datetime.now(timezone.utc)
     for row in rows:
         try:
+            await i18n.use_chat(row["chat_id"])
             await _handle(bot, row, now)
         except asyncio.CancelledError:
             raise

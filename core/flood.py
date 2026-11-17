@@ -19,6 +19,7 @@ from typing import Any
 from core import database
 from core.enforce import MODES, TIMED_MODES  # noqa: F401  (used by modules/antiflood.py)
 from core.users import CACHE_LIMIT
+from core.i18n import tr
 
 DEFAULTS: dict[str, Any] = {
     "flood_limit": 0,
@@ -60,7 +61,7 @@ async def get(chat_id: int) -> dict[str, Any]:
 async def update(chat_id: int, **fields: Any) -> dict[str, Any]:
     """Change some settings of a chat. Returns all of them."""
     if not fields or not set(fields) <= COLUMNS:
-        raise ValueError(f"unknown flood setting in {sorted(fields)}")
+        raise ValueError(tr("flood.unknown_flood_setting_in", fields=sorted(fields)))
     names = list(fields)
     await database.execute(
         f"INSERT INTO flood_settings (chat_id, {', '.join(names)}) "

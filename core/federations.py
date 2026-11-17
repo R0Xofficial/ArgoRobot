@@ -17,6 +17,7 @@ from typing import Any, Iterable
 
 from core import database
 from core.users import CACHE_LIMIT
+from core.i18n import tr
 
 MAX_NAME = 64
 MAX_ADMINS = 50
@@ -51,9 +52,9 @@ def _now() -> datetime:
 def clean_name(text: str) -> str:
     name = " ".join(text.split())
     if not name:
-        raise FederationError("A federation needs a name.")
+        raise FederationError(tr("federations.a_federation_needs_a_name"))
     if len(name) > MAX_NAME:
-        raise FederationError(f"A name can be at most {MAX_NAME} characters.")
+        raise FederationError(tr("federations.a_name_can_be_at_most", MAX_NAME=MAX_NAME))
     return name
 
 
@@ -68,7 +69,7 @@ async def owned_by(user_id: int) -> dict[str, Any] | None:
 async def create(name: str, owner_id: int, owner_name: str | None) -> dict[str, Any]:
     name = clean_name(name)
     if await owned_by(owner_id) is not None:
-        raise FederationError("You already own a federation. Everyone can own only one.")
+        raise FederationError(tr("federations.you_already_own_a_federation_everyone"))
     fed_id = str(uuid.uuid4())
     await database.execute(
         "INSERT INTO federations (fed_id, name, owner_id, owner_name, created_at) VALUES ($1, $2, $3, $4, $5)",
@@ -86,7 +87,7 @@ async def rename(fed_id: str, name: str) -> str:
 async def update(fed_id: str, **fields: Any) -> None:
     allowed = {"notify", "require_reason", "log_chat_id"}
     if not fields or set(fields) - allowed:
-        raise ValueError(f"unknown federation settings: {sorted(set(fields) - allowed)}")
+        raise ValueError(tr("federations.unknown_federation_settings", v=sorted(set(fields) - allowed)))
     names = list(fields)
     assignments = ", ".join(f"{name} = ${i + 2}" for i, name in enumerate(names))
     await database.execute(f"UPDATE federations SET {assignments} WHERE fed_id = $1", fed_id, *fields.values())
@@ -107,7 +108,7 @@ async def delete(fed_id: str) -> None:
 
 async def transfer(fed_id: str, new_owner_id: int, new_owner_name: str | None) -> None:
     if await owned_by(new_owner_id) is not None:
-        raise FederationError("That person already owns a federation.")
+        raise FederationError(tr("common.that_person_already_owns_a_federation"))
     await database.execute(
         "UPDATE federations SET owner_id = $2, owner_name = $3 WHERE fed_id = $1", fed_id, new_owner_id, new_owner_name
     )
@@ -130,7 +131,7 @@ async def is_admin(fed: dict[str, Any], user_id: int) -> bool:
 
 async def add_admin(fed_id: str, user_id: int, name: str | None) -> None:
     if len(await admins(fed_id)) >= MAX_ADMINS:
-        raise FederationError(f"A federation can have at most {MAX_ADMINS} admins.")
+        raise FederationError(tr("federations.a_federation_can_have_at_most", MAX_ADMINS=MAX_ADMINS))
     await database.execute(
         "INSERT INTO fed_admins (fed_id, user_id, name) VALUES ($1, $2, $3) "
         "ON CONFLICT (fed_id, user_id) DO UPDATE SET name = EXCLUDED.name",
@@ -228,12 +229,12 @@ async def subscribers_of(fed_id: str) -> list[str]:
 
 async def subscribe(fed_id: str, sub_id: str) -> None:
     if fed_id == sub_id:
-        raise FederationError("A federation can't subscribe to itself.")
+        raise FederationError(tr("federations.a_federation_can_t_subscribe_to"))
     current = await subs_of(fed_id)
     if sub_id in current:
-        raise FederationError("You are already subscribed to that federation.")
+        raise FederationError(tr("federations.you_are_already_subscribed_to_that"))
     if len(current) >= MAX_SUBS:
-        raise FederationError(f"A federation can subscribe to at most {MAX_SUBS} others.")
+        raise FederationError(tr("federations.a_federation_can_subscribe_to_at", MAX_SUBS=MAX_SUBS))
     await database.execute("INSERT INTO fed_subs (fed_id, sub_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", fed_id, sub_id)
     _subs.pop(fed_id, None)
 

@@ -23,6 +23,8 @@ from aiogram import Bot
 from aiogram.types import ChatPermissions
 
 from core import database
+from core import i18n
+from core.i18n import tr
 
 log = logging.getLogger(__name__)
 
@@ -213,12 +215,13 @@ async def reconcile(bot: Bot, chat_id: int, settings: Settings | None = None) ->
 
 async def announce(bot: Bot, chat_id: int, what: str, settings: Settings) -> None:
     """Say in the chat that the night began or ended (or that it could not be started)."""
+    await i18n.use_chat(chat_id)
     if what == "closed":
-        text = f"<b>Night mode is on.</b> The chat is closed until {clock_text(settings.end)} ({settings.zone}). Good night!"
+        text = tr("nightmode.night_mode_is_on_the_chat", clock_text=clock_text(settings.end), zone=settings.zone)
     elif what == "opened":
-        text = "<b>Night mode is over.</b> The chat is open again. Good morning!"
+        text = tr("nightmode.night_mode_is_over_the_chat")
     else:
-        text = "Night mode is on, but I can't change the permissions of this chat. I need the right to restrict members."
+        text = tr("nightmode.night_mode_is_on_but_i")
     try:
         await bot.send_message(chat_id, text)
     except Exception:

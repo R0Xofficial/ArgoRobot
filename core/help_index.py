@@ -30,6 +30,7 @@ from types import ModuleType
 
 from core import registry
 from core.roles import Role
+from core.i18n import tr
 
 
 def entries(module: ModuleType, role: Role | None) -> list[tuple[str, str]]:
@@ -106,8 +107,8 @@ def page_texts(module: ModuleType, number: int) -> list[str] | None:
     return [content] if isinstance(content, str) else list(content)
 
 
-ADMINS = "chat admins"
-CHAT_OWNER = "chat owner"
+ADMINS = "help_index.admins"
+CHAT_OWNER = "common.chat_owner"
 
 
 def detailed(module: ModuleType, role: Role | None, section: str | None = None) -> list[tuple[str, str, str | None]]:
@@ -127,7 +128,7 @@ def detailed(module: ModuleType, role: Role | None, section: str | None = None) 
             continue
         label = next((item for item in rest if isinstance(item, str) and not isinstance(item, Section)), None)
         if label is None and minimum is not None:
-            label = f"{minimum.name.title()} and up"
+            label = tr("help_index.and_up", title=minimum.name.title())
         visible.append((usage, description, label or default_label))
     return visible
 

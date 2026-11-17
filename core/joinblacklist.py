@@ -20,6 +20,7 @@ import re
 from core import blacklist, database
 from core.blacklist import TriggerError
 from core.users import CACHE_LIMIT
+from core.i18n import tr
 
 KINDS = ("name", "username", "bio", "channel")
 MAX_PER_KIND = 10
@@ -34,9 +35,9 @@ def check(kind: str, text: str) -> str:
     if kind == "username":
         pattern = pattern.lstrip("@")  # people write @name; usernames are checked without the @
     if not pattern:
-        raise TriggerError("The trigger is empty.")
+        raise TriggerError(tr("common.the_trigger_is_empty"))
     if len(pattern) > blacklist.MAX_PATTERN:
-        raise TriggerError(f"A trigger can be at most {blacklist.MAX_PATTERN} characters.")
+        raise TriggerError(tr("common.a_trigger_can_be_at_most", MAX_PATTERN=blacklist.MAX_PATTERN))
     blacklist.word_regex(pattern)  # raises when the wildcards are too many
     return pattern
 

@@ -39,13 +39,14 @@ from aiogram.filters import CommandObject
 from aiogram.types import Message
 
 from core import users
+from core.i18n import tr
 
 log = logging.getLogger(__name__)
 
 _USERNAME_RE = re.compile(r"^@?([A-Za-z][A-Za-z0-9_]{3,31})$")
 _ID_RE = re.compile(r"^-?\d+$")
 
-_HINT = "Reply to a user's message, mention them, or give a user id or @username."
+_HINT = "targets.hint"
 
 
 class TargetError(Exception):
@@ -78,7 +79,7 @@ class Target:
 
 
 CHAT_KINDS = ("group", "supergroup", "channel")
-_NOT_A_USER_MESSAGE = "That message was not sent by a regular user."
+_NOT_A_USER_MESSAGE = "common.that_message_was_not_sent_by"
 
 
 def _value(thing) -> str:
@@ -119,7 +120,7 @@ def _from_user(user, allow_bots: bool = False) -> Target:
     username = getattr(user, "username", None)
     kind = _user_kind(getattr(user, "is_bot", False), username)
     if kind == "bot" and not allow_bots:
-        raise TargetError("Bots can't hold roles.")
+        raise TargetError(tr("targets.bots_can_t_hold_roles"))
     return Target(
         user.id,
         user.full_name,
@@ -133,7 +134,7 @@ def _from_user(user, allow_bots: bool = False) -> Target:
 def _from_row(row: dict, allow_bots: bool) -> Target:
     kind = _user_kind(row["is_bot"], row["username"])
     if kind == "bot" and not allow_bots:
-        raise TargetError("Bots can't hold roles.")
+        raise TargetError(tr("targets.bots_can_t_hold_roles"))
     return Target(
         row["user_id"],
         row["name"],
@@ -150,7 +151,7 @@ def _from_chat(chat, allow_bots: bool, allow_chats: bool) -> Target:
     if kind == "private":
         return _from_user(chat, allow_bots)
     if kind not in CHAT_KINDS or not allow_chats:
-        raise TargetError("That is not a user.")
+        raise TargetError(tr("targets.that_is_not_a_user"))
     return Target(chat.id, chat.title, kind=kind, username=chat.username, title=chat.title)
 
 
@@ -158,11 +159,11 @@ async def _by_id(bot: Bot, user_id: int, allow_bots: bool, allow_chats: bool) ->
     if user_id < 0:
         # Groups and channels have negative ids.
         if not allow_chats:
-            raise TargetError("That is not a valid user id.")
+            raise TargetError(tr("targets.that_is_not_a_valid_user"))
         try:
             chat = await bot.get_chat(user_id)
         except TelegramAPIError:
-            raise TargetError("I don't know that chat.") from None
+            raise TargetError(tr("targets.i_don_t_know_that_chat")) from None
         return _from_chat(chat, allow_bots, allow_chats)
 
     row = await users.get(user_id)
@@ -186,7 +187,7 @@ async def _by_username(bot: Bot, username: str, allow_bots: bool, allow_chats: b
         chat = await bot.get_chat(f"@{username}")
     except TelegramAPIError:
         raise UnknownUserError(
-            f"I don't know @{username} yet. Reply to their message, mention them or use their id."
+            tr("targets.i_don_t_know_yet_reply", username=username)
         ) from None
     if _value(chat.type) == "private":
         await _learn(chat)
@@ -303,31 +304,31 @@ async def resolve_target(
         if _ID_RE.match(first):
             user_id = int(first)
             if user_id == 0:
-                raise TargetError("That is not a valid user id.")
+                raise TargetError(tr("targets.that_is_not_a_valid_user"))
             target = await _by_id(bot, user_id, allow_bots, allow_chats)
         else:
             match = _USERNAME_RE.match(first)
             if not match:
-                raise TargetError(_HINT)
+                raise TargetError(tr(_HINT))
             target = await _by_username(bot, match.group(1), allow_bots, allow_chats)
         target.extra = extra
         return target
 
     # 3. The message being replied to; everything typed is extra data.
     if reply is None:
-        raise TargetError(_HINT)
+        raise TargetError(tr(_HINT))
 
     sender = reply.from_user
     sender_chat = getattr(reply, "sender_chat", None)
     if sender is None and sender_chat is None:
-        raise TargetError("I can't tell who wrote that message.")
+        raise TargetError(tr("targets.i_can_t_tell_who_wrote"))
 
     if sender is None or sender.id in users.IGNORED_IDS:
         # Written on behalf of a channel or group (or by a Telegram service account).
         if sender_chat is not None and allow_chats:
             target = _from_chat(sender_chat, allow_bots, allow_chats)
         elif not allow_chats or sender is None:
-            raise TargetError(_NOT_A_USER_MESSAGE)
+            raise TargetError(tr(_NOT_A_USER_MESSAGE))
         else:
             target = _from_user(sender, allow_bots)
     else:

@@ -17,7 +17,8 @@ from aiogram.types import Update
 
 from config import settings
 from core.text import esc
-from core import chatsettings, chats, connection, devnotify, registry, roles, users
+from core import chatsettings, chats, connection, devnotify, i18n, registry, roles, users
+from core.i18n import tr
 
 log = logging.getLogger("usage")
 
@@ -76,6 +77,34 @@ class RolesMiddleware(BaseMiddleware):
     ) -> Any:
         user = data.get("event_from_user")
         data["role"] = await roles.get_role(user.id) if user else None
+        return await handler(event, data)
+
+
+class LanguageMiddleware(BaseMiddleware):
+    """Sets the language of the bot's texts (core/i18n.py) to that of the chat the update comes from."""
+
+    @staticmethod
+    def chat_id(event: Update) -> int | None:
+        for name in ("message", "edited_message", "my_chat_member", "chat_member", "chat_join_request", "message_reaction"):
+            found = getattr(event, name, None)
+            chat = getattr(found, "chat", None)
+            if chat is not None:
+                return chat.id
+        callback = event.callback_query
+        if callback is not None:
+            chat = getattr(callback.message, "chat", None)
+            return chat.id if chat is not None else callback.from_user.id
+        return None
+
+    async def __call__(
+        self,
+        handler: Callable[[Update, dict[str, Any]], Awaitable[Any]],
+        event: Update,
+        data: dict[str, Any],
+    ) -> Any:
+        user = data.get("event_from_user")
+        chat_id = self.chat_id(event)
+        await i18n.use_chat(chat_id if chat_id is not None else (user.id if user else None))
         return await handler(event, data)
 
 
@@ -205,7 +234,7 @@ class ConnectionMiddleware(BaseMiddleware):
             with suppress(TelegramAPIError):
                 await bot.send_message(
                     chat_id=message.chat.id,
-                    text=f"{why} Your connection to {esc(record['title'] or str(record['chat_id']))} has ended.",
+                    text=tr("middlewares.your_connection_to_has_ended", why=why, v=esc(record['title'] or str(record['chat_id']))),
                 )
             return None
         return record
