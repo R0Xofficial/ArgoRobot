@@ -431,6 +431,14 @@ async def log_action(
         log.exception("Could not log %s", tag)
 
 
+async def log_self(message: Message, tag: str, user_id: int, name: str, reason: str = "") -> None:
+    """Copy an action somebody did to themselves (/kickme) to the chat's log: no admin line, as there is no admin. Never raises."""
+    try:
+        await chatlog.record(message.bot, message.chat, tag, None, user_ref(user_id, name), reason)
+    except Exception:
+        log.exception("Could not log %s", tag)
+
+
 def reason_line(reason: str) -> str:
     reason = reason.strip()
     return tr("common.reason", reason=esc(truncate(reason, MAX_REASON_LENGTH))) if reason else ""
