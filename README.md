@@ -229,7 +229,7 @@ Bot-wide, the owner and developers can turn whole modules on and off for every c
 - **Console / container log:** one line per command or button press (never message text), plus warnings and errors.
 - **Developer log** (`DEV_LOG_CHAT`): start and stop messages, notices when the bot is added to or removed from a chat (`#NEWGROUP`, `#LEFTGROUP`) and about federations (`#NEWFED`, `#DELFED`, `#RENAMEFED`, `#FEDTRANSFER`), error reports with the traceback as a file, and every `LOG_REPORT_HOURS` hours a log report: a message with the period it covers (from, to, number of entries) and a `.txt` file with a time, a level and what happened on every line (UTC). One more is sent when the bot stops. A report that could not be delivered is sent with the next one.
 - **Public log** (`LOG_CHAT_ID`): staff changes and other public notices.
-- **Chat log:** `/setlog <chat id | @username | reply to a forwarded channel post>` makes the bot copy that chat's moderation actions (bans, mutes, warns, locks, promotions ...) to a chat of the admins' choice. `/unsetlog` and `/logchannel` manage it.
+- **Chat log:** `/setlog <chat id | @username | reply to a forwarded channel post>` makes the bot copy that chat's moderation actions (bans, mutes, warns, locks, promotions ...) and who joins (`#JOINED`) or leaves on their own (`#LEFT`) to a chat of the admins' choice. `/unsetlog` and `/logchannel` manage it.
 
 ## 12. Project layout and adding modules
 
