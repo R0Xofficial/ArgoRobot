@@ -130,9 +130,9 @@ def _done_text(old: dict | None) -> str:
 
 
 async def _notify(bot: Bot, chat_id: int, text, msg_id: int | None = None, thread_id: int | None = None) -> None:
-    """Say something in the chat a command came from, in its topic, never failing."""
-    if callable(text):  # written in the language of the chat it goes to
-        async with i18n.speaking(chat_id):
+    """Say something in the chat a staff command came from, in its topic, never failing."""
+    if callable(text):  # what the staff commands answer: English, like everything they say
+        with i18n.english():
             text = text()
     params: dict[str, Any] = {
         "chat_id": chat_id,
@@ -374,6 +374,7 @@ async def _ask_sudo(
 
 
 @router.message(cmd("gban", "dgban"), HasRole(Role.SUPPORT))
+@i18n.english_only
 async def cmd_gban(message: Message, command: CommandObject, role: Role) -> None:
     bot = message.bot
     deleting = command.command == "dgban"
@@ -460,6 +461,7 @@ async def cmd_gban(message: Message, command: CommandObject, role: Role) -> None
 
 
 @router.message(cmd("ungban"), HasRole(Role.SUPPORT))
+@i18n.english_only
 async def cmd_ungban(message: Message, command: CommandObject, role: Role) -> None:
     bot = message.bot
     try:
@@ -520,6 +522,7 @@ async def cmd_ungban(message: Message, command: CommandObject, role: Role) -> No
 # --- The buttons under a request -------------------------------------------------------------
 
 @router.callback_query(F.data.startswith(CB_PREFIX))
+@i18n.english_only
 async def cb_request(callback: CallbackQuery, role: Role | None = None) -> None:
     bot = callback.bot
     if role is None or role < SUDO:
@@ -713,6 +716,7 @@ _exported_at = 0.0
 
 
 @router.message(cmd("gimport"), HasRole(Role.OWNER))
+@i18n.english_only
 async def cmd_gimport(message: Message, command: CommandObject) -> None:
     fmt = (command.args or "").strip().lower() or None
     if fmt is not None and fmt not in banfiles.FORMATS:
@@ -770,6 +774,7 @@ async def cmd_gimport(message: Message, command: CommandObject) -> None:
 
 
 @router.message(cmd("gexport"), HasRole(Role.OWNER))
+@i18n.english_only
 async def cmd_gexport(message: Message, command: CommandObject) -> None:
     global _exported_at
     fmt = (command.args or "csv").strip().lower() or "csv"
