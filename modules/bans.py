@@ -218,6 +218,5 @@ async def cmd_kickme(message: Message) -> None:
     except ModerationError as exc:
         await reply(message, esc(exc))
         return
-    me = moderation.Actor(user.id, user.full_name)
-    await moderation.log_action(message, "KICKED", me, moderation.Target(user.id, user.full_name), lambda: tr("bans.used_kickme"))
+    await moderation.log_self(message, "KICKED", user.id, user.full_name, lambda: tr("bans.used_kickme"))
     await reply(message, tr("bans.kicked_themselves_out_they_can_come", id=user_link(user.id, user.full_name)), quote=False)

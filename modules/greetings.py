@@ -9,7 +9,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
 from aiogram.types import Chat, ChatMemberUpdated, ChatPermissions, Message
 
-from core import antiraid, approvals, captchas, disabled, banguard, greetings, immunity, memberevents, moderation, registry, roles, sender, staffgreet
+from core import antiraid, approvals, captchas, chatlog, disabled, banguard, greetings, immunity, memberevents, moderation, registry, roles, sender, staffgreet
 from core.filters import cmd
 from core.help_index import Section
 from core.helpers import reply
@@ -17,7 +17,7 @@ from core.markup import MarkupError
 from core.moderation import GROUP_TYPES
 from core.roles import Role
 from core.targets import replied_message
-from core.text import esc, SWITCH as _ANSWERS
+from core.text import esc, user_ref, SWITCH as _ANSWERS
 from core.i18n import tr
 
 log = logging.getLogger(__name__)
@@ -352,6 +352,21 @@ async def _greet(message: Message, people: list, settings: dict) -> None:
             await greetings.update(message.chat.id, last_welcome_id=last_sent)
 
 
+async def _has_log(chat_id: int) -> bool:
+    try:
+        return await chatlog.get(chat_id) is not None
+    except Exception:
+        return False
+
+
+async def _log_member(bot: Bot, chat, tag: str, user) -> None:
+    """Who joined (#JOINED) or left on their own (#LEFT), in the chat's log (/setlog). Never raises."""
+    try:
+        await chatlog.record(bot, chat, tag, None, user_ref(user.id, user.full_name))
+    except Exception:
+        log.exception("Could not log %s", tag)
+
+
 @router.message(F.new_chat_members)
 async def on_join(message: Message) -> None:
     if message.chat.type not in GROUP_TYPES:
@@ -360,6 +375,8 @@ async def on_join(message: Message) -> None:
     bot_id = message.bot.id
     for user in message.new_chat_members:
         memberevents.mark("join", message.chat.id, user.id)
+        if user.id != bot_id:
+            await _log_member(message.bot, message.chat, "JOINED", user)
     people = []
     for user in message.new_chat_members:
         if user.is_bot or user.id == bot_id or await banguard.applies(message.bot, message.chat.id, user.id) or antiraid.was_removed(message.chat.id, user.id):
@@ -404,6 +421,8 @@ async def on_leave(message: Message) -> None:
     memberevents.mark("leave", message.chat.id, left.id)
     # The sender of the service message is the person who left, or whoever removed them.
     left_on_own = message.from_user is not None and message.from_user.id == left.id
+    if left_on_own and left.id != message.bot.id:  # a removal is in the log already, with the admin who did it
+        await _log_member(message.bot, message.chat, "LEFT", left)
     try:
         await _say_goodbye(message, left, settings, left_on_own)
     finally:
@@ -470,10 +489,18 @@ async def _greetings_here(chat_id: int) -> bool:
 @router.chat_member(_joined)
 async def on_member_joined(event: ChatMemberUpdated, bot: Bot) -> None:
     user = event.new_chat_member.user
-    if user.is_bot or user.id == bot.id or not await _greetings_here(event.chat.id):
+    if user.id == bot.id:
+        return
+    logging_on = await _has_log(event.chat.id)
+    greeting = not user.is_bot and await _greetings_here(event.chat.id)
+    if not logging_on and not greeting:
         return
     if not await memberevents.no_service_message("join", event.chat.id, user.id):
         return  # the service message came and has done it
+    if logging_on:
+        await _log_member(bot, event.chat, "JOINED", user)
+    if not greeting:
+        return
     if await banguard.applies(bot, event.chat.id, user.id):
         return
     if antiraid.was_removed(event.chat.id, user.id):
@@ -488,13 +515,21 @@ async def on_member_joined(event: ChatMemberUpdated, bot: Bot) -> None:
 @router.chat_member(_left)
 async def on_member_left(event: ChatMemberUpdated, bot: Bot) -> None:
     user = event.old_chat_member.user
-    if user.is_bot or user.id == bot.id or not await _greetings_here(event.chat.id):
+    if user.id == bot.id:
+        return
+    logging_on = await _has_log(event.chat.id)
+    greeting = not user.is_bot and await _greetings_here(event.chat.id)
+    if not logging_on and not greeting:
         return
     if not await memberevents.no_service_message("leave", event.chat.id, user.id):
+        return
+    left_on_own = event.from_user is not None and event.from_user.id == user.id
+    if logging_on and left_on_own:
+        await _log_member(bot, event.chat, "LEFT", user)
+    if not greeting:
         return
     try:
         await captchas.drop_user(bot, event.chat.id, user.id)
     except Exception:
         log.exception("Cleaning up the captcha of %s in chat %s failed", user.id, event.chat.id)
-    left_on_own = event.from_user is not None and event.from_user.id == user.id
     await _say_goodbye(_made_up_message(bot, event.chat), user, await greetings.get(event.chat.id), left_on_own)
