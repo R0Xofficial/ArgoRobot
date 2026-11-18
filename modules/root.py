@@ -4,7 +4,7 @@ import asyncio
 import platform
 import time
 
-from aiogram import F, Router
+from aiogram import BaseMiddleware, F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -16,6 +16,7 @@ from core.helpers import edit, reply
 from core.roles import Role
 from core.targets import TargetError, display_name, resolve_target
 from core.text import duration_text, esc, user_link, user_ref
+from core import i18n
 from core.i18n import tr
 
 # Protected modules cannot be disabled with /module, so the commands in this
@@ -46,6 +47,18 @@ HELP = [
 ]
 
 router = Router(name="root")
+
+
+class _English(BaseMiddleware):
+    """The root commands (for the people who run the bot) are English only, whatever language the chat speaks."""
+
+    async def __call__(self, handler, event, data):
+        with i18n.english():
+            return await handler(event, data)
+
+
+router.message.middleware(_English())
+router.callback_query.middleware(_English())
 
 CB_STAFF_HOME = "staff:home"
 CB_STAFF_ROLE = "staff:role:"
