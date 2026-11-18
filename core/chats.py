@@ -166,6 +166,14 @@ DELETE_CHAT = (
 )
 
 
+# Chat ids that have data in some table but no row in `chats` (only groups and channels: their ids are negative).
+# They are what a chat leaves behind when it was removed by an older version of the bot.
+FIND_LEFTOVERS = (
+    " UNION ".join(f"SELECT chat_id FROM {table} WHERE chat_id < 0 AND chat_id NOT IN (SELECT chat_id FROM chats)" for table in CHAT_TABLES)
+    + " ORDER BY chat_id"
+)
+
+
 def _forget(chat_id: int) -> None:
     """Drop the in-memory copies, so a chat the bot rejoins is written again."""
     _chats.pop(chat_id, None)
@@ -318,6 +326,8 @@ class CleanupResult:
     removed: list[dict[str, Any]] = field(default_factory=list)
     moved: list[tuple[dict[str, Any], int]] = field(default_factory=list)
     unverified: int = 0
+    leftovers: list[int] = field(default_factory=list)  # chats the bot was no longer in whose data was still lying around
+    restored: int = 0  # chats that have data but were missing from `chats` and are still there: recorded again
 
 
 _lock = asyncio.Lock()
@@ -391,12 +401,57 @@ async def cleanup(bot: Bot) -> CleanupResult | None:
                 result.unverified += 1
             await asyncio.sleep(CHECK_DELAY)
 
+        await _clear_leftovers(bot, me.id, result)
         return result
+
+
+async def _clear_leftovers(bot: Bot, bot_id: int, result: CleanupResult) -> None:
+    """
+    Data of chats that are not in `chats` any more (left behind by an older version, or by a crash).
+    The bot asks Telegram about each one first: a chat it is still in is recorded again, never deleted.
+    """
+    for row in await database.fetch_all(FIND_LEFTOVERS):
+        chat_id = row["chat_id"]
+        state, detail = await _bot_status(bot, chat_id, bot_id)
+        if state == "gone":
+            await remove_chat(chat_id)
+            result.leftovers.append(chat_id)
+        elif state == "moved":
+            await migrate_chat(chat_id, detail)
+            result.moved.append(({"chat_id": chat_id, "title": None}, detail))
+        elif state == "present":
+            try:
+                await remember_chat(await bot.get_chat(chat_id), detail)
+                result.restored += 1
+            except TelegramAPIError:
+                result.unverified += 1
+        else:
+            result.unverified += 1
+        await asyncio.sleep(CHECK_DELAY)
 
 
 def _chat_line(row: dict[str, Any], extra: str = "") -> str:
     title = esc(row.get("title") or "Untitled")
     return f"{title} [<code>{row['chat_id']}</code>]{extra}"
+
+
+REPORT_TITLED = 15   # removed chats shown with their title
+REPORT_LIMIT = 3500  # characters; a Telegram message holds 4096
+
+
+def _ids(ids: list[int], used: int) -> list[str]:
+    """Chat ids as <code> items, as many as fit; the rest is counted."""
+    shown, size = [], used
+    for chat_id in ids:
+        item = f"<code>{chat_id}</code>"
+        if size + len(item) + 2 > REPORT_LIMIT:
+            break
+        shown.append(item)
+        size += len(item) + 2
+    lines = [", ".join(shown)] if shown else []
+    if len(shown) < len(ids):
+        lines.append(f"... and {len(ids) - len(shown)} more.")
+    return lines
 
 
 def report(result: CleanupResult, title: str) -> str:
@@ -406,17 +461,22 @@ def report(result: CleanupResult, title: str) -> str:
         f"Checked: <code>{result.checked}</code>",
         f"Removed: <code>{len(result.removed)}</code>",
     ]
+    if result.leftovers:
+        lines.append(f"Leftover data deleted for: <code>{len(result.leftovers)}</code> chats")
+    if result.restored:
+        lines.append(f"Recorded again (the bot is still in them): <code>{result.restored}</code>")
     if result.moved:
         lines.append(f"Moved to a new id: <code>{len(result.moved)}</code>")
     if result.unverified:
         lines.append(f"Could not be verified: <code>{result.unverified}</code>")
 
-    shown = 15
     if result.removed:
         lines += ["", "<b>Removed chats:</b>"]
-        lines += [_chat_line(row) for row in result.removed[:shown]]
-        if len(result.removed) > shown:
-            lines.append(f"... and {len(result.removed) - shown} more.")
+        lines += [_chat_line(row) for row in result.removed[:REPORT_TITLED]]
+        lines += _ids([row["chat_id"] for row in result.removed[REPORT_TITLED:]], sum(len(line) + 1 for line in lines))
+    if result.leftovers:
+        lines += ["", "<b>Leftover data deleted for:</b>"]
+        lines += _ids(result.leftovers, sum(len(line) + 1 for line in lines))
     return "\n".join(lines)
 
 
@@ -427,9 +487,10 @@ async def _scheduled_cleanups(bot: Bot, hours: float) -> None:
             result = await cleanup(bot)
             if result is not None:
                 log.info(
-                    "Chat cleanup: checked %d, removed %d, unverified %d",
+                    "Chat cleanup: checked %d, removed %d, leftovers %d, unverified %d",
                     result.checked,
                     len(result.removed),
+                    len(result.leftovers),
                     result.unverified,
                 )
                 await logs.dev_log(bot, report(result, "Automatic chat cleanup"))
