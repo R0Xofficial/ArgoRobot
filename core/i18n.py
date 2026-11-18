@@ -16,6 +16,7 @@ being handled; code that runs later on its own (sweepers, timers) calls use_chat
 Logs for developers, command names and tags like #GBANNED are not translated.
 """
 
+import functools
 import json
 import logging
 from contextlib import asynccontextmanager, contextmanager
@@ -184,6 +185,17 @@ def english():
         yield
     finally:
         _current.reset(token)
+
+
+def english_only(handler):
+    """For a handler of a command meant for the people who run the bot: everything it says is English, whatever the chat speaks."""
+
+    @functools.wraps(handler)
+    async def wrapper(*args, **kwargs):
+        with english():
+            return await handler(*args, **kwargs)
+
+    return wrapper
 
 
 @asynccontextmanager
