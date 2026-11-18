@@ -564,6 +564,7 @@
  "federations.note.getting_started": "Na początek",
  "federations.now_inherits_the_bans_of_your": "{fed} dziedziczy teraz bany federacji {other}. Twoja własna lista banów się nie zmienia.",
  "federations.number_of_subscribed_feds": "Liczba subskrybujących federacji: {followers}",
+ "federations.only_an_admin_of_this_chat": "Tylko admin tego czatu może ustawić go jako log federacji.",
  "federations.only_people_can_be_banned_in": "W federacji można banować tylko ludzi.",
  "federations.only_people_can_be_federation_admins": "Adminami federacji mogą być tylko ludzie.",
  "federations.only_the_admins_of_this_federation": "Odpowiedzieć mogą tylko admini tej federacji.",

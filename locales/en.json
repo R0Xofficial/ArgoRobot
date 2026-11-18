@@ -566,6 +566,7 @@
   "federations.note.getting_started": "Getting started",
   "federations.now_inherits_the_bans_of_your": "{fed} now inherits the bans of {other}. Your own ban list is not changed.",
   "federations.number_of_subscribed_feds": "Number of subscribed feds: {followers}",
+  "federations.only_an_admin_of_this_chat": "Only an admin of this chat can make it the federation log.",
   "federations.only_people_can_be_banned_in": "Only people can be banned in a federation.",
   "federations.only_people_can_be_federation_admins": "Only people can be federation admins.",
   "federations.only_the_admins_of_this_federation": "Only the admins of this federation can answer.",
