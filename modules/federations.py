@@ -592,6 +592,10 @@ async def cmd_setfedlog(message: Message) -> None:
     if message.chat.type not in GROUP_TYPES:
         await reply(message, tr("federations.send_this_in_the_group_that"))
         return
+    # Whoever owns a federation must also be an admin here, or the log of a federation could be pointed at anyone's chat.
+    if not await moderation.is_chat_admin(message.bot, message.chat.id, message.from_user.id):
+        await reply(message, tr("federations.only_an_admin_of_this_chat"))
+        return
     await federations.update(fed["fed_id"], log_chat_id=message.chat.id)
     await reply(message, tr("federations.this_chat_is_now_the_log", fed=_fed_name(fed)))
 
