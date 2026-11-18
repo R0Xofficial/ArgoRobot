@@ -36,7 +36,7 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
 )
 
-from core import i18n, blacklist, captchas, chatsettings, connection, database, disabled, filterstore, flood, federations, joinblacklist, locks, logs
+from core import i18n, antiraid, blacklist, captchas, chatlog, chatsettings, connection, database, disabled, filterstore, flood, federations, joinblacklist, locks, logs
 from core.errors import report_exception
 from core.text import esc
 from core.users import CACHE_LIMIT, IGNORED_IDS, REFRESH_SECONDS
@@ -148,13 +148,22 @@ VALUES ($1, $2)
 ON CONFLICT (user_id, chat_id) DO UPDATE SET last_seen = now()
 """
 
-# A data-modifying CTE runs even though nothing reads from it.
-DELETE_CHAT = """
-WITH gone AS (DELETE FROM user_chats WHERE chat_id = $1),
-     bans AS (DELETE FROM gban_bans WHERE chat_id = $1),
-     waiting AS (DELETE FROM captcha_pending WHERE chat_id = $1)
-DELETE FROM chats WHERE chat_id = $1
-"""
+# Everything the bot keeps for one chat (settings, warns, notes, who was in it ...). A chat the bot no longer
+# belongs to has no use for any of it, so remove_chat() deletes all of it. A new table with a chat_id column
+# has to be added here (a test checks it) or to MIGRATED_TABLES in migrate_chat().
+CHAT_TABLES = (
+    "user_chats", "gban_bans", "captcha_pending", "captcha_settings", "warns", "warn_settings", "chat_logs",
+    "disabled_commands", "connections", "chat_settings", "flood_settings", "blacklist", "blacklist_settings",
+    "greetings", "fed_chats", "fed_applied", "antiraid", "nightmode", "locks", "lock_settings", "lock_allowlist",
+    "rules", "join_blacklist", "notes", "filters", "approvals",
+)
+
+# One statement, so a chat is removed whole or not at all. A data-modifying CTE runs even though nothing reads from it.
+DELETE_CHAT = (
+    "WITH "
+    + ",\n     ".join(f"d{number} AS (DELETE FROM {table} WHERE chat_id = $1)" for number, table in enumerate(CHAT_TABLES))
+    + "\nDELETE FROM chats WHERE chat_id = $1"
+)
 
 
 def _forget(chat_id: int) -> None:
@@ -199,9 +208,25 @@ async def remember_presence(user_id: int, chat_id: int) -> None:
     _presence[(user_id, chat_id)] = now
 
 
+def _forget_caches(chat_id: int) -> None:
+    """Drop what the modules keep in memory about a chat."""
+    chatsettings.forget(chat_id)
+    disabled.forget(chat_id)
+    captchas.forget(chat_id)
+    flood.forget(chat_id)
+    blacklist.forget(chat_id)
+    filterstore.forget(chat_id)
+    joinblacklist.forget(chat_id)
+    locks.forget(chat_id)
+    federations.forget_chat(chat_id)
+    chatlog.forget(chat_id)
+    antiraid.forget(chat_id)
+
+
 async def remove_chat(chat_id: int) -> None:
-    """Forget a chat and everything recorded about who was in it."""
+    """The bot no longer belongs to a chat: forget it and delete everything kept for it (CHAT_TABLES)."""
     _forget(chat_id)
+    _forget_caches(chat_id)
     await database.execute(DELETE_CHAT, chat_id)
     await connection.drop_chat(chat_id)
 
@@ -226,18 +251,11 @@ async def migrate_chat(old_id: int, new_id: int) -> None:
         new_id,
     )
     # Settings, warns and approvals follow the chat to its new id.
-    for table in ("chat_settings", "warn_settings", "warns", "approvals", "gban_bans", "flood_settings", "blacklist", "blacklist_settings", "filters", "greetings", "join_blacklist", "notes", "rules", "locks", "lock_settings", "lock_allowlist", "fed_chats", "fed_applied", "disabled_commands", "connections", "captcha_settings", "captcha_pending"):
+    for table in ("chat_settings", "warn_settings", "warns", "approvals", "gban_bans", "flood_settings", "blacklist", "blacklist_settings", "filters", "greetings", "join_blacklist", "notes", "rules", "locks", "lock_settings", "lock_allowlist", "fed_chats", "fed_applied", "disabled_commands", "connections", "captcha_settings", "captcha_pending", "chat_logs", "antiraid", "nightmode"):
         await database.execute(f"UPDATE {table} SET chat_id = $2 WHERE chat_id = $1", old_id, new_id)
-    chatsettings.forget(old_id)
-    disabled.forget(old_id)
     connection.forget_chat(old_id, new_id)
-    captchas.forget(old_id)
-    flood.forget(old_id)
-    blacklist.forget(old_id)
-    filterstore.forget(old_id)
-    joinblacklist.forget(old_id)
-    locks.forget(old_id)
-    federations.forget_chat(old_id)
+    _forget_caches(old_id)
+    _forget_caches(new_id)  # what it had cached before the settings arrived is out of date
     await remove_chat(old_id)
 
 
