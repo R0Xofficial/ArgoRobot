@@ -632,7 +632,6 @@
   "federations.use_renamefed_lt_name_gt": "Use /renamefed &lt;name&gt;.",
   "federations.use_subfed_lt_fedid_gt": "Use /subfed &lt;FedID&gt;.",
   "federations.use_unsubfed_lt_fedid_gt": "Use /unsubfed &lt;FedID&gt;.",
-  "federations.user_id": "User ID",
   "federations.user_is_already_fbanned_in": "User {who} is already fbanned in {fed}",
   "federations.wants_to_give_you_the_federation": "{user_id}, {id} wants to give you the federation {fed}. Do you accept?",
   "federations.wants_to_make_you_an_admin": "{user_id}, {id} wants to make you an admin of the federation {fed}. Do you accept?",
