@@ -1070,7 +1070,7 @@ def _ban_line(row: dict[str, Any]) -> str:
     return f"• <b>{esc(row['name'])}</b>\n  <code>{row['fed_id']}</code>"
 
 
-@router.message(cmd("fedstat", "fbanstat"))
+@router.message(cmd("fedstat", "fbanstat", "fstat"))
 async def cmd_fedstat(message: Message, command: CommandObject) -> None:
     words = (command.args or "").split()
     fed_id = words.pop().lower() if words and _FED_ID.match(words[-1]) else None
