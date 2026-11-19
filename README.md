@@ -170,7 +170,7 @@ A federation is a ban list shared by many chats.
 | Owner | `/newfed`, `/renamefed`, `/delfed`, `/fedtransfer`, `/fedpromote` (alias `/fpromote`), `/feddemote` (alias `/fdemote`), `/setfedlog` |
 | Admins | `/fban`, `/dfban` (reply to a message: delete it and fban its author), `/unfban`, `/fedreason`, `/fedexport`, `/fedimport` |
 | Chats | `/joinfed`, `/leavefed`, `/quietfed` (chat owner) |
-| Anyone | `/fedinfo`, `/fedadmins`, `/fedstat` (alias `/fbanstat`) |
+| Anyone | `/fedinfo`, `/fedadmins`, `/fedstat` (aliases `/fbanstat`, `/fstat`) |
 | Bot Developers | `/clearfban <user> [FedID] [reason]`: lift a user's ban in any federation (also foreign ones), e.g. a bogus ban blocking a staff role |
 
 People with a global ban or any federation ban can't be given a staff role, and a globally banned user can't be whitelisted.
