@@ -203,7 +203,7 @@ async def _admin_event(bot: Bot, fed: dict[str, Any], promoted: bool, user_id: i
     """Tell the federation's log that someone became or stopped being one of its admins."""
     def text() -> str:
         title, label = (tr("federations.new_fed_promotion"), tr("federations.promoted_fedadmin")) if promoted else (tr("federations.new_fed_demotion"), tr("federations.demoted_fedadmin"))
-        return f"<b>{title}</b>\n{_own_line(bot, fed)}\n{_item(label, who)}\n{_item(tr("federations.user_id"), f'<code>{user_id}</code>')}"
+        return f"<b>{title}</b>\n{_own_line(bot, fed)}\n{_item(label, f'{who} [<code>{user_id}</code>]')}"
 
     await _event(bot, fed, text)
 
@@ -706,8 +706,7 @@ def _ban_text(title: str, fed: dict[str, Any], admin, target_id: int, target_nam
         f"<b>{title}</b>",
         fed_line or _item(tr("federations.fed"), esc(fed['name'])),
         _item(tr("federations.fedadmin"), user_ref(admin.id, admin.full_name)),
-        _item(tr("common.user"), user_link(target_id, target_name)),
-        _item(tr("federations.user_id"), f"<code>{target_id}</code>"),
+        _item(tr("common.user"), user_ref(target_id, target_name)),
     ]
     if previous is not None:
         lines.append(_item(tr("federations.previous_reason"), f"<code>{esc(previous[0])}</code>" if previous[0] else tr("federations.none")))
