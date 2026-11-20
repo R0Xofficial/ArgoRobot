@@ -30,7 +30,7 @@ from aiogram.enums import ParseMode
 
 import modules
 from config import settings
-from core import captchas, chats, database, logreport, logs, mtproto, nightmode, registry, users
+from core import captchas, chats, database, logreport, logs, mtproto, nightmode, registry, shutdown, users
 from core.retry import network_retry
 from core.errors import setup_error_handling
 from core.middlewares import CleanCommandsMiddleware, ConnectionMiddleware, LanguageMiddleware, LoggingMiddleware, RolesMiddleware, UsersMiddleware
@@ -135,22 +135,7 @@ async def on_startup(bot: Bot) -> None:
 
 
 async def on_shutdown(bot: Bot) -> None:
-    log.info("Shutting down")
-    # The notice goes first: the container is killed when stopping takes too long, and what comes
-    # after it (closing the MTProto connection, for one) can be slow.
-    await logreport.stop_schedule(bot)   # the last report, with everything since the previous one
-    await logs.dev_log(bot, "Bot stopped.")
-    await chats.stop_cleanup_schedule()
-    await captchas.stop_sweeper()
-    await nightmode.stop_sweeper()
-    try:
-        await asyncio.wait_for(mtproto.stop(), timeout=5)
-    except Exception:
-        log.warning("Closing the MTProto client took too long")
-    try:
-        await database.close()
-    except Exception:
-        log.exception("Error while closing the database")
+    await shutdown.stop(bot)
 
 
 async def main() -> None:
