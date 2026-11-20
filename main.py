@@ -31,6 +31,7 @@ from aiogram.enums import ParseMode
 import modules
 from config import settings
 from core import captchas, chats, database, logreport, logs, mtproto, nightmode, registry, users
+from core.retry import network_retry
 from core.errors import setup_error_handling
 from core.middlewares import CleanCommandsMiddleware, ConnectionMiddleware, LanguageMiddleware, LoggingMiddleware, RolesMiddleware, UsersMiddleware
 from core.text import esc
@@ -108,9 +109,10 @@ async def on_startup(bot: Bot) -> None:
 
     # Updates that piled up while the bot was offline are discarded so old
     # commands are not executed after a restart.
-    await bot.delete_webhook(drop_pending_updates=True)
+    # Both calls are tried again when Telegram cannot be reached for a moment (a timeout here used to stop the bot).
+    await network_retry("delete_webhook", lambda: bot.delete_webhook(drop_pending_updates=True, request_timeout=20))
 
-    me = await bot.get_me()
+    me = await network_retry("get_me", lambda: bot.get_me(request_timeout=20))
     log.info("Authorized as @%s (id=%s)", me.username, me.id)
 
     await logs.dev_log(
