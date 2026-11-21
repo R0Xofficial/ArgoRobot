@@ -8,7 +8,7 @@ import (
 	"argo/internal/i18n"
 )
 
-// Join blacklists: words that keep people out when their profile contains them (core/joinblacklist.py). There are
+// Join blacklists: words that keep people out when their profile contains them. There are
 // four kinds, one for each part of a profile that is checked: the name, the @username, the bio and the personal
 // channel. A chat has at most MaxJoinPerKind triggers of each kind. Triggers use the wildcards of the blacklist and
 // match whole words without caring about case. Every join in a chat with triggers is checked, so a chat's triggers

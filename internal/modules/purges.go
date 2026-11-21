@@ -7,7 +7,7 @@ import (
 	"argo/internal/text"
 )
 
-// Delete messages in bulk (modules/purges.py).
+// Delete messages in bulk.
 
 const (
 	rightDelete   = "can_delete_messages"

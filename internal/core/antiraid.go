@@ -9,7 +9,7 @@ import (
 )
 
 // Antiraid: when many accounts join a chat within a short time, the chat is in a raid for a while and every newcomer
-// is dealt with (muted until the raid is over, kicked or banned) (core/antiraid.py).
+// is dealt with (muted until the raid is over, kicked or banned).
 //
 // Off by default. Settings per chat: how many joins in how many seconds make a raid, how long the raid lasts, and
 // what happens to the newcomers. The people who joined in the window that started the raid are dealt with as well,

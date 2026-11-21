@@ -19,7 +19,7 @@ import (
 	"argo/internal/markup"
 )
 
-// Backups of one chat: what to save, how it looks in the file, and how it is put back (core/backupdata.py).
+// Backups of one chat: what to save, how it looks in the file, and how it is put back.
 //
 // A backup is a JSON file:
 //

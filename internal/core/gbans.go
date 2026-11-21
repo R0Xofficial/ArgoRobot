@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Storage of global bans (core/gbans.py). A global ban says "this user is not welcome in any chat that uses the bot".
+// Storage of global bans. A global ban says "this user is not welcome in any chat that uses the bot".
 // Three tables back it: gbans (who and why), gban_requests (what Support users asked for and Sudo users have not
 // decided yet) and gban_bans (the chats where the bot itself removed someone, so that lifting the ban undoes only
 // that). The ids of the banned are kept in memory: every message is checked against them.

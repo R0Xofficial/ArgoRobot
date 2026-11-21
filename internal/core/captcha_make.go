@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// The tests of a captcha (core/captchas.py: make and picture).
+// The tests of a captcha.
 
 // Captcha modes.
 var CaptchaModes = []string{"button", "math", "text", "text2"}

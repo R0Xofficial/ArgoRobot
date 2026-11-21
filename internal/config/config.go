@@ -1,6 +1,4 @@
 // Package config reads the settings from environment variables and an optional .env file.
-//
-// The names and meanings are the same as in the Python version (config.py), so one .env serves both.
 package config
 
 import (

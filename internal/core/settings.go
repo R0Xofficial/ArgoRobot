@@ -8,7 +8,7 @@ import (
 	"argo/internal/i18n"
 )
 
-// Per-chat settings that belong to the chat's owner (core/chatsettings.py). Each is one yes/no switch with a
+// Per-chat settings that belong to the chat's owner. Each is one yes/no switch with a
 // default, read on many updates and therefore cached.
 //
 //	staff_help    whether the bot's staff (Owner, Developers, Sudo) may use the chat's admin commands. On by default.

@@ -8,7 +8,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 )
 
-// The phone book of the users the bot has seen (core/users.py in the Python version). Telegram only tells a bot
+// The phone book of the users the bot has seen. Telegram only tells a bot
 // about users it is in contact with, so the bot writes down everyone it meets and uses the book later to turn
 // @username into an account. A user is written only when something changed, or once an hour.
 const refreshEvery = time.Hour
@@ -16,7 +16,7 @@ const refreshEvery = time.Hour
 // Accounts Telegram shows as the sender of messages written on behalf of a chat; never recorded as users.
 var placeholderSenders = map[int64]bool{777000: true, 1087968824: true, 136817688: true}
 
-// Telegram's own accounts: no action may ever be taken against them (core/immunity.py).
+// Telegram's own accounts: no action may ever be taken against them.
 var serviceAccounts = map[int64]bool{777000: true, 1087968824: true, 136817688: true, 93372553: true}
 
 func IsImmune(id int64) bool { return serviceAccounts[id] }
@@ -28,7 +28,7 @@ type seenUser struct {
 
 type usersCache struct{ cache[int64, seenUser] }
 
-// FullName is first and last name, like aiogram's User.full_name.
+// FullName is first and last name.
 func FullName(u *gotgbot.User) string {
 	if u == nil {
 		return ""

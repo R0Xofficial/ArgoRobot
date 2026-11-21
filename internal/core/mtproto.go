@@ -15,7 +15,7 @@ import (
 	"github.com/gotd/td/tg"
 )
 
-// Full member lists through Telegram's MTProto interface (core/mtproto.py, with gotd/td instead of Telethon).
+// Full member lists through Telegram's MTProto interface (with gotd/td).
 //
 // The Bot API cannot list the members of a chat. MTProto can, for a bot that is an admin there, and that is what
 // /zombies needs to find deleted accounts nobody has ever seen write. It is optional: without API_ID and API_HASH (from
@@ -27,8 +27,7 @@ import (
 // Telegram limits).
 
 const (
-	// SessionFile is where the MTProto session is kept. It is not the file Telethon wrote: the first start of the Go
-	// version logs in again.
+	// SessionFile is where the MTProto session is kept. The first start logs in again.
 	SessionFile      = "data/argo-mtproto.json"
 	mtRetryAfter     = 5 * time.Minute // how long to wait before trying to connect again after a failure
 	mtConnectTimeout = 60 * time.Second

@@ -14,7 +14,7 @@ import (
 	"argo/internal/text"
 )
 
-// Lighter commands to break up moderation duty (modules/fun.py).
+// Lighter commands to break up moderation duty.
 
 const (
 	maxFunName   = 50

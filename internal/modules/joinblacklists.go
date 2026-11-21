@@ -13,7 +13,7 @@ import (
 	"argo/internal/text"
 )
 
-// Keep spammers out by their profile (modules/joinblacklists.py).
+// Keep spammers out by their profile.
 
 const maxShownJoin = 20
 

@@ -11,7 +11,7 @@ import (
 	"argo/internal/text"
 )
 
-// Approved users: trusted people that automatic measures skip (modules/approves.py).
+// Approved users: trusted people that automatic measures skip.
 
 const (
 	maxShown  = 60

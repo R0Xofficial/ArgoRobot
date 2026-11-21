@@ -14,7 +14,7 @@ import (
 	"argo/internal/text"
 )
 
-// Saved messages: reading one from a command and sending it later (core/sender.py).
+// Saved messages: reading one from a command and sending it later.
 
 const (
 	CaptionLimit = 1024

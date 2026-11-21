@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Telling a join or a leave that arrived as a service message from one that did not (core/memberevents.py).
+// Telling a join or a leave that arrived as a service message from one that did not.
 //
 // Telegram announces who joined or left with a service message in the chat ("X joined the group"), and, to bots that
 // are admins, with a chat_member update as well. In a group whose member list is hidden, or in a big one, the

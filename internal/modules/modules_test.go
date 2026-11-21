@@ -547,7 +547,7 @@ func TestRolesAndOwner(t *testing.T) {
 	_ = e2
 }
 
-// Errors of Telegram are only logged (core/errors.py): the report would go through Telegram too.
+// Errors of Telegram are only logged: the report would go through Telegram too.
 func TestTelegramErrorsAreOnlyLogged(t *testing.T) {
 	e := setup(t)
 	e.Fake.Fail("banChatMember", 500, "Internal Server Error")

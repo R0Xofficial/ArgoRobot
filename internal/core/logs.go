@@ -11,7 +11,7 @@ import (
 	"argo/internal/text"
 )
 
-// Log destinations (core/logs.py): the developer log (DEV_LOG_CHAT, else the owner's private chat) and the user log
+// Log destinations: the developer log (DEV_LOG_CHAT, else the owner's private chat) and the user log
 // (LOG_CHAT_ID, else the developer log) for promotions and demotions of staff and other public information.
 // Sending never fails: a missing log chat must not break a command.
 

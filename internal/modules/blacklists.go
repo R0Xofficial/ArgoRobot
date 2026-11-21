@@ -15,7 +15,7 @@ import (
 	"argo/internal/text"
 )
 
-// Forbidden words and phrases (modules/blacklists.py). Messages that match a trigger are deleted, or get a custom
+// Forbidden words and phrases. Messages that match a trigger are deleted, or get a custom
 // action. Blacklists do not affect group admins, or approved users.
 
 const (

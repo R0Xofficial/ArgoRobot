@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Group administrators (core/users.py): a bot cannot list ordinary members, but Telegram does tell it who the admins
+// Group administrators: a bot cannot list ordinary members, but Telegram does tell it who the admins
 // are, so they are recorded in the background, at most every few hours per group.
 
 const (

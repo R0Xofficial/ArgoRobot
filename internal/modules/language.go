@@ -11,7 +11,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 )
 
-// Language of the bot's texts (modules/language.py). The languages are the files in locales/.
+// Language of the bot's texts. The languages are the files in locales/.
 
 const (
 	cbLang      = "lang:"

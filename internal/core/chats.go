@@ -9,10 +9,10 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 )
 
-// Chats the bot is in, and who was seen where (core/chats.py in the Python version).
+// Chats the bot is in, and who was seen where.
 
 // chatTables is everything the bot keeps for one chat. A chat the bot no longer belongs to has no use for any of
-// it, so removeChat deletes all of it. The list is the Python version's CHAT_TABLES.
+// it, so removeChat deletes all of it.
 var chatTables = []string{
 	"user_chats", "gban_bans", "captcha_pending", "captcha_settings", "warns", "warn_settings", "chat_logs",
 	"disabled_commands", "connections", "chat_settings", "flood_settings", "blacklist", "blacklist_settings",

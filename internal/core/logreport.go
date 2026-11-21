@@ -13,7 +13,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 )
 
-// Scheduled log report for the developer log (core/logreport.py). Everything the bot writes to its log (INFO and
+// Scheduled log report for the developer log. Everything the bot writes to its log (INFO and
 // above) is also kept in memory; every LOG_REPORT_HOURS hours, and once more when the bot stops, the collected lines
 // are sent to the developer log as one .txt file. A report that could not be delivered is kept and sent with the next
 // one. The buffer is limited: when it overflows the oldest entries are dropped and the report says how many.

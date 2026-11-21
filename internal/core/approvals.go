@@ -2,7 +2,7 @@ package core
 
 import "context"
 
-// Approved users: people a chat's admins trust without making them admins (core/approvals.py). An approved user is
+// Approved users: people a chat's admins trust without making them admins. An approved user is
 // exempt from the automatic measures of the bot in that chat only. A module that adds such a measure only has to ask
 // IsApproved. Approval never stops an admin from acting by hand.
 

@@ -9,7 +9,7 @@ import (
 	"argo/internal/text"
 )
 
-// Punishments applied automatically by modules (core/enforce.py): one place decides what "mute", "tban" and the
+// Punishments applied automatically by modules: one place decides what "mute", "tban" and the
 // rest mean, so every module words and performs them the same way.
 
 var EnforceModes = []string{"ban", "kick", "mute", "tban", "tmute"}

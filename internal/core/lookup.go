@@ -19,7 +19,7 @@ import (
 	"argo/internal/text"
 )
 
-// The lookups behind /tr, /dict, /time, /weather and /cash (core/lookup.py and core/web.py). Each asks a free public
+// The lookups behind /tr, /dict, /time, /weather and /cash. Each asks a free public
 // service (no API key) and returns the finished HTML text of the answer. Problems are WebErrors whose message is
 // a sentence meant for people. The network goes through GetJSON only, which is what the tests replace.
 

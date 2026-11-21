@@ -12,7 +12,7 @@ import (
 	"argo/internal/text"
 )
 
-// Tell people you are away (modules/afk.py). Anyone who mentions or replies to you while you are AFK gets a notice with
+// Tell people you are away. Anyone who mentions or replies to you while you are AFK gets a notice with
 // your reason and the time you left. A photo, GIF or video sent with /afk (or replied to) is shown with the notice.
 
 const afkNoticeCooldown = time.Minute

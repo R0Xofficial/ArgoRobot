@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// Speed test of the server the bot runs on, used by /speedtest (core/speedtest.py).
+// Speed test of the server the bot runs on, used by /speedtest.
 //
 // Measures against Cloudflare's public test endpoints: latency (median of five tiny requests on a warm connection),
 // download (four parallel streams of 25 MB) and upload (four parallel posts of 10 MB).

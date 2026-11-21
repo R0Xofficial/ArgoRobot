@@ -27,8 +27,8 @@ type golden struct {
 	Pairs      [][]string `json:"pairs"`
 }
 
-// The golden file holds what the Python version (core/blacklist.py) decides; it was made once from the Python version.
-func TestSameAsPython(t *testing.T) {
+// The golden file holds the expected decisions for a large set of cases.
+func TestSameAsGolden(t *testing.T) {
 	if err := i18n.Load("../../locales"); err != nil {
 		t.Fatal(err)
 	}
@@ -56,17 +56,17 @@ func TestSameAsPython(t *testing.T) {
 		switch c.Kind {
 		case "check":
 			if got := Normalize(c.In); got != c.Normalized {
-				fail("Normalize(%q) = %q, Python %q", c.In, got, c.Normalized)
+				fail("Normalize(%q) = %q, want %q", c.In, got, c.Normalized)
 			}
 			stored, err := Check(l, c.In)
 			var e *Error
 			switch {
 			case c.Error != "":
 				if !errors.As(err, &e) || e.Msg != c.Error {
-					fail("Check(%q): got %q / %v, Python error %q", c.In, stored, err, c.Error)
+					fail("Check(%q): got %q / %v, want error %q", c.In, stored, err, c.Error)
 				}
 			case err != nil || stored != c.Stored:
-				fail("Check(%q): got %q / %v, Python %q", c.In, stored, err, c.Stored)
+				fail("Check(%q): got %q / %v, want %q", c.In, stored, err, c.Stored)
 			}
 		case "match":
 			trig, err := Build(l, c.Pattern, "", 0, "")
@@ -92,21 +92,21 @@ func TestSameAsPython(t *testing.T) {
 					if len(short) > 60 {
 						short = short[:60] + "..."
 					}
-					fail("pattern %q text %q sticker %d: got %v, Python %v", c.Pattern, short, si, got, want)
+					fail("pattern %q text %q sticker %d: got %v, want %v", c.Pattern, short, si, got, want)
 				}
 			}
 		case "escape":
 			for _, p := range c.Pairs {
 				if got := EscapeWildcards(p[0]); got != p[1] {
-					fail("EscapeWildcards(%q) = %q, Python %q", p[0], got, p[1])
+					fail("EscapeWildcards(%q) = %q, want %q", p[0], got, p[1])
 				}
 			}
 		}
 	}
 	if bad > 0 {
-		t.Fatalf("%d differences from Python (%d match checks)", bad, checks)
+		t.Fatalf("%d differences from the golden file (%d match checks)", bad, checks)
 	}
-	t.Logf("%d match checks agree with Python", checks)
+	t.Logf("%d match checks agree with the golden file", checks)
 }
 
 func TestWildcardsCannotBeSlow(t *testing.T) {

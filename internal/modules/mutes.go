@@ -8,7 +8,7 @@ import (
 	"argo/internal/core"
 )
 
-// Mute commands for chat admins (modules/mutes.py). Same rules as the ban commands.
+// Mute commands for chat admins. Same rules as the ban commands.
 
 func registerMutes(r *core.Router) {
 	r.Command(cmdMute, "mute", "smute")

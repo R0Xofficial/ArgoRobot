@@ -13,7 +13,7 @@ import (
 	"argo/internal/text"
 )
 
-// Report messages to the admins (modules/reporting.py).
+// Report messages to the admins.
 
 const (
 	reportCooldown  = 20 * time.Second

@@ -9,7 +9,7 @@ import (
 	"argo/internal/text"
 )
 
-// Ban commands for chat admins (modules/bans.py). Usable by chat admins (with the right to ban users) and by the
+// Ban commands for chat admins. Usable by chat admins (with the right to ban users) and by the
 // bot's Owner, Developers and Sudo users. See core/moderation.go.
 
 func registerBans(r *core.Router) {
@@ -223,7 +223,7 @@ func cmdKickme(c *core.Ctx) error {
 		return failed(c, err)
 	}
 	c.LogSelf("KICKED", user.Id, core.FullName(user), "bans.used_kickme")
-	// Not attached to the message (quote=False in the Python version): the message is gone with the user's access.
+	// Not attached to the message: the message is gone with the user's access.
 	_, err = c.SendPlain(c.T("bans.kicked_themselves_out_they_can_come", core.V{"id": text.UserLink(user.Id, core.FullName(user))}))
 	return err
 }

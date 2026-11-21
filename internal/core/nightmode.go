@@ -15,7 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Nightmode: the chat is closed for the night and opens again in the morning (core/nightmode.py).
+// Nightmode: the chat is closed for the night and opens again in the morning.
 //
 // When the night starts the bot saves the chat's permissions and takes away everybody's right to send messages;
 // when it ends it puts the saved permissions back. Admins can always write. A sweep every half minute starts and

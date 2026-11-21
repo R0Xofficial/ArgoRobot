@@ -16,7 +16,7 @@ import (
 	"argo/internal/text"
 )
 
-// Core bot commands (modules/root.py). They are for the people who run the bot and answer in English whatever
+// Core bot commands. They are for the people who run the bot and answer in English whatever
 // language the chat speaks.
 
 const (
@@ -297,7 +297,7 @@ func cmdStatus(c *core.Ctx) error {
 		c.T("root.database", core.V{"db_text": dbText}),
 		c.T("root.memory") + memory,
 		c.T("root.modules_of_enabled", core.V{"count_enabled": enabled, "count_loaded": loaded}),
-		// The Python version shows its interpreter and library here; this one shows its own.
+		// The versions of Go and of the bot library.
 		"• <b>Go:</b> <code>" + text.Esc(runtime.Version()) + "</code>",
 		"• <b>gotgbot:</b> <code>v2</code>",
 	}

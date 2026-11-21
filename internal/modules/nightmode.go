@@ -9,7 +9,7 @@ import (
 	"argo/internal/text"
 )
 
-// Nightmode: close the chat for the night (modules/nightmode.py). The work is in core/nightmode.go.
+// Nightmode: close the chat for the night. The work is in core/nightmode.go.
 
 func registerNightmode(r *core.Router) {
 	r.Command(cmdNightmode, "nightmode")

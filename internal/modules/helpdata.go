@@ -1,4 +1,4 @@
-// Help texts of the modules (tags of locales/en.json). Originally taken from the Python modules; now maintained by hand.
+// Help texts of the modules (tags of locales/en.json).
 
 package modules
 

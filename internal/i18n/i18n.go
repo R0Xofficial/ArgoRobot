@@ -2,7 +2,7 @@
 //
 // Code never contains the text itself, only a tag: l.T("bans.was_banned", V{"who": name}).
 // The texts live in locales/<code>.json, one file per language, as {"tag": "text"} with {placeholders}.
-// The files are the same ones the Python version reads. locales/en.json is the reference and has every
+// locales/en.json is the reference and has every
 // tag; another language may lack some, and a missing tag is shown in English, so a missing line is never
 // an error. Besides the texts a file holds its own settings: meta.name, meta.flag, meta.plural
 // ("one-other" or "one-few-many") and the forms of the time units (time.day ...).
@@ -270,7 +270,7 @@ func render(value any, spec string) string {
 	return fmt.Sprint(value)
 }
 
-// strftime is the few directives Python's format of a datetime ({now:%H:%M}) is used with here.
+// strftime is the few strftime directives a datetime format ({now:%H:%M}) is used with here.
 func strftime(t time.Time, spec string) string {
 	var out strings.Builder
 	for i := 0; i < len(spec); i++ {

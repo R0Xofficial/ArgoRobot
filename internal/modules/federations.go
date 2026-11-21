@@ -17,7 +17,7 @@ import (
 	"argo/internal/text"
 )
 
-// Federations: one ban list for many chats (modules/federations.py).
+// Federations: one ban list for many chats.
 
 var fedIDRE = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 

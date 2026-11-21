@@ -14,11 +14,10 @@ import (
 	"argo/internal/text"
 )
 
-// Warn commands for chat admins (modules/warns.py). Usable by chat admins (with the right to ban users) and by
+// Warn commands for chat admins. Usable by chat admins (with the right to ban users) and by
 // the bot's Owner, Developers and Sudo users.
 //
-// Not ported yet: the warn filters (/addwarn, /nowarn, /warnlist). They are blacklist triggers with the action
-// "warn" and wait for the blacklist module.
+// The warn filters (/addwarn, /nowarn, /warnlist) are in warnfilters.go.
 
 const (
 	defaultWarnLimit = 3
@@ -488,7 +487,7 @@ func cmdStrongwarn(c *core.Ctx) error {
 	return err
 }
 
-// ParseAction reads an action such as 'ban' or 'tmute 30m' (core/blacklist.py parse_action). It returns the mode and
+// ParseAction reads an action such as 'ban' or 'tmute 30m'. It returns the mode and
 // its length in seconds; a *ActionError says what is wrong with the text.
 func ParseAction(l i18n.Lang, spec string) (string, int, error) { return parseAction(l, spec, false) }
 

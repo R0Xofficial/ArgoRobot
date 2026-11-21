@@ -1,6 +1,6 @@
 package core
 
-// Whether a global ban or a federation ban is about to remove a user from a chat (core/banguard.py).
+// Whether a global ban or a federation ban is about to remove a user from a chat.
 //
 // Kept in core so that the things that restrict or greet newcomers (captchas, antiraid, welcomes) can leave such a
 // person alone: restricting someone who has just been banned would turn the ban into a mute, and nobody wants a

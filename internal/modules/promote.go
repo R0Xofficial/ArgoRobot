@@ -10,11 +10,11 @@ import (
 	"argo/internal/text"
 )
 
-// Promote, demote, titles and tags (modules/promote.py).
+// Promote, demote, titles and tags.
 
 const maxTitle = 16 // Telegram's limit for titles and tags
 
-// Admin rights this module hands out, with the names shown to people (in the order Python lists them).
+// Admin rights this module hands out, with the names shown to people.
 var rightNames = []struct{ right, tag string }{
 	{"can_manage_chat", "promote.right_names.can_manage_chat"},
 	{"can_change_info", "promote.right_names.can_change_info"},

@@ -11,7 +11,7 @@ import (
 	"argo/internal/text"
 )
 
-// Backups: save a chat's settings and data to a file, and put them back (modules/backups.py).
+// Backups: save a chat's settings and data to a file, and put them back.
 
 const backupCooldown = 20 * time.Second
 

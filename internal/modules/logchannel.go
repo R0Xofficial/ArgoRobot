@@ -8,7 +8,7 @@ import (
 	"argo/internal/text"
 )
 
-// Log channel: a copy of a chat's moderation actions in a chat of the admins' choice (modules/logchannel.py).
+// Log channel: a copy of a chat's moderation actions in a chat of the admins' choice.
 
 func registerLogchannel(r *core.Router) {
 	r.Command(cmdSetlog, "setlog")

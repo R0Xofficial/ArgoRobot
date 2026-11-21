@@ -18,7 +18,7 @@ import (
 	"argo/internal/text"
 )
 
-// Captchas for new members (core/captchas.py; the commands are in modules/captcha.go).
+// Captchas for new members (the commands are in modules/captcha.go).
 //
 // A chat that turned captchas on (/captcha on) mutes everybody who joins until they pass a test. The test is one of
 // four kinds (/captchamode):

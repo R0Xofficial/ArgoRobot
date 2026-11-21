@@ -13,7 +13,7 @@ import (
 	"argo/internal/text"
 )
 
-// Saved replies to keywords (modules/filters.py). Filters ignore case; a saved message can be formatted, address people
+// Saved replies to keywords. Filters ignore case; a saved message can be formatted, address people
 // by name, carry buttons and vary at random.
 
 const (

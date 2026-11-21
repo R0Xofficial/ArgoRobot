@@ -14,7 +14,7 @@ import (
 	"argo/internal/text"
 )
 
-// Zombies: remove deleted accounts from a chat (modules/zombies.py). With API_ID and API_HASH set the members of the
+// Zombies: remove deleted accounts from a chat. With API_ID and API_HASH set the members of the
 // chat are listed through MTProto, so deleted accounts nobody has seen write are found too. Without them (or when the
 // list can't be had) the sweep goes through the people the bot has seen in the chat and asks Telegram about each one.
 

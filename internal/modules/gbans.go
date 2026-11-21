@@ -17,7 +17,7 @@ import (
 	"argo/internal/text"
 )
 
-// Global bans (modules/gbans.py). The commands of the bot's staff answer in English, like everything they do.
+// Global bans. The commands of the bot's staff answer in English, like everything they do.
 
 const (
 	maxGbanReason  = 500

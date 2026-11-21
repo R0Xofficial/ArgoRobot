@@ -10,7 +10,7 @@ import (
 	"argo/internal/text"
 )
 
-// Notices for the developer log (core/devnotify.py): the bot added to or removed from a chat, and what happens to
+// Notices for the developer log: the bot added to or removed from a chat, and what happens to
 // federations (created, renamed, handed over, deleted).
 
 func devLine(label string, value any) string { return fmt.Sprintf("<b>%s:</b> %v", label, value) }

@@ -1,4 +1,4 @@
-// Package markup turns the formatted messages users write into Telegram messages (core/markup.py).
+// Package markup turns the formatted messages users write into Telegram messages.
 //
 // Used by modules that save a message and send it later (notes, rules, filters, welcomes). The text is kept as the
 // person wrote it and turned into a message only when it is sent. Nothing here talks to Telegram.
@@ -67,7 +67,7 @@ var tagNames = map[string]string{
 	"tg-spoiler": "tg-spoiler", "code": "code", "pre": "pre", "a": "a", "blockquote": "blockquote",
 }
 
-// parsedURL is what Python's urlparse gives for the parts that matter here.
+// parsedURL is the parts of a URL that matter here.
 type parsedURL struct{ scheme, netloc, path string }
 
 func urlparse(u string) parsedURL {

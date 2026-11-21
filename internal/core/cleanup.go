@@ -12,7 +12,7 @@ import (
 	"argo/internal/text"
 )
 
-// Cleaning the stored chats (core/chats.py: cleanup, report, the schedule).
+// Cleaning the stored chats.
 //
 // A chat is dropped (together with everything kept for it) when the bot learns it was removed: right away from a
 // my_chat_member update, and by this cleanup that asks Telegram about every stored chat. It only removes a chat

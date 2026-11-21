@@ -13,7 +13,7 @@ import (
 	"argo/internal/text"
 )
 
-// Everyday commands: /start, /help, /id, /info (modules/misc.py). The lookups (/tr, /dict, /time, /weather, /cash) are
+// Everyday commands: /start, /help, /id, /info. The lookups (/tr, /dict, /time, /weather, /cash) are
 // in lookups.go.
 
 const (

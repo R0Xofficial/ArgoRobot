@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// Ban lists as files: the formats of /fedexport, /fedimport, /gexport and /gimport (core/banfiles.py).
+// Ban lists as files: the formats of /fedexport, /fedimport, /gexport and /gimport.
 //
 //	csv      user_id,name,reason,banned_by,banned_at
 //	minicsv  user_id,reason

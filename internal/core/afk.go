@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// AFK ("away from keyboard") statuses (core/afk.py). Every message of every chat is checked against them (is the sender
+// AFK ("away from keyboard") statuses. Every message of every chat is checked against them (is the sender
 // back, does the message mention or answer someone who is away), so all statuses are kept in memory, loaded once.
 // There are only as many as there are people away right now. The database makes them survive a restart.
 

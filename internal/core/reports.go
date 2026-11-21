@@ -2,7 +2,7 @@ package core
 
 import "context"
 
-// Report alerts: which admins want to be told about reports in their private chat with the bot (core/reports.py).
+// Report alerts: which admins want to be told about reports in their private chat with the bot.
 // Everyone does until they turn it off, so only the opt-outs are stored.
 
 // ReportOptedOut is the subset of ids who turned alerts off.

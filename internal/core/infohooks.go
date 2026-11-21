@@ -1,6 +1,6 @@
 package core
 
-// Extra flags and notes for /info (core/info_hooks.py). /info shows what the bot knows about everyone; modules add
+// Extra flags and notes for /info. /info shows what the bot knows about everyone; modules add
 // their own flags (Globally Banned, Whitelisted ...) by registering a provider. A provider returns (label, value)
 // pairs always, so that /info can say "No" as well as "Yes". chatID is the chat /info was used in (0 in private
 // chats); a flag that belongs to a chat is left out when there is none. A provider is skipped while its module is

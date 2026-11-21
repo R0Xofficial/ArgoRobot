@@ -1,9 +1,8 @@
 // Package db is the PostgreSQL access: a connection pool and the schema.
 //
-// The schema is the one of the Python version, table for table, so the Go bot can run on the same
-// database. Only the tables the ported modules use are created here; the others are left to the Python
-// version (or to modules ported later) and are never touched, except by the chat cleanup, which deletes
-// a chat's rows from every table that exists.
+// The schema is created when it is missing, so the bot runs on a new database and on an existing one. Only the
+// tables the modules use are created here; any other table is never touched, except by the chat cleanup, which
+// deletes a chat's rows from every table that exists.
 package db
 
 import (
@@ -64,13 +63,13 @@ func (d *DB) Found(ctx context.Context, sql string, args []any, dest ...any) (bo
 	return err == nil, err
 }
 
-// Migrate creates the tables (idempotent, like the Python version's start-up).
+// Migrate creates the tables (idempotent).
 func (d *DB) Migrate(ctx context.Context) error {
 	_, err := d.Pool.Exec(ctx, Schema)
 	return err
 }
 
-// Schema holds the tables used by the ported modules, copied from core/database.py.
+// Schema holds the tables the modules use.
 const Schema = `
 CREATE TABLE IF NOT EXISTS roles (
     user_id  BIGINT PRIMARY KEY,

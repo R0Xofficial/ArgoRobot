@@ -15,9 +15,8 @@ type golden struct {
 	Out       string         `json:"out"`
 }
 
-// The golden file holds what the Python version (core/i18n.py) renders for every tag of every language, with
-// made-up values. The Go port must write exactly the same texts.
-func TestSameTextsAsPython(t *testing.T) {
+// The golden file holds the expected text of every tag of every language, with made-up values.
+func TestSameTextsAsGolden(t *testing.T) {
 	if err := Load("../../locales"); err != nil {
 		t.Fatal(err)
 	}

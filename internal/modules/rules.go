@@ -13,7 +13,7 @@ import (
 	"argo/internal/text"
 )
 
-// Chat rules (modules/rules.py and core/rulestore.py): text with optional media, kept as the admin wrote it and
+// Chat rules: text with optional media, kept as the admin wrote it and
 // turned into a message only when it is sent.
 
 const rightChangeInfo = "can_change_info"

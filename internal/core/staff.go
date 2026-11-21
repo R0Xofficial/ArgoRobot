@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Staff roles: granting, removing, listing (core/roles.py) and the whitelist (core/whitelist.py).
+// Staff roles: granting, removing, listing and the whitelist.
 
 // ManagedBy is the minimum role needed to grant or revoke each role.
 var ManagedBy = map[Role]Role{Developer: Owner, Sudo: Developer, Support: Developer}

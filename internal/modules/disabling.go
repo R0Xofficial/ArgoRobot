@@ -8,7 +8,7 @@ import (
 	"argo/internal/text"
 )
 
-// Switching commands off (modules/disabling.py).
+// Switching commands off.
 
 func registerDisabling(r *core.Router) {
 	r.Command(func(c *core.Ctx) error { return switchCommand(c, true) }, "disable")

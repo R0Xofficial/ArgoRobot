@@ -12,7 +12,7 @@ import (
 	"argo/internal/text"
 )
 
-// /id and /info (modules/misc.py). Both take an optional target: reply to a message, or give a @username or id. A
+// /id and /info. Both take an optional target: reply to a message, or give a @username or id. A
 // target can be a user, a bot, a group or a channel. Without one they describe whoever sent the command (a premium
 // user writing as a channel is described as that channel).
 

@@ -13,7 +13,7 @@ import (
 	"argo/internal/text"
 )
 
-// Error reports for the developer log (core/errors.py): a caption (Bot Error Detected! with the error, the chat and
+// Error reports for the developer log: a caption (Bot Error Detected! with the error, the chat and
 // the user) and a .txt file with the details. Telegram API and network errors are not reported this way, because the
 // report itself goes through Telegram and would most likely fail for the same reason; they are only logged.
 

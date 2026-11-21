@@ -11,7 +11,7 @@ import (
 	"argo/internal/text"
 )
 
-// Welcome and goodbye messages (modules/greetings.py).
+// Welcome and goodbye messages.
 
 const (
 	maxGreeted = 5  // people greeted for one "joined" message (someone can add many at once)

@@ -12,7 +12,7 @@ import (
 	"argo/internal/text"
 )
 
-// Saved messages anyone can ask for (modules/notes.py and core/notestore.py). Names are one word, case-insensitive.
+// Saved messages anyone can ask for. Names are one word, case-insensitive.
 
 const (
 	maxNotes     = 300

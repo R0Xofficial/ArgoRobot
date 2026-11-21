@@ -10,7 +10,7 @@ import (
 	"argo/internal/text"
 )
 
-// Warn filters (modules/warns.py): a warn filter is a blacklist trigger whose action is "warn". The blacklist already
+// Warn filters: a warn filter is a blacklist trigger whose action is "warn". The blacklist already
 // matches every message, warns the sender and counts toward the limit.
 
 func registerWarnFilters(r *core.Router) {

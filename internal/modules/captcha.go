@@ -11,7 +11,7 @@ import (
 	"argo/internal/text"
 )
 
-// Captchas for new members (modules/captcha.py). The tests and the flow are in core/captcha.go.
+// Captchas for new members. The tests and the flow are in core/captcha.go.
 
 const (
 	maxJoined     = 10 // people tested for one "joined" message

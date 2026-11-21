@@ -15,7 +15,7 @@ import (
 	"argo/internal/text"
 )
 
-// Shared pieces of the moderation modules (core/moderation.py in the Python version).
+// Shared pieces of the moderation modules.
 //
 // Who may use the commands: admins of the group (with the right to restrict users), and the bot's Owner,
 // Developers and Sudo users, who are trusted to help keep order in any group without being admins there.

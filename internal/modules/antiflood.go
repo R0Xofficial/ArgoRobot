@@ -12,7 +12,7 @@ import (
 	"argo/internal/text"
 )
 
-// Flood control (modules/antiflood.py). It is off until a chat admin sets a limit with /setflood. Bots are
+// Flood control. It is off until a chat admin sets a limit with /setflood. Bots are
 // ignored, and so are chat admins, approved users and the bot's staff.
 
 const (

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Federations: chats that share one ban list (core/federations.py). A federation has an owner (one per person),
+// Federations: chats that share one ban list. A federation has an owner (one per person),
 // admins who can ban in it, chats that joined it (a chat is in at most one) and a list of banned users. A federation
 // can subscribe to others and then inherits their bans. What every message needs is kept in memory: which federation
 // a chat is in, which ones it subscribes to and the ids of each federation's banned users.

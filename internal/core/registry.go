@@ -12,7 +12,7 @@ import (
 	"argo/internal/i18n"
 )
 
-// The registry of modules (core/registry.py and core/disabled.py).
+// The registry of modules.
 //
 // Every command, button and watcher belongs to the module that registered it. A module can be turned off for the
 // whole bot (/module) or for one chat (/disablemodule); then none of its handlers run. A chat can also switch single

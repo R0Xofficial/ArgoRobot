@@ -10,7 +10,7 @@ import (
 	"argo/internal/core"
 )
 
-// /tr, /dict, /time, /weather, /cash (modules/misc.py).
+// /tr, /dict, /time, /weather, /cash.
 
 const lookupCooldown = 3 * time.Second // between lookups of one person, to be kind to the free services
 

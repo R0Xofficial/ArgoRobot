@@ -34,8 +34,8 @@ type golden struct {
 	Skip     int               `json:"skip"`
 }
 
-// The golden file holds what the Python version (core/markup.py) produces; it was made once from the Python version.
-func TestSameAsPython(t *testing.T) {
+// The golden file holds the expected output for a large set of cases.
+func TestSameAsGolden(t *testing.T) {
 	if err := i18n.Load("../../locales"); err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestSameAsPython(t *testing.T) {
 		case "to_html":
 			got := ToHTML(c.In)
 			if c.Raises {
-				continue // Python fails on these; Go only has to cope
+				continue // the reference fails on these; only no crash is required
 			}
 			var want string
 			_ = json.Unmarshal(c.Out, &want)
@@ -96,7 +96,7 @@ func TestSameAsPython(t *testing.T) {
 					}
 				}
 				wantOpts := append([]string(nil), c.Options...)
-				// Python sorts the names alphabetically.
+				// the names are sorted alphabetically.
 				sortStrings(options)
 				if p.HTML != c.HTML || !reflect.DeepEqual(buttons, nilIfEmpty(c.Buttons)) || !reflect.DeepEqual(emptyToNil(options), emptyToNil(wantOpts)) {
 					fail("parse(%q, %v)\n got: %q %v %v\nwant: %q %v %v", c.In, c.Values, p.HTML, buttons, options, c.HTML, c.Buttons, c.Options)
@@ -142,7 +142,7 @@ func TestSameAsPython(t *testing.T) {
 		}
 	}
 	if bad > 0 {
-		t.Fatalf("%d of %d cases differ from Python", bad, len(cases))
+		t.Fatalf("%d of %d cases differ from the golden file", bad, len(cases))
 	}
 }
 

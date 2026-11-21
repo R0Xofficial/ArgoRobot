@@ -15,7 +15,7 @@ import (
 	"argo/internal/text"
 )
 
-// Sticker tools (modules/stickers.py): /getsticker and /kang.
+// Sticker tools: /getsticker and /kang.
 
 const (
 	packLimit    = 120

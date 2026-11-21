@@ -7,7 +7,7 @@ import (
 	"argo/internal/i18n"
 )
 
-// The triggers and settings of every chat's blacklist (storage part of core/blacklist.py). Every message of every
+// The triggers and settings of every chat's blacklist. Every message of every
 // chat is checked, so each chat's triggers are compiled once and kept in memory; a chat without triggers costs nothing.
 
 // BlacklistSettings are the blacklist settings of a chat.

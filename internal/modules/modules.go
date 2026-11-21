@@ -1,4 +1,4 @@
-// Package modules holds the commands of the bot, one file per module, as in the Python version's modules/.
+// Package modules holds the commands of the bot, one file per module.
 package modules
 
 import (

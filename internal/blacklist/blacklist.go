@@ -1,4 +1,4 @@
-// Package blacklist is the matching of blacklist triggers (core/blacklist.py): words and phrases a chat does not
+// Package blacklist is the matching of blacklist triggers: words and phrases a chat does not
 // allow.
 //
 // A trigger is text with an optional modifier and wildcards:
@@ -14,8 +14,7 @@
 //	**   any run of characters, whitespace included
 //	\*  \?  a literal * or ?
 //
-// Matching ignores case. Go's regexp has no look-around, so the matcher is written by hand: it backtracks like the
-// Python regular expression did, with memoised failures so that wildcards can't make it slow.
+// Matching ignores case. Go's regexp has no look-around, so the matcher is written by hand: it backtracks like a regular expression with look-around would, with memoised failures so that wildcards can't make it slow.
 package blacklist
 
 import (
@@ -67,10 +66,10 @@ type Trigger struct {
 	tokens  []token
 }
 
-// isSpace is Python's str.isspace (what \s means there).
+// isSpace is white space, the way \s sees it.
 func isSpace(r rune) bool { return unicode.IsSpace(r) || (r >= 0x1c && r <= 0x1f) }
 
-// isWord is Python's \w for text: letters, digits and the underscore.
+// isWord is \w for text: letters, digits and the underscore.
 func isWord(r rune) bool { return r == '_' || unicode.IsLetter(r) || unicode.IsNumber(r) }
 
 func foldEq(a, b rune) bool {
@@ -88,7 +87,7 @@ func foldEq(a, b rune) bool {
 // CollapseSpace is the text with every run of whitespace turned into one space, and trimmed.
 func CollapseSpace(text string) string { return strings.Join(strings.FieldsFunc(text, isSpace), " ") }
 
-// SplitLines is Python's str.splitlines.
+// SplitLines splits a text into lines.
 func SplitLines(text string) []string {
 	var lines []string
 	start := 0
@@ -109,10 +108,10 @@ func SplitLines(text string) []string {
 	return lines
 }
 
-// IsSpace is Python's str.isspace for one character.
+// IsSpace tells white space for one character.
 func IsSpace(r rune) bool { return isSpace(r) }
 
-// lower is Python's str.lower: like strings.ToLower, but İ becomes "i" and a combining dot, and a capital sigma at the
+// lower is like strings.ToLower, but İ becomes "i" and a combining dot, and a capital sigma at the
 // end of a word becomes the final sigma.
 func lower(s string) string {
 	runes := []rune(s)

@@ -1,5 +1,4 @@
-# Argo (Go). Never run it next to the Python version with the same token: both bots would poll it and fight over
-# the updates.
+# Argo. Never run two copies with the same token: both would poll it and fight over the updates.
 services:
   argo:
     build:

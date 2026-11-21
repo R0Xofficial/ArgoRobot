@@ -10,7 +10,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 )
 
-// Finding out which user a command is aimed at (core/targets.py in the Python version).
+// Finding out which user a command is aimed at.
 //
 // Command syntax, for every command that acts on a user:
 //

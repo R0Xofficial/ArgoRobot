@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// Antiflood: settings of a chat and the counting of messages (core/flood.py). The commands and the action taken
+// Antiflood: settings of a chat and the counting of messages. The commands and the action taken
 // are in modules/antiflood.go.
 //
 // Two things can trigger flood control, and a chat can use either or both:

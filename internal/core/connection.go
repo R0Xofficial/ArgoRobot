@@ -10,7 +10,7 @@ import (
 	"argo/internal/text"
 )
 
-// Managing a group from a private chat (core/connection.py and the ConnectionMiddleware).
+// Managing a group from a private chat.
 //
 // An admin connects their private chat with the bot to one group. From then on the group's admin commands they send
 // privately act on that group, and the bot answers privately. Nothing about their rights changes: every command still

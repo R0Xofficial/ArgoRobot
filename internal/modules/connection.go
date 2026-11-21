@@ -13,7 +13,7 @@ import (
 	"argo/internal/text"
 )
 
-// Managing a group from a private chat (modules/connection.py).
+// Managing a group from a private chat.
 
 func registerConnection(r *core.Router) {
 	r.Command(cmdConnect, "connect")

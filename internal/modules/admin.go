@@ -12,7 +12,7 @@ import (
 	"argo/internal/text"
 )
 
-// Group administration (modules/admin.py).
+// Group administration.
 
 const (
 	cleanRight    = "can_change_info" // the admin right needed for /cleanbluetext

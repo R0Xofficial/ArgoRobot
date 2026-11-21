@@ -14,7 +14,7 @@ import (
 	"argo/internal/text"
 )
 
-// Antiraid: stop a flood of new accounts (modules/antiraid.py). The counting is in core/antiraid.go.
+// Antiraid: stop a flood of new accounts. The counting is in core/antiraid.go.
 
 const raidFailureCD = 300 * time.Second
 
@@ -140,8 +140,7 @@ func cmdAntiraid(c *core.Ctx) error {
 			c.Say(c.T("antiraid.use_antiraid_on_or_antiraid_off"))
 			return nil
 		}
-		// A running raid ends first: once the antiraid is off there is no raid to end (the Python version asks
-		// after switching it off, and so leaves the raid waiting for the next time it is switched on).
+		// A running raid ends first: once the antiraid is off there is no raid to end (ending it after switching it off would leave the raid waiting for the next time it is switched on).
 		if !wanted {
 			if _, err := c.App.EndRaid(c.Ctx, chatID); err != nil {
 				return err

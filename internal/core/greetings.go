@@ -9,7 +9,7 @@ import (
 	"argo/internal/i18n"
 )
 
-// Welcome and goodbye messages of a chat (core/greetings.py). One row per chat holds both messages, their on/off
+// Welcome and goodbye messages of a chat. One row per chat holds both messages, their on/off
 // switches and the other greeting settings. A chat without a row, or a message that was never set, uses the defaults.
 
 // GreetSettings are the greeting settings of a chat. The messages are nil until they are set.
@@ -107,7 +107,7 @@ func (s GreetSettings) MessageOf(l i18n.Lang, kind string) (content, mediaType, 
 	return deref(s.GoodbyeContent), deref(s.GoodbyeMediaType), deref(s.GoodbyeMediaFileID)
 }
 
-// StaffGreeting is the welcome or goodbye of a role (core/staffgreet.py): somebody with a role gets the message of
+// StaffGreeting is the welcome or goodbye of a role: somebody with a role gets the message of
 // their role instead of the chat's own, in every chat, and is never asked for a captcha.
 func StaffGreeting(role Role, kind string) string {
 	if kind == "welcome" {

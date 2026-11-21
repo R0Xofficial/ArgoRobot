@@ -9,7 +9,7 @@ import (
 	"argo/internal/i18n"
 )
 
-// Filters: saved replies to keywords (core/filterstore.py). A trigger is a word (as a whole word), a "phrase" in
+// Filters: saved replies to keywords. A trigger is a word (as a whole word), a "phrase" in
 // double quotes, prefix:word (messages that start with it), exact:word (messages that are exactly it), or
 // (a, b, "c d") for several triggers that share a reply. Matching ignores case. Every message of every chat is
 // checked, so a chat's triggers are compiled once and kept in memory.

@@ -16,7 +16,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 )
 
-// Locks: kinds of messages a chat does not allow (core/locks.py). The commands and the action taken are in
+// Locks: kinds of messages a chat does not allow. The commands and the action taken are in
 // modules/locks.go.
 //
 // A lock is a name from Locks. While it is on, the bot deletes the messages of that kind sent by anyone who is not
@@ -288,7 +288,7 @@ func (l *LockConfig) SortedAllow() []string {
 
 type splitURL struct{ host, path string }
 
-// splitLink is Python's urlsplit of text with "//" put in front when it has no scheme: the lower-case host and the path.
+// splitLink is the host and path of a text, with "//" put in front when it has no scheme: the lower-case host and the path.
 func splitLink(text string) splitURL {
 	if !strings.Contains(text, "://") {
 		text = "//" + text

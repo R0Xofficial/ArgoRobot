@@ -13,7 +13,7 @@ import (
 	"argo/internal/text"
 )
 
-// Lock kinds of messages (modules/locks.py): /lock, /unlock, the allowlist and the watcher that takes locked
+// Lock kinds of messages: /lock, /unlock, the allowlist and the watcher that takes locked
 // messages away.
 
 const (
