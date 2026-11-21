@@ -6,7 +6,7 @@ import (
 	"argo/internal/i18n"
 )
 
-// Register adds every ported module to the router.
+// Register adds every module to the router.
 func Register(app *core.App) {
 	r := app.Router
 	app.InstallBanLookups()

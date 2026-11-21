@@ -1,85 +1,251 @@
-# Argo
+# Argo (@ArgoRobot)
 
-A modular group-admin bot for Telegram, written in Go. It keeps its data in PostgreSQL, speaks every language of
-`locales/*.json` (the language is chosen per chat), and every feature lives in a module that can be switched off for
-the whole bot or for a single chat.
+**A modular Telegram group-administration bot.**
 
-## Features
+Argo keeps groups tidy and safe: bans, mutes and warnings, spam filters, welcome messages, notes, locks, federations that share one ban list across many chats, and global bans for the worst offenders. It is written in Go on [gotgbot](https://github.com/PaulSonOfLars/gotgbot) and stores everything in PostgreSQL.
 
-| Module | Commands and what it does |
-|---|---|
-| **bans** | `/ban /dban /sban /tban /unban /kick /punch /kickme /punchme`, Unban button |
-| **mutes** | `/mute /smute /tmute /stmute /stempmute /unmute /sunmute`, Unmute button |
-| **warns** | `/warn /dwarn /warns /unwarn /rmwarn /resetwarns /warnlimit /setwarnlimit /strongwarn /warnmode`, buttons; warn filters `/addwarn /nowarn /warnlist` |
-| **blacklists** | `/blacklists /addblacklist /unblacklist /blacklistmode /setblacklistmode /blocklistdelete /unblacklistall`; per-trigger actions, wildcards, `exact:` `prefix:` `sticker:` `stickerpack:`, also checks edited messages |
-| **joinblacklists** | `/joinblacklists /blacklist{name,username,bio,channel} /unblacklist{...}`, checked when someone joins |
-| **antiflood** | `/flood /setflood /setfloodtimer /setfloodmode /clearflood /antichannel`; message-count and timed limits, albums |
-| **antiraid** | `/antiraid /raidlimit /raidtime /raidmode` |
-| **locks** | `/lock /unlock /locks /locktypes /lockwarns /lockmode /allowlist /rmallowlist /rmallowlistall`; 41 kinds of locks, bots lock |
-| **captcha** | `/captcha /captchamode /captcharules /captchamutetime /captchakick /captchakicktime /setcaptchatext /resetcaptchatext`; button, math, text and picture tests, join requests |
-| **greetings** | `/welcome /goodbye /setwelcome /setgoodbye /resetwelcome /resetgoodbye /welcomemute /cleanwelcome /cleanservice`; greetings for the bot's staff |
-| **nightmode** | `/nightmode /nighthours /nighttz`; zones such as `Europe/Warsaw` or `UTC+2` |
-| **approves** | `/approve /unapprove /approval /approved /disapproveall` |
-| **rules** | `/setrules /resetrules /rules [here\|noformat]` |
-| **notes** | `/notes /get /save /clear /clearall`, `#name`, media |
-| **filters** | `/filters /filter /stop /stopall`; words, "phrases", `prefix:`, `exact:`, groups, formatted replies with media |
-| **afk** | `/afk`, `brb`, notices on mentions and replies |
-| **reporting** | `/report`, `@admin`, `/reports [on\|off]` |
-| **admin** | `/link /gtitle /adminlist /cleanbluetext /pin /unpin /unpinall /staffhelp /adminerror /anonadmin` |
-| **promote** | `/promote /fullPromote /demote /title /tag` |
-| **purges** | `/del /purge /spurge` |
-| **disabling** | `/disable /enable /restrictmodule /unrestrictmodule /disablemodule /enablemodule /disabled` |
-| **connection** | `/connect /disconnect /connection`: manage a group from a private chat |
-| **gbans** | `/gban /dgban /ungban /gstat /gbans /enforcegban /gimport /gexport`; approval requests for Support staff |
-| **federations** | `/newfed /renamefed /delfed /fedtransfer /fedpromote /feddemote /feddemoteme /fednotif /fedreason /subfed /unsubfed /setfedlog /unsetfedlog /fedexport /fedimport /fban /dfban /unfban /clearfban /myfeds /fedinfo /fedadmins /fedsubs /chatfed /joinfed /leavefed /quietfed /fedstat` |
-| **logchannel** | `/setlog /unsetlog /logchannel`: a copy of a chat's moderation actions |
-| **language** | `/setlang` |
-| **backups** | `/export /import /exportitems` (chat owner only) |
-| **zombies** | `/zombies`: remove deleted accounts; with `API_ID` and `API_HASH` the whole member list is read over MTProto |
-| **stickers** | `/getsticker`, `/kang [emoji]` |
-| **fun** | `/pat /slap /hug /roast /decide /flip /roll /rate /ud` |
-| **misc** | `/start`, `/help` with categories and pages, `/id`, `/info`, `/tr /dict /time /weather /cash` |
-| **root** | `/ping /modules /module /cleanchats /stats /status /leave /speedtest`, staff roles (`/adddev /rmdev /addsudo /rmsudo /addsupport /rmsupport /staff`), `/whitelist /unwhitelist` |
+Repository: <https://github.com/R0Xofficial/ArgoRobot>
 
-Also: a phone book of the users the bot has seen, chat clean-up (`CHAT_CLEANUP_HOURS`), start and stop notices, a
-scheduled log report sent as a `.txt` file to the developer log (`LOG_REPORT_HOURS`), error reports with details in a
-file, and a graceful stop.
+## Contents
 
-## Notes
+1. [What it does](#1-what-it-does)
+2. [Requirements](#2-requirements)
+3. [Installation](#3-installation)
+4. [Configuration](#4-configuration)
+5. [Roles](#5-roles)
+6. [How bans reach people](#6-how-bans-reach-people)
+7. [Captchas](#7-captchas)
+8. [Federations](#8-federations)
+9. [Managing a group from a private chat](#9-managing-a-group-from-a-private-chat)
+10. [Switching commands off](#10-switching-commands-and-modules-off)
+11. [Logs](#11-logs)
+12. [Project layout and adding modules](#12-project-layout-and-adding-modules)
+13. [Antiraid and nightmode](#13-antiraid-and-nightmode)
+14. [Good to know](#14-good-to-know)
 
-* **MTProto** (optional) is a client logged in with the bot token (gotd/td). It is used only to list the members of a
-  chat for `/zombies`. The session is kept in `data/argo-mtproto.json` (a volume in `docker-compose.yml`). A channel
-  member list is read with the "recent" filter in pages of 200, so a chat above Telegram's limit for one filter may be
-  listed only in part. An offline start fails cleanly after 60 s and `/zombies` falls back to the users the bot has seen.
-* `/kang` and `/getsticker` read still pictures with Go's own decoders (PNG, JPEG, WebP) and scale them with
-  Catmull-Rom. Animated and video stickers are passed on untouched.
-* The log report names every line `bot` or `usage` (commands).
-* `/gban` and `/ungban` (staff only) answer in English; `/gstat` and `/gbans` use the chat language. Most federation
-  commands are translated, but the federation event notices ("New FedBan", the log lines) are English.
-* The join blacklists take triggers as plain words with the wildcards of the blacklist; `exact:` and `prefix:` are not
-  parsed there.
-* The picture captcha (`/captchamode text2`) is drawn with a small built-in dot-matrix font, so it always works.
-* `/antiraid off` ends a running raid before it switches the antiraid off.
-* `/status` shows the versions of Go and of the bot library.
-* `/info` compares the flags shown in the Status and their order by the translated labels, so it works in every language.
-* Telegram and network errors are only logged; every other error goes to the developer log as a file with details.
+## 1. What it does
 
-## Layout
+| Area | Features |
+| --- | --- |
+| **Moderation** | Bans, temporary bans, kicks, mutes, temporary mutes, warnings with a limit and an action (`/warnmode`: ban, kick, mute or timed), silent and "delete the message too" variants (`/sban`, `/smute`, `/dban`, `/dwarn` ...), `/kickme`, removing zombies (deleted accounts) with `/zombies`, bulk deleting messages (`/purge [reason]`). |
+| **Automatic protection** | Captchas for newcomers (button, math, scrambled code, picture), antiraid (a flood of new accounts), antiflood, locks (urls, media, forwards ... with a punishment of your choice: `/lockmode`), blacklisted words and phrases, warn filters, join blacklists (names, usernames, bios, channels), approved users that automatic measures skip, user reports to the admins. |
+| **Chat tools** | Welcome and goodbye messages (with media and buttons), rules, notes, filters, Unban and Unmute buttons under every ban and mute, promote/demote with custom titles, pins (`/unpinall`), nightmode (the chat closes for the night, with hours of your choice), invite links, AFK, backups of a chat's data, sticker tools, light commands for fun. |
+| **Bans across chats** | Federations (one ban list for many chats, with subscriptions) and global bans (`/gban`) decided by the bot's staff. |
+| **Housekeeping** | A log chat for moderation actions, per-chat switches, switching single commands or whole modules off, managing a group from a private chat (`/connect`). |
 
-```
-cmd/argo/            main: config, database, bot, polling, shutdown
-internal/config/     environment settings
-internal/db/         pool and schema
-internal/i18n/       languages (the JSON files in locales/)
-internal/text/       HTML escaping and links
-internal/core/       router, middlewares, roles, users, chats, targets, moderation, chat log, flood, locks, nightmode, antiraid, captcha
-internal/markup/     formatting of saved messages
-internal/blacklist/  trigger matching (hand-written, because Go's regexp has no look-around)
-internal/modules/    bans.go, mutes.go, root.go, admin.go, promote.go, ...   <- a module is one file with a register function
-internal/testutil/   fake Telegram Bot API + test environment
+Everything is described by the bot itself: send `/help` (or `/help <topic>`, for example `/help notes`) and it opens the right page.
+
+## 2. Requirements
+
+- Go 1.25 or newer (the Docker image builds with Go 1.27)
+- PostgreSQL
+- A bot token from [@BotFather](https://t.me/BotFather)
+- Your Telegram user id (the bot's owner)
+
+Go modules (`go.mod`): gotgbot, pgx, gotd/td (MTProto) and golang.org/x/image.
+
+## 3. Installation
+
+### Option A: Docker Compose (recommended)
+
+1. Copy `.env.example` to `.env` and fill in `BOT_TOKEN`, `OWNER_ID` and `DATABASE_URL` (see [Configuration](#4-configuration)).
+2. The compose file expects an external Docker network called `postgres-internal` where your PostgreSQL container lives. Adjust `docker-compose.yml` if yours is named differently.
+3. Start it:
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+In Portainer, paste the same names and values under the stack's *Environment variables* instead of using a `.env` file. A `$` inside a value must be written as `$$`.
+
+### Option B: directly on a server
+
+```bash
+cp .env.example .env        # then edit it
+go build -o argo ./cmd/argo
+./argo
 ```
 
-A module registers its commands and buttons in `modules.Register`:
+Use `localhost` as the database host in `DATABASE_URL`.
+
+The first start creates every table it needs. Later versions add new columns and tables by themselves, so updating means: replace the files and restart.
+
+Before the bot can do its work in a group, add it and make it an admin. Which rights it needs depends on what you want: ban users, delete messages, pin messages, invite users, change chat info.
+
+## 4. Configuration
+
+Settings come from environment variables or from a `.env` file in the folder the bot is started from (the environment wins). Never commit `.env`.
+
+**Required**
+
+| Variable | Meaning |
+| --- | --- |
+| `BOT_TOKEN` | Token from @BotFather. |
+| `OWNER_ID` | Your Telegram user id. The owner cannot be demoted by any command. |
+| `DATABASE_URL` | `postgresql://user:password@host:5432/dbname` (URL-encode special characters in the password). |
+
+**Optional**
+
+| Variable | Meaning |
+| --- | --- |
+| `LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. Default `INFO`. |
+| `DEV_LOG_CHAT` | Chat for start/stop messages and error reports. Empty: sent to the owner privately. |
+| `DEV_LOG_THREAD_ID` | Topic id, if that chat has topics. |
+| `LOG_REPORT_HOURS` | How often the bot sends its log to the developer log as a `.txt` file. Default `6`, `0` turns it off. |
+| `API_ID`, `API_HASH` | Optional. From my.telegram.org. Lets `/zombies` list every member of a chat (through MTProto) instead of only people the bot has seen. The session is kept in the `argo-data` volume. Empty: off. |
+| `LOG_CHAT_ID` | Public log: promotions, demotions and other information everyone may read. Empty: falls back to the developer log. |
+| `LOG_THREAD_ID` | Topic id, if that chat has topics. |
+| `CHAT_CLEANUP_HOURS` | How often the bot forgets chats it was removed from. Forgetting a chat deletes everything kept for it: settings, warns, notes, filters, who was in it and so on. The cleanup also looks for data left behind by chats that were removed earlier (the bot asks Telegram first and never deletes the data of a chat it is still in), and its report lists the ids of the chats it dealt with. Default `24`, `0` turns it off (`/cleanchats` still works). |
+| `COMMAND_PREFIXES` | Characters that start a command. Default `/!`. In groups `!` commands only reach the bot if it is an admin or privacy mode is off (BotFather: `/setprivacy`). |
+| `SUPPORT_CHAT_USERNAME` | The support chat, for example `@MySupport` (with or without the @). Named at the bottom of `/help`, where people report bugs, and in the alert of a global ban, where they can appeal it. Default `@ArgoRobotSupport`. |
+| `GITHUB_URL` | Repository button in `/start`. |
+
+## 5. Roles
+
+The bot has its own staff, separate from chat admins:
+
+```
+Support  <  Sudo  <  Developer  <  Owner
+```
+
+| Role | What it can do |
+| --- | --- |
+| **Owner** | Set only by `OWNER_ID`, never stored, cannot be removed. |
+| **Developer** | Same powers as the owner, but can be demoted. |
+| **Sudo** | Approves global bans, manages the whitelist, and may use a chat's admin commands (moderation, pins, promoting, settings) as if it held every admin right. A chat's owner can turn that off with `/staffhelp`. |
+| **Support** | Asks for global bans. A request is approved or declined by Sudo. |
+
+Roles are managed with `/addsudo`, `/rmsudo`, `/addsupport`, `/rmsupport`, `/adddev` and `/rmdev`. `/staff` shows who holds what. Sudo and up can run any chat like an admin; their actions end with an italic note, "Done by the bot's staff." Only what belongs to the chat's owner stays with them: `/staffhelp` itself, `/gbans`, `/adminerror`, `/anonadmin`, the "remove everything" buttons, `/export` and `/import`. Support is not part of this.
+
+**Chats with hidden members.** Telegram sends no "joined" or "left" message in groups with hidden members (and in very big ones). There Argo goes by the member updates it gets as an admin: welcomes, goodbyes and captchas still work, about 3 seconds after the event, and the message goes to the group's main topic. The bot must be an admin of the chat.
+
+**Staff in chats.** Somebody with a role is always welcomed when they join a chat and seen off when they leave, with a message of their role (Support, Sudo, Developer, Owner), whatever the chat's `/welcome` and `/goodbye` settings are. They are not welcome-muted, never get a captcha, and are skipped by antiflood, locks, blacklists, join blacklists, global bans and federation bans (like admins and approved users). The texts are in `internal/core/greetings.go`; edit them there.
+
+Chat admins use the moderation commands of their chat. Each command checks the exact admin right it needs.
+
+## 6. How bans reach people
+
+Global bans and federation bans are enforced **when the banned person shows up**, not by sweeping every chat at the moment of the ban. A banned user is removed in a chat where the bot is an admin as soon as they
+
+- send a message or edit one,
+- join or leave the chat,
+- react to a message.
+
+The bot says why ("This user is globally banned ...", with the reason) so chat admins are never left wondering. Chat admins, approved users and the bot's staff are left alone.
+
+**Global bans (`/gban`).** Support asks, Sudo approves with a button (or declines). A request that nobody answered stops blocking new ones after 7 days. `/ungban` lifts the ban and unbans the person where the bot had banned them. A chat's owner can switch enforcement off for that chat with `/gbans off`. `/gstat` shows a user's status.
+
+**Why it works this way.** It needs far fewer requests to Telegram, covers chats the person joins later, and every removal comes with a visible reason.
+
+## 7. Captchas
+
+Chats that get spammed by joining accounts can make newcomers prove they are people. Everybody who joins is muted until they pass a test; then they are unmuted and the welcome message is sent.
+
+```
+/captcha on                  /captcha off
+/captchamode math            (button, math, text or text2)
+/captcharules on             (also accept the rules before speaking)
+/captchamutetime 1d          (unmute people who didn't solve it after a day; off: stay muted)
+/captchakick on              /captchakicktime 5m
+/setcaptchatext I come in peace    /resetcaptchatext
+```
+
+| Mode | The test |
+| --- | --- |
+| `button` | Press one button (its text can be changed). |
+| `math` | A small sum with six answers to choose from. |
+| `text` | A code is written in the message; its characters sit scrambled on buttons and must be pressed in the order of the code. |
+| `text2` | The same, but the code is a picture. |
+
+With welcome messages on, the newcomer's welcome carries one verify button that is the same for everybody (`/setcaptchatext` changes its label). In `button` mode one press unmutes the person at once. The other modes, and `button` with `/captcharules`, open the private chat with the bot. With `button` and `/captcharules` the private chat shows the rules right away and accepting them is the test, with no second button; the other modes solve their test there first. Someone who is already verified only gets a small pop-up saying so. If a welcome ever fails to carry the button, the button under any other welcome works for every waiting newcomer. Captchas need welcome messages: with `/welcome` off nobody is muted. If the chat uses join requests, the captcha is sent to the person privately and their request is approved once they pass; when time runs out the request is dismissed. Waiting people survive a restart of the bot. Admins, approved users, bots and the bot's staff are never tested. Turning captchas (or the module) off lets everybody who was waiting in. The bot needs the right to restrict users.
+
+## 8. Federations
+
+A federation is a ban list shared by many chats.
+
+| Who | Commands |
+| --- | --- |
+| Owner | `/newfed`, `/renamefed`, `/delfed`, `/fedtransfer`, `/fedpromote` (alias `/fpromote`), `/feddemote` (alias `/fdemote`), `/setfedlog` |
+| Admins | `/fban`, `/dfban` (reply to a message: delete it and fban its author), `/unfban`, `/fedreason`, `/fedexport`, `/fedimport` |
+| Chats | `/joinfed`, `/leavefed`, `/quietfed` (chat owner) |
+| Anyone | `/fedinfo`, `/fedadmins`, `/fedstat` (aliases `/fbanstat`, `/fstat`) |
+| Bot Developers | `/clearfban <user> [FedID] [reason]`: lift a user's ban in any federation (also foreign ones), e.g. a bogus ban blocking a staff role |
+
+People with a global ban or any federation ban can't be given a staff role, and a globally banned user can't be whitelisted.
+
+**Subscriptions.** `/subfed` makes your federation inherit the bans of another one, `/unsubfed` undoes it. `/fedsubs` shows both directions.
+
+**Log events.** Every change goes to the federation's log chat (`/setfedlog`; the owner gets them privately without one). Each event has a title and the same readable lines: the federation as `Fed: Name` (exactly as its owner named it; nothing is added), people as a mention with their `[id]`, and `By` for who did it (not for promotions and demotions: that is always the owner).
+
+```
+New FedSubscribed          New FedChat               New Fed Promotion
+Fed: Knox              Fed: Knox             Fed: Knox
+SubbedFed: ALT-F4          Chat: Group (link)        Promoted FedAdmin: Ann
+SubbedFedID: 5475ba3a-...  Chat ID: -100123...       User ID: 123
+By: Ann [123]              By: Ann [123]
+```
+
+The titles are New FedChat, Un-FedChat, New FedSubscribed, New FedSubscriber, Un-FedSubscribed, Un-FedSubscriber, New Fed Promotion, New Fed Demotion, New FedOwner (with the previous and the new owner), New FedBans, New FedBan, FedBan Reason Update and Un-FedBan.
+
+**Lost rights.** When the bot loses the right to ban users in a chat, that chat leaves its federation by itself and says so. Give the right back and use `/joinfed` to join again.
+
+## 9. Managing a group from a private chat
+
+1. In the group, send `/connect`. The bot answers with a button. (Or, in a private chat with the bot: `/connect <chat id or @username>`.)
+2. From then on, the group's admin commands you send to the bot privately (`/ban @someone`, `/lock url`, `/filters` ...) act on that group, and the bot answers privately.
+3. `/connection` shows where you are connected, `/disconnect` ends it.
+
+Your rights in the group are checked on every command, exactly as if you had sent it there. Commands that need a reply to a message, delete your command, or show a saved message in the chat must still be sent in the group.
+
+## 10. Switching commands and modules off
+
+**For members only.** Chat admins can switch off commands they do not want members to use:
+
+```
+/disable slap            /enable slap
+/restrictmodule fun       /unrestrictmodule fun
+/disabled                (shows what is off)
+```
+
+Members are ignored; admins can still use the command. Aliases are switched off together with the command.
+
+**Completely.** The chat's owner can turn a module off in the chat for everybody, admins included. Its commands stop and so does everything it does by itself (filters, locks, flood control, welcome messages ...):
+
+```
+/disablemodule fun           /enablemodule fun
+/disablemodule all           /enablemodule all
+```
+
+`/disablemodule all` turns off every module (this page excepted). A chat that only wants global bans sends it and then `/enablemodule gbans`. `/disabled` shows all three kinds of switches.
+
+Everything can be switched off completely except the commands of this page (so a chat can always undo what it did), even `/help` and `/connect`. Turning `connection` off ends the connections to that chat.
+
+Bot-wide, the owner and developers can turn whole modules on and off for every chat with `/module` and list them with `/modules`.
+
+## 11. Logs
+
+- **Console / container log:** one line per command or button press (never message text), plus warnings and errors.
+- **Developer log** (`DEV_LOG_CHAT`): start and stop messages, notices when the bot is added to or removed from a chat (`#NEWGROUP`, `#LEFTGROUP`) and about federations (`#NEWFED`, `#DELFED`, `#RENAMEFED`, `#FEDTRANSFER`), error reports with the details as a file, and every `LOG_REPORT_HOURS` hours a log report: a message with the period it covers (from, to, number of entries) and a `.txt` file with a time, a level and what happened on every line (UTC). One more is sent when the bot stops. A report that could not be delivered is sent with the next one.
+- **Public log** (`LOG_CHAT_ID`): staff changes and other public notices.
+- **Chat log:** `/setlog <chat id | @username | reply to a forwarded channel post>` makes the bot copy that chat's moderation actions (bans, mutes, warns, locks, promotions ...) and who joins (`#JOINED`) or leaves on their own (`#LEFT`) to a chat of the admins' choice. `/unsetlog` and `/logchannel` manage it.
+
+## 12. Project layout and adding modules
+
+```
+cmd/argo/               Entry point: config, database, bot, polling, shutdown.
+internal/config/        Settings read from the environment.
+internal/db/            Connection pool and the schema.
+internal/core/          Shared machinery: router, roles, moderation checks,
+                        federations and global bans, captchas, middlewares.
+internal/modules/       One file per feature (bans.go, mutes.go, ...).
+internal/i18n/          Languages (the JSON files in locales/).
+internal/markup/        Formatting of saved messages.
+internal/blacklist/     Matching of blacklist triggers.
+internal/testutil/      A fake Telegram Bot API for the tests.
+Dockerfile, docker-compose.yml, .env.example
+```
+
+A module is one file in `internal/modules/` with a function that registers its commands and buttons. It is added to the bot in `modules.Register`:
 
 ```go
 r.Module("bans", "Ban commands for chat admins")   // what is registered next belongs to this module
@@ -88,84 +254,34 @@ r.CommandRole(core.Developer, cmdStats, "stats")  // only for people holding at 
 r.Button("undo:ban:", cbUnban)
 ```
 
-The text of the help pages lives in `internal/modules/helpdata.go`, plain Go data you edit by hand.
+| Option | Meaning |
+| --- | --- |
+| `core.Protected()` | The module must never be switched off. |
+| `core.EnglishOnly()` | The module's answers are always English. |
 
-## Build and run
+The help pages live in `internal/modules/helpdata.go` (what the module is about, its list of `/command` entries and who can use them). Add a file, one `Module` line in `modules.Register` and rebuild: nothing else needs to change. Commands registered with `r.Command` get prefixes, case-insensitivity and the "switch off" feature, and answers go through `c.Reply` and `c.Say`.
 
-Needs Go 1.25 or newer.
+## Languages
 
-```sh
-go mod download
-go build -o argo ./cmd/argo
-./argo                   # reads .env
-```
+The bot speaks English (the default), Polish, Silesian (`pl-sl`) and Pirate English (`en-pt`). The language belongs to the chat: `/setlang` shows it and offers buttons, `/setlang pl`, `/setlang pl-sl`, `/setlang en` or `/setlang en-pt` sets it directly. In a group it needs the right to change chat info; in a private chat anyone sets their own. It is stored in `chat_settings.language`.
 
-Docker: `docker compose up -d --build`. Never run two copies with the same token: both would poll Telegram and fight
-over the updates.
+Command names, developer logs and tags such as `#GBANNED` always stay in English. The code holds no texts, only tags: `c.T("bans.was_banned", core.V{"who": name})`. The texts are in `locales/en.json`, `locales/pl.json` and `locales/en-pt.json`, as `{"tag": "text with {placeholders}"}`. `en.json` has every tag; a tag missing from another language is shown in English, so a language can be translated bit by bit. The answers of the root commands (`/stats`, `/status`, `/cleanchats`, `/staff` and the rest of `internal/modules/root.go`, meant for the people who run the bot) and of the global-ban commands for the staff (`/gban`, `/ungban`, `/gimport`, `/gexport` and the buttons) are English only, whatever language the chat speaks; their lines in `/help` are translated like all the others. Languages are found by themselves: every `<code>.json` in `locales/` is a language, nothing is registered in code. To add one, copy `locales/language.json.template` (it holds only the texts that are translated) to `locales/<code>.json`, translate the values (keep the keys, the `{placeholders}` and the HTML tags) and restart the bot. The file holds its own settings: `meta.name` (name in the list), `meta.flag` (flag), `meta.plural` (`one-other` or `one-few-many`) and the time units `time.day`, `time.hour`, `time.minute`, `time.second`, each written as `one|few|many` (these settings are the first lines of the file; `zombies.noun` is written the same way). In help, a module's name and its one-line description are `help.title.<module>` and `help.description.<module>` (a missing title falls back to the module name). Federation and global-ban notices are written in the language of the chat where the action took place.
 
-`.gitignore` keeps `.env`, `data/`, `vendor/` and build output out of git. `.github/workflows/ci.yml` runs gofmt, vet
-and the tests (with a throw-away PostgreSQL) on every push.
+## 13. Antiraid and nightmode
 
-## Environment variables
+Both are **off** until a chat admin turns them on.
 
-Read from the environment or from a `.env` file (the environment wins).
+**Antiraid.** `/antiraid on`. When 10 accounts join within a minute (`/raidlimit <joins> <time>`), the chat is in a raid for an hour (`/raidtime`) and every newcomer is muted until it ends, kicked or banned (`/raidmode mute|kick|ban`). The people who made it a raid are dealt with too. Chat admins, approved users, bots and the bot's staff are never touched.
 
-| Variable | Needed | Default | Meaning |
-|---|---|---|---|
-| `BOT_TOKEN` | yes | | Token from BotFather |
-| `OWNER_ID` | yes | | Telegram id of the owner (root of the bot) |
-| `DATABASE_URL` | yes | | PostgreSQL, e.g. `postgresql://user:pass@host:5432/argo` |
-| `DEV_LOG_CHAT` | no | owner's private chat | Chat for the developer log (start/stop, errors, log reports) |
-| `DEV_LOG_THREAD_ID` | no | | Topic of `DEV_LOG_CHAT`, if it is a forum |
-| `LOG_CHAT_ID` | no | developer log | Chat for the user log (staff changes, global bans) |
-| `LOG_THREAD_ID` | no | | Topic of `LOG_CHAT_ID` |
-| `LOG_LEVEL` | no | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
-| `LOG_REPORT_HOURS` | no | `6` | How often the log goes to the developer log as a `.txt` file; `0` = off |
-| `CHAT_CLEANUP_HOURS` | no | `24` | How often the stored chats are checked against Telegram; `0` = off |
-| `COMMAND_PREFIXES` | no | `/!` | Characters that start a command |
-| `SUPPORT_CHAT_USERNAME` | no | `@ArgoRobotSupport` | Appeal chat shown to banned people and at the bottom of `/help` (may be empty) |
-| `GITHUB_URL` | no | the project's GitHub | Link shown by `/start` (http or https) |
-| `API_ID`, `API_HASH` | no | | From my.telegram.org; with both set `/zombies` lists whole chats through MTProto |
-| `LOCALES_DIR` | no | `locales` | Folder with the language files (`/app/locales` in the image) |
-| `TELEGRAM_API_URL` | no | api.telegram.org | A local Bot API server (and the tests) |
-| `TEST_DATABASE_URL` | tests | local test database | **Wiped** by `go test`, never the real one |
+**Nightmode.** `/nightmode on` closes the chat from 23:00 to 07:00 (UTC by default). `/nighthours 22:00 06:30` sets the hours, `/nighttz Europe/Warsaw` (or `UTC+1`) the time zone. The bot saves the chat's permissions, takes away the right to write, and puts everything back in the morning. Both are announced in the chat. The bot needs the right to restrict members.
 
-## Database
+**Punishments.** `/warnmode <ban|kick|mute|tban|tmute> [time]` is what reaching the warn limit does. `/lockmode <del|warn|ban|kick|mute|tban|tmute> [time]` is what happens to someone who sends a locked item, besides the message being deleted. Blacklists have the same choice (`/setblacklistmode`).
 
-On start the program runs `CREATE TABLE IF NOT EXISTS` and `ADD COLUMN IF NOT EXISTS` for its 39 tables, so a new
-database is set up and an existing one is read as it is; nothing is dropped or rewritten. Take a backup first
-(`pg_dump`), and try a new version on a copy (`createdb -T argo argo_try`) before pointing the bot at the real database.
+**For the bot's developers.** `/status` shows the uptime, the latency of Telegram and of the database, memory use and versions.
 
-## Tests
+## 14. Good to know
 
-```sh
-TEST_DATABASE_URL=postgres://user@host/dbname go test -race ./...
-```
-
-**The test database is wiped** (`DROP SCHEMA public CASCADE`), use an empty one. Without a database the tests that
-need one are skipped. They run the real handlers against a fake Telegram server, so no token is needed:
-
-* `internal/i18n`: every tag of every language is rendered and compared with a golden file
-* `internal/markup`, `internal/blacklist`: golden files with the expected output of the saved-message engine and of the trigger matching
-* `internal/modules`: scenarios of every command (texts, Telegram calls, database, chat log, buttons)
-* `cmd/argo`: starts the program, sends it a command through `getUpdates`, stops it with SIGTERM
-
-The golden files (`testdata/golden.json`) are ordinary test data. If you change those parts on purpose, update them by
-hand or regenerate them from the Go output.
-
-## Not yet checked on live Telegram
-
-The tests use a fake server that follows the Bot API as documented, so these are the things to watch on a real run:
-
-* `editMessageText` without buttons (the library sends an empty keyboard to remove them)
-* looking up an unknown `@username` (`getChat` with `chat_id=@name`)
-* the premium "write as a channel" cases and anonymous admins
-* `promoteChatMember` for `/demote`: the library sends `can_restrict_members=false` explicitly, the other rights are left out
-* `chat_member` and `chat_join_request` updates (the bot must be an admin); the 3 s wait for a service message that decides whether a `chat_member` update greets
-* `setChatPermissions` with `use_independent_chat_permissions` (nightmode) and `restrictChatMember` for the captcha mute
-* sending the captcha picture as a multipart upload
-* `unpinAllChatMessages`, `deleteMessages` in batches of 100 and `createChatInviteLink` against real chats
-* file download for `/gimport` and `/fedimport`, document upload for `/gexport` and `/fedexport`, and `my_chat_member` updates
-* `getChat` returning `bio` and `personal_chat` for the join blacklists
-* the MTProto connection used by `/zombies`
-* the lookup services (translate.googleapis.com, dictionaryapi.dev, open-meteo.com, open.er-api.com)
+- Telegram does not let bots list a group's members. Features that sweep a chat (`/zombies`, global bans reaching old members) work on people the bot has seen.
+- Reactions and member changes reach the bot only in chats where it is an admin.
+- Messages saved before the formatting rules changed (notes, filters, rules, welcome) may need to be saved again.
+- Back up your PostgreSQL database. `/export` (in a chat) saves that chat's own settings and data to a file and `/import` puts them back.

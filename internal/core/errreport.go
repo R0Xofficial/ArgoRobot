@@ -111,7 +111,7 @@ func BuildErrorReport(what string, err any, u *gotgbot.Update, stack []byte, now
 	} else {
 		fmt.Fprintf(&b, "Full error: %v\n(an error returned by the handler, there is no stack to show)\n", err)
 	}
-	return caption, "traceback_" + now.Format("20060102_150405") + ".txt", []byte(b.String())
+	return caption, "error_" + now.Format("20060102_150405") + ".txt", []byte(b.String())
 }
 
 // throttled says whether this error was reported lately; when it was not, it is marked as reported now.
