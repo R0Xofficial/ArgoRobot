@@ -218,6 +218,15 @@ async def cmd_status(message: Message) -> None:
     except Exception:
         aiogram_version = "unknown"
 
+    try:
+        from importlib.metadata import version as package_version
+
+        from telethon.tl.alltlobjects import LAYER
+
+        mtproto_version = f"Telethon {package_version('telethon')} (layer {LAYER})"
+    except Exception:
+        mtproto_version = "unknown"
+
     memory = _memory_mb()
     lines = [
         tr("root.bot_status"),
@@ -229,6 +238,7 @@ async def cmd_status(message: Message) -> None:
         tr("root.modules_of_enabled", count_enabled=registry.count_enabled(), count_loaded=registry.count_loaded()),
         tr("root.python", python_version=platform.python_version()),
         tr("root.aiogram", aiogram_version=esc(aiogram_version)),
+        f"• <b>MTProto:</b> <code>{esc(mtproto_version)}</code>",
     ]
     await reply(message, "\n".join(lines))
 
