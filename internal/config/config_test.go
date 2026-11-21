@@ -53,6 +53,18 @@ func TestAllSettingsFromTheEnvFile(t *testing.T) {
 	}
 }
 
+func TestGithubURLEmptyMeansDefault(t *testing.T) {
+	clearEnv(t)
+	s, err := Load(writeEnv(t, minimal+"GITHUB_URL=\n"))
+	if err != nil || s.GithubURL != "https://github.com/R0Xofficial/ArgoRobot" {
+		t.Fatalf("%q %v", s.GithubURL, err)
+	}
+	s, err = Load(writeEnv(t, minimal+"GITHUB_URL=https://example.com/x\n"))
+	if err != nil || s.GithubURL != "https://example.com/x" {
+		t.Fatalf("%q %v", s.GithubURL, err)
+	}
+}
+
 func TestEnvironmentBeatsTheFileAndBadValuesAreReported(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("LOG_REPORT_HOURS", "9")

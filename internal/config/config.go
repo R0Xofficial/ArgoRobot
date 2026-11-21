@@ -101,10 +101,8 @@ func Load(envFile string) (*Settings, error) {
 		s.SupportChatUsername = strings.TrimSpace(v)
 	}
 	s.GithubURL = "https://github.com/R0Xofficial/ArgoRobot"
-	if v, ok := os.LookupEnv("GITHUB_URL"); ok {
-		s.GithubURL = strings.TrimSpace(v)
-	} else if v, ok := file["GITHUB_URL"]; ok {
-		s.GithubURL = strings.TrimSpace(v)
+	if v := get("GITHUB_URL"); v != "" { // empty keeps the default
+		s.GithubURL = v
 	}
 	if s.LogLevel == "" {
 		s.LogLevel = "INFO"
