@@ -1,0 +1,14 @@
+# secrets and local data
+.env
+data/
+
+# build output
+/argo
+/argo.exe
+/bin/
+
+# editors and systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
