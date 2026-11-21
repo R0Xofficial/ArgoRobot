@@ -33,7 +33,7 @@ from config import settings
 from core import captchas, chats, database, logreport, logs, mtproto, nightmode, registry, shutdown, users
 from core.retry import network_retry
 from core.errors import setup_error_handling
-from core.middlewares import CleanCommandsMiddleware, ConnectionMiddleware, LanguageMiddleware, LoggingMiddleware, RolesMiddleware, UsersMiddleware
+from core.middlewares import CleanCommandsMiddleware, CleanServiceMiddleware, ConnectionMiddleware, LanguageMiddleware, LoggingMiddleware, RolesMiddleware, UsersMiddleware
 from core.text import esc
 
 log = logging.getLogger("main")
@@ -157,6 +157,7 @@ async def main() -> None:
     dp.update.outer_middleware(RolesMiddleware())
     dp.update.outer_middleware(UsersMiddleware())
     dp.update.outer_middleware(CleanCommandsMiddleware())
+    dp.update.outer_middleware(CleanServiceMiddleware())
     dp.update.outer_middleware(ConnectionMiddleware())
     setup_error_handling(dp, bot)
 

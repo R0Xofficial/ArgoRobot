@@ -864,7 +864,6 @@ class JoinMiddleware(BaseMiddleware):
             except Exception:
                 log.exception("Handling a join for global bans failed")
             if removed and removed == len(members):
-                await banguard.clean_join_message(event)  # greetings would have, but it never sees this message
                 return None
         return await handler(event, data)
 

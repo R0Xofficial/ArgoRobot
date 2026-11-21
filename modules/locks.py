@@ -10,7 +10,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from core import approvals, blacklist, enforce, greetings, immunity, locks, moderation, roles
+from core import approvals, blacklist, enforce, immunity, locks, moderation, roles
 from core.filters import cmd
 from core.helpers import edit, reply
 from core.moderation import GROUP_TYPES, ModerationError, perform
@@ -456,6 +456,3 @@ async def on_bots_added(message: Message, bot: Bot, added_bots: list) -> None:
         return
     names = ", ".join(esc(m.full_name) for m in added_bots)
     await reply(message, tr("locks.bots_are_locked_in_this_chat", names=names), quote=False)
-    if (await greetings.get(chat_id))["clean_service"]:  # this handler takes the message away from the greetings one
-        with suppress(TelegramAPIError):
-            await message.delete()

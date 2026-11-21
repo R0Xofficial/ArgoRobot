@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from core import blacklist, captchas, chatsettings, database, filterstore, flood, joinblacklist, locks, markup, notestore
+from core import blacklist, captchas, chatsettings, database, filterstore, flood, greetings, joinblacklist, locks, markup, notestore
 
 FORMAT_VERSION = 1
 MAX_FILE_BYTES = 20 * 1024 * 1024
@@ -79,6 +79,13 @@ def _blacklisted(row: dict[str, Any]) -> None:
 
 
 def _greeting(row: dict[str, Any]) -> None:
+    kinds = [word for word in (row.get("clean_service_types") or "").split(",") if word]
+    if any(word not in greetings.CLEAN_TYPES for word in kinds):
+        raise ValueError("clean_service_types has a value I don't know")
+    if row.get("clean_service") and not kinds:  # a backup from before the kinds: the old switch meant join and leave
+        row["clean_service_types"] = "join,leave"
+    if "clean_service" in row:
+        row["clean_service"] = False
     for kind in ("welcome", "goodbye"):
         if row.get(f"{kind}_content"):
             try:
@@ -123,7 +130,7 @@ ITEMS: list[Item] = [
     Item("greetings", "Welcome and goodbye messages", [
         Table("greetings", {"welcome_on": "b", "welcome_content": "s?", "welcome_media_type": "s?", "welcome_media_file_id": "s?",
                             "goodbye_on": "b", "goodbye_content": "s?", "goodbye_media_type": "s?", "goodbye_media_file_id": "s?",
-                            "welcome_mute": "b", "clean_welcome": "b", "clean_service": "b"},
+                            "welcome_mute": "b", "clean_welcome": "b", "clean_service": "b", "clean_service_types": "s"},
               single=True, choices={"welcome_media_type": MEDIA, "goodbye_media_type": MEDIA}, check=_greeting),
     ], ("welcome", "goodbye", "welcomes")),
     Item("captcha", "Captcha settings", [

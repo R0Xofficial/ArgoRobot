@@ -39,7 +39,9 @@ HELP = [
     ("/resetgoodbye", "greetings.help.go_back_to_the_default_2", "common.admins", S_GOODBYE),
     ("/welcomemute <on|off>", "greetings.help.stop_new_members_from_sending", "common.admins", S_WELCOME),
     ("/cleanwelcome <on|off>", "greetings.help.delete_my_previous_welcome_message", "common.admins", S_WELCOME),
-    ("/cleanservice <on|off>", "greetings.help.delete_the_joined_and_left", "common.admins", S_WELCOME),
+    ("/cleanservice <type|on|off>", "greetings.help.delete_the_joined_and_left", "common.admins", S_WELCOME),
+    ("/keepservice <type>", "greetings.help.stop_deleting_service_messages", "common.admins", S_WELCOME),
+    ("/cleanservicetypes", "greetings.help.list_the_service_message_types", "common.admins", S_WELCOME),
 ]
 
 HELP_NOTES = [
@@ -119,7 +121,7 @@ async def _show(message: Message, role: Role | None, kind: str, argument: str) -
         head += [
             tr("greetings.welcome_mute", yes_no=_yes_no(settings['welcome_mute'])),
             tr("greetings.clean_welcome", yes_no=_yes_no(settings['clean_welcome'])),
-            tr("greetings.clean_service", yes_no=_yes_no(settings['clean_service'])),
+            tr("greetings.clean_service", yes_no=_clean_summary(settings)),
         ]
     await reply(message, "\n".join(head))
     await sender.send(message, message.from_user, content, media_type, file_id, raw=argument == "noformat", label=kind)
@@ -274,14 +276,75 @@ async def cmd_cleanwelcome(message: Message, command: CommandObject, role: Role 
     )
 
 
+def _clean_summary(settings: dict) -> str:
+    kinds = greetings.clean_types(settings)
+    return greetings.describe_types(kinds) if kinds else tr("common.off")
+
+
+async def _service_types(message: Message, command: CommandObject, role: Role | None, *, keep: bool) -> None:
+    """/cleanservice and /keepservice: choose which service messages are deleted."""
+    if message.chat.type not in GROUP_TYPES:
+        await reply(message, tr("common.this_command_only_works_in_groups"))
+        return
+    words = (command.args or "").replace(",", " ").lower().split()
+    if not words:
+        if not await _begin(message, role, change=False):
+            return
+        kinds = greetings.clean_types(await greetings.get(message.chat.id))
+        state = tr("greetings.clean_service_current", types=greetings.describe_types(kinds)) if kinds else tr("greetings.service_messages_will_be_kept")
+        await reply(message, f"{state}\n{tr('greetings.use_cleanservice')}")
+        return
+    everything = set(greetings.CLEAN_TYPES)
+    add: set[str] = set()
+    clear = False  # "off" and "no" in /cleanservice stop everything
+    unknown: list[str] = []
+    for word in words:
+        if word == "all" or (not keep and word in ("on", "yes")):
+            add |= everything
+        elif not keep and word in ("off", "no"):
+            clear = True
+        elif word in everything:
+            add.add(word)
+        else:
+            unknown.append(word)
+    if unknown:
+        await reply(message, f"{tr('greetings.clean_service_unknown', what=esc(', '.join(unknown)))}\n{tr('greetings.use_cleanservice')}")
+        return
+    if not await _begin(message, role, change=True):
+        return
+    current = set(greetings.clean_types(await greetings.get(message.chat.id)))
+    if keep or clear:
+        new = current - (add or everything)
+    else:
+        new = current | add
+    if new == current:
+        await reply(message, tr("greetings.clean_service_already"))
+        return
+    await greetings.set_clean_types(message.chat.id, new)
+    await reply(
+        message,
+        tr("greetings.clean_service_now", types=greetings.describe_types(new)) if new else tr("greetings.service_messages_will_be_kept"),
+    )
+
+
 @router.message(cmd("cleanservice"))
 async def cmd_cleanservice(message: Message, command: CommandObject, role: Role | None = None) -> None:
-    await _switch(
-        message, command, role, "clean_service", tr("greetings.use_cleanservice_on_or_cleanservice_off"),
-        lambda on: tr("greetings.the_joined_and_left_service_messages")
-        if on
-        else tr("greetings.service_messages_will_be_kept"),
-    )
+    await _service_types(message, command, role, keep=False)
+
+
+@router.message(cmd("keepservice", "nocleanservice"))
+async def cmd_keepservice(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    await _service_types(message, command, role, keep=True)
+
+
+@router.message(cmd("cleanservicetypes"))
+async def cmd_cleanservicetypes(message: Message, role: Role | None = None) -> None:
+    if message.chat.type not in GROUP_TYPES:
+        await reply(message, tr("common.this_command_only_works_in_groups"))
+        return
+    if not await _begin(message, role, change=False):
+        return
+    await reply(message, tr("greetings.clean_service_types"))
 
 
 # --- Joins and leaves ---------------------------------------------------------------------------
@@ -303,11 +366,6 @@ async def _restrict_newcomer(message: Message, user) -> None:
         )
     except TelegramAPIError as exc:
         log.info("Welcome mute of %s in chat %s failed: %s", user.id, chat_id, exc)
-
-
-async def _delete(message: Message) -> None:
-    with suppress(TelegramAPIError):
-        await message.delete()
 
 
 async def _greet_staff(message: Message, user, role: Role) -> None:
@@ -384,12 +442,7 @@ async def on_join(message: Message) -> None:
         people.append(user)
     people = people[:MAX_GREETED]
 
-    try:
-        await _greet(message, people, settings)
-    finally:
-        # Whatever went wrong while greeting, the "joined" message still goes when the chat asked for it.
-        if settings["clean_service"]:
-            await _delete(message)
+    await _greet(message, people, settings)
 
 
 async def _greet_after_captcha(bot, chat_id: int, user, join_message_id: int | None) -> None:
@@ -423,11 +476,7 @@ async def on_leave(message: Message) -> None:
     left_on_own = message.from_user is not None and message.from_user.id == left.id
     if left_on_own and left.id != message.bot.id:  # a removal is in the log already, with the admin who did it
         await _log_member(message.bot, message.chat, "LEFT", left)
-    try:
-        await _say_goodbye(message, left, settings, left_on_own)
-    finally:
-        if settings["clean_service"]:
-            await _delete(message)
+    await _say_goodbye(message, left, settings, left_on_own)
 
 
 async def _say_goodbye(message: Message, left, settings: dict, left_on_own: bool) -> None:

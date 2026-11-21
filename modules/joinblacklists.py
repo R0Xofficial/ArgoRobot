@@ -8,7 +8,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
 from aiogram.types import Message
 
-from core import approvals, enforce, greetings, immunity, joinblacklist, moderation, roles
+from core import approvals, enforce, immunity, joinblacklist, moderation, roles
 from core.blacklist import TriggerError
 from core.filters import cmd
 from core.helpers import reply
@@ -263,7 +263,7 @@ async def on_blocked_join(message: Message, bot: Bot, join_hits: list[tuple[Any,
             continue
         banned = True
         log.info("Join blacklist: banned %s in chat %s (%s trigger %r)", user.id, message.chat.id, kind, trigger)
-    if banned or (await greetings.get(message.chat.id))["clean_service"]:  # the greetings handler never sees this message
+    if banned:  # the greetings handler never sees this message
         try:
             await message.delete()
         except TelegramAPIError:

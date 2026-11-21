@@ -17,7 +17,7 @@ from aiogram.types import Update
 
 from config import settings
 from core.text import esc
-from core import chatsettings, chats, connection, devnotify, i18n, registry, roles, users
+from core import chatsettings, chats, connection, devnotify, disabled, greetings, i18n, registry, roles, users
 from core.i18n import tr
 
 log = logging.getLogger("usage")
@@ -187,6 +187,47 @@ class CleanCommandsMiddleware(BaseMiddleware):
         if addressed and bot is not None and addressed.lower() != ((await bot.me()).username or "").lower():
             return False
         return await chatsettings.clean_commands(message.chat.id)
+
+
+class CleanServiceMiddleware(BaseMiddleware):
+    """
+    Deletes the service messages ("X joined", "X pinned a message", a new chat photo...) of the kinds
+    a chat chose with /cleanservice (modules/greetings.py). It runs after the other handlers, so that
+    a welcome or a ban still sees the message it answers.
+    """
+
+    async def __call__(
+        self,
+        handler: Callable[[Update, dict[str, Any]], Awaitable[Any]],
+        event: Update,
+        data: dict[str, Any],
+    ) -> Any:
+        try:
+            return await handler(event, data)
+        finally:
+            message = event.message
+            if message is not None:
+                try:
+                    if await self._should_delete(message):
+                        await message.delete()
+                except TelegramAPIError:
+                    pass  # no right to delete, or already gone: nothing to do
+                except Exception:
+                    log.debug("Failed to clean a service message", exc_info=True)
+
+    @staticmethod
+    async def _should_delete(message) -> bool:
+        if message.chat.type not in ("group", "supergroup"):
+            return False
+        kind = greetings.service_kind(message)
+        if kind is None:
+            return False
+        info = registry.get("greetings")
+        if info is not None and not info.enabled:
+            return False
+        if await disabled.module_off(message.chat.id, "greetings"):
+            return False
+        return kind in greetings.clean_types(await greetings.get(message.chat.id))
 
 
 class ConnectionMiddleware(BaseMiddleware):

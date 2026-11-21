@@ -197,6 +197,8 @@ CREATE TABLE IF NOT EXISTS greetings (
     last_welcome_id       BIGINT
 );
 ALTER TABLE greetings ALTER COLUMN goodbye_on SET DEFAULT TRUE;
+-- The kinds of service messages /cleanservice deletes, e.g. 'join,leave,pin'. The old clean_service flag (join and leave) still counts while this is empty.
+ALTER TABLE greetings ADD COLUMN IF NOT EXISTS clean_service_types TEXT NOT NULL DEFAULT '';
 
 -- Federations: groups of chats that share one ban list (see core/federations.py).
 CREATE TABLE IF NOT EXISTS federations (

@@ -25,8 +25,61 @@ DEFAULTS: dict[str, Any] = {
     "welcome_mute": False,
     "clean_welcome": False,
     "clean_service": False,
+    "clean_service_types": "",
     "last_welcome_id": None,
 }
+
+
+# The service messages /cleanservice can delete, by kind, and the Message fields that make a message one of them.
+CLEAN_TYPES = ("join", "leave", "other", "photo", "pin", "title", "videochat")
+SERVICE_FIELDS: dict[str, tuple[str, ...]] = {
+    "join": ("new_chat_members",),
+    "leave": ("left_chat_member",),
+    "photo": ("new_chat_photo", "delete_chat_photo", "chat_background_set"),
+    "pin": ("pinned_message",),
+    "title": ("new_chat_title", "forum_topic_created", "forum_topic_edited"),
+    "videochat": ("video_chat_scheduled", "video_chat_started", "video_chat_ended", "video_chat_participants_invited"),
+    "other": (
+        "message_auto_delete_timer_changed", "boost_added", "successful_payment", "proximity_alert_triggered",
+        "web_app_data", "forum_topic_closed", "forum_topic_reopened", "general_forum_topic_hidden",
+        "general_forum_topic_unhidden", "checklist_tasks_done", "checklist_tasks_added", "giveaway_created",
+        "giveaway_completed", "write_access_allowed", "paid_message_price_changed", "users_shared", "chat_shared",
+    ),
+}
+
+
+def service_kind(message: Any) -> str | None:
+    """Which kind of service message this is ("join", "pin"...), or None for an ordinary message."""
+    for kind, fields in SERVICE_FIELDS.items():
+        for name in fields:
+            value = getattr(message, name, None)
+            if value is not None and value is not False and value != []:
+                return kind
+    return None
+
+
+def clean_types(settings: dict[str, Any]) -> frozenset[str]:
+    """The kinds of service messages the chat has deleted. The old on/off switch meant join and leave."""
+    kinds = frozenset(word for word in (settings.get("clean_service_types") or "").split(",") if word in CLEAN_TYPES)
+    if not kinds and settings.get("clean_service"):
+        return frozenset({"join", "leave"})
+    return kinds
+
+
+def describe_types(kinds: frozenset[str] | set[str]) -> str:
+    """The kinds as the admins write them: "all", or a list in a fixed order."""
+    if set(kinds) >= set(CLEAN_TYPES):
+        return "all"
+    return ", ".join(kind for kind in CLEAN_TYPES if kind in kinds)
+
+
+async def set_clean_types(chat_id: int, kinds: frozenset[str] | set[str]) -> None:
+    """Save the kinds; the old flag is cleared so that it can never bring join and leave back."""
+    await update(
+        chat_id,
+        clean_service_types=",".join(kind for kind in CLEAN_TYPES if kind in kinds),
+        clean_service=False,
+    )
 
 
 async def get(chat_id: int) -> dict[str, Any]:

@@ -6,13 +6,9 @@ leave such a person alone: restricting someone who has just been banned would tu
 mute, and nobody wants a welcome for somebody who is being removed.
 """
 
-from contextlib import suppress
-
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError
-from aiogram.types import Message
 
-from core import approvals, chatsettings, federations, gbans, greetings, immunity, moderation, roles, whitelist
+from core import approvals, chatsettings, federations, gbans, immunity, moderation, roles, whitelist
 
 
 async def spared(bot: Bot, chat_id: int, user_id: int) -> bool:
@@ -51,12 +47,3 @@ async def applies(bot: Bot, chat_id: int, user_id: int) -> bool:
     """Either of the two: they are being removed from this chat."""
     return await gbanned(bot, chat_id, user_id) or await fbanned(bot, chat_id, user_id)
 
-
-async def clean_join_message(message: Message) -> None:
-    """
-    The "X joined" message of people who were just removed. The ban handlers take it away from the
-    greetings module, which is the one that deletes it when the chat has /cleanservice on, so they do it.
-    """
-    if (await greetings.get(message.chat.id))["clean_service"]:
-        with suppress(TelegramAPIError):
-            await message.delete()
