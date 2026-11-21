@@ -28,15 +28,13 @@ func registerGreetings(r *core.Router) {
 	r.Command(cmdWelcomemute, "welcomemute")
 	r.Command(cmdCleanwelcome, "cleanwelcome")
 	r.Command(cmdCleanservice, "cleanservice")
+	r.Command(cmdKeepservice, "keepservice", "nocleanservice")
+	r.Command(cmdCleanservicetypes, "cleanservicetypes")
 
 	// After the captcha (-10), which holds newcomers first. The watchers do not take the message away from the
 	// modules after them.
 	r.Watch(-5, "greetings", watchGreetings)
 	r.WatchMembers(0, "greetings", watchGreetMember)
-	cleanServiceHook = func(c *core.Ctx, chatID int64) bool {
-		s, err := c.App.Greetings(c.Ctx, chatID)
-		return err == nil && s.CleanService
-	}
 	core.CaptchaWelcomeLimit = maxGreeted // the captcha button rides on these welcomes
 	core.CaptchaReleased = append(core.CaptchaReleased, greetAfterCaptcha)
 }
@@ -69,7 +67,7 @@ func greetShow(c *core.Ctx, kind, argument string) error {
 		head = append(head,
 			c.T("greetings.welcome_mute", core.V{"yes_no": yesNo(c, s.WelcomeMute)}),
 			c.T("greetings.clean_welcome", core.V{"yes_no": yesNo(c, s.CleanWelcome)}),
-			c.T("greetings.clean_service", core.V{"yes_no": yesNo(c, s.CleanService)}))
+			c.T("greetings.clean_service", core.V{"yes_no": cleanSummary(c, s)}))
 	}
 	c.Say(strings.Join(head, "\n"))
 	c.SendSaved(c.User, content, mediaType, fileID, core.SendOpts{Raw: argument == "noformat", Label: kind})
@@ -222,15 +220,116 @@ func cmdCleanwelcome(c *core.Ctx) error {
 		})
 }
 
-func cmdCleanservice(c *core.Ctx) error {
-	return greetSwitch(c, "clean_service", c.T("greetings.use_cleanservice_on_or_cleanservice_off"),
-		func(s core.GreetSettings) bool { return s.CleanService },
-		func(on bool) string {
-			if on {
-				return c.T("greetings.the_joined_and_left_service_messages")
+func cleanSummary(c *core.Ctx, s core.GreetSettings) string {
+	if set := s.CleanSet(); len(set) > 0 {
+		return core.DescribeCleanKinds(set)
+	}
+	return c.T("common.off")
+}
+
+// serviceTypes is /cleanservice and /keepservice: choose which service messages are deleted.
+func serviceTypes(c *core.Ctx, keep bool) error {
+	if !groupOnly(c) {
+		return nil
+	}
+	chatID := c.Msg.Chat.Id
+	words := strings.Fields(strings.ReplaceAll(strings.ToLower(c.Args), ",", " "))
+	usage := c.T("greetings.use_cleanservice")
+	if len(words) == 0 {
+		if !greetBegin(c, false) {
+			return nil
+		}
+		s, err := c.App.Greetings(c.Ctx, chatID)
+		if err != nil {
+			return err
+		}
+		state := c.T("greetings.service_messages_will_be_kept")
+		if set := s.CleanSet(); len(set) > 0 {
+			state = c.T("greetings.clean_service_current", core.V{"types": core.DescribeCleanKinds(set)})
+		}
+		c.Say(state + "\n" + usage)
+		return nil
+	}
+	add := map[string]bool{}
+	clear := false // "off" and "no" in /cleanservice stop everything
+	var unknown []string
+	for _, w := range words {
+		switch {
+		case w == "all" || (!keep && (w == "on" || w == "yes")):
+			for _, kind := range core.CleanKinds {
+				add[kind] = true
 			}
-			return c.T("greetings.service_messages_will_be_kept")
-		})
+		case !keep && (w == "off" || w == "no"):
+			clear = true
+		default:
+			known := false
+			for _, kind := range core.CleanKinds {
+				if w == kind {
+					add[kind], known = true, true
+				}
+			}
+			if !known {
+				unknown = append(unknown, w)
+			}
+		}
+	}
+	if len(unknown) > 0 {
+		c.Say(c.T("greetings.clean_service_unknown", core.V{"what": text.Esc(strings.Join(unknown, ", "))}) + "\n" + usage)
+		return nil
+	}
+	if !greetBegin(c, true) {
+		return nil
+	}
+	s, err := c.App.Greetings(c.Ctx, chatID)
+	if err != nil {
+		return err
+	}
+	current := s.CleanSet()
+	next := map[string]bool{}
+	for kind := range current {
+		next[kind] = true
+	}
+	switch {
+	case keep || clear:
+		if len(add) == 0 {
+			add = map[string]bool{}
+			for _, kind := range core.CleanKinds {
+				add[kind] = true
+			}
+		}
+		for kind := range add {
+			delete(next, kind)
+		}
+	default:
+		for kind := range add {
+			next[kind] = true
+		}
+	}
+	if len(next) == len(current) && core.DescribeCleanKinds(next) == core.DescribeCleanKinds(current) {
+		c.Say(c.T("greetings.clean_service_already"))
+		return nil
+	}
+	if err := c.App.SetCleanKinds(c.Ctx, chatID, next); err != nil {
+		return err
+	}
+	if len(next) == 0 {
+		c.Say(c.T("greetings.service_messages_will_be_kept"))
+		return nil
+	}
+	c.Say(c.T("greetings.clean_service_now", core.V{"types": core.DescribeCleanKinds(next)}))
+	return nil
+}
+
+func cmdCleanservice(c *core.Ctx) error { return serviceTypes(c, false) }
+
+func cmdKeepservice(c *core.Ctx) error { return serviceTypes(c, true) }
+
+func cmdCleanservicetypes(c *core.Ctx) error {
+	if !groupOnly(c) || !greetBegin(c, false) {
+		return nil
+	}
+	c.Say(c.T("greetings.clean_service_types"))
+	return nil
 }
 
 // --- Joins and leaves ---
@@ -367,12 +466,6 @@ func onJoin(c *core.Ctx) error {
 	if len(people) > maxGreeted {
 		people = people[:maxGreeted]
 	}
-	defer func() {
-		// Whatever went wrong while greeting, the "joined" message still goes when the chat asked for it.
-		if s.CleanService {
-			deleteMessage(c, m.Chat.Id, m.MessageId)
-		}
-	}()
 	greet(c, people, s)
 	return nil
 }
@@ -406,11 +499,6 @@ func onLeave(c *core.Ctx) error {
 	if leftOnOwn && left.Id != c.Bot.Id { // a removal is in the log already, with the admin who did it
 		logMember(c, m.Chat, "LEFT", left)
 	}
-	defer func() {
-		if s.CleanService {
-			deleteMessage(c, m.Chat.Id, m.MessageId)
-		}
-	}()
 	sayGoodbye(c, left, s, leftOnOwn)
 	return nil
 }

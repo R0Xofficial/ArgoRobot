@@ -24,7 +24,8 @@ type GreetSettings struct {
 	GoodbyeMediaFileID *string
 	WelcomeMute        bool
 	CleanWelcome       bool
-	CleanService       bool
+	CleanService       bool   // the old on/off switch: join and leave
+	CleanServiceTypes  string // the kinds /cleanservice deletes, e.g. "join,leave,pin"
 	LastWelcomeID      *int64
 }
 
@@ -32,7 +33,7 @@ type GreetSettings struct {
 var GreetColumns = []string{
 	"welcome_on", "welcome_content", "welcome_media_type", "welcome_media_file_id",
 	"goodbye_on", "goodbye_content", "goodbye_media_type", "goodbye_media_file_id",
-	"welcome_mute", "clean_welcome", "clean_service", "last_welcome_id",
+	"welcome_mute", "clean_welcome", "clean_service", "clean_service_types", "last_welcome_id",
 }
 
 // Greetings reads the greeting settings of a chat.
@@ -40,10 +41,10 @@ func (a *App) Greetings(ctx context.Context, chatID int64) (GreetSettings, error
 	s := GreetSettings{WelcomeOn: true, GoodbyeOn: true}
 	_, err := a.DB.Found(ctx, `SELECT welcome_on, welcome_content, welcome_media_type, welcome_media_file_id,
 goodbye_on, goodbye_content, goodbye_media_type, goodbye_media_file_id,
-welcome_mute, clean_welcome, clean_service, last_welcome_id FROM greetings WHERE chat_id = $1`, []any{chatID},
+welcome_mute, clean_welcome, clean_service, clean_service_types, last_welcome_id FROM greetings WHERE chat_id = $1`, []any{chatID},
 		&s.WelcomeOn, &s.WelcomeContent, &s.WelcomeMediaType, &s.WelcomeMediaFileID,
 		&s.GoodbyeOn, &s.GoodbyeContent, &s.GoodbyeMediaType, &s.GoodbyeMediaFileID,
-		&s.WelcomeMute, &s.CleanWelcome, &s.CleanService, &s.LastWelcomeID)
+		&s.WelcomeMute, &s.CleanWelcome, &s.CleanService, &s.CleanServiceTypes, &s.LastWelcomeID)
 	return s, err
 }
 

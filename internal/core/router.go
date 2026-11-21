@@ -57,6 +57,8 @@ type Ctx struct {
 	Edited bool   // the message is an edited one
 	Cmd    string // lowercase command name, without prefix and @bot
 	Args   string // everything after the command, trimmed
+
+	ServiceGone bool // a handler already deleted the service message
 }
 
 // T writes a text in the language of the chat being handled.
@@ -236,6 +238,9 @@ func (r *Router) Handle(b *gotgbot.Bot, update *gotgbot.Update) {
 		c.Msg, c.User = m, m.From
 		r.prepare(c, m.Chat.Id)
 		r.connected(c, b)
+		if !c.Edited {
+			defer r.cleanService(c)
+		}
 		if r.watch(c, true) {
 			return
 		}

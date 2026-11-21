@@ -279,6 +279,7 @@ CREATE TABLE IF NOT EXISTS greetings (
     last_welcome_id       BIGINT
 );
 ALTER TABLE greetings ALTER COLUMN goodbye_on SET DEFAULT TRUE;
+ALTER TABLE greetings ADD COLUMN IF NOT EXISTS clean_service_types TEXT NOT NULL DEFAULT '';
 CREATE TABLE IF NOT EXISTS captcha_pending (
     id              BIGSERIAL PRIMARY KEY,
     chat_id         BIGINT NOT NULL,

@@ -1592,9 +1592,6 @@ func watchFederations(c *core.Ctx) (bool, error) {
 			}
 		}
 		if removed > 0 && removed == len(m.NewChatMembers) {
-			if s, err := c.App.Greetings(c.Ctx, chatID); err == nil && s.CleanService {
-				_, _ = c.Bot.DeleteMessageWithContext(c.Ctx, chatID, m.MessageId, nil)
-			}
 			return true, nil
 		}
 		return false, nil

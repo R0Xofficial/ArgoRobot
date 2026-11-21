@@ -255,12 +255,9 @@ func watchJoinBlacklist(c *core.Ctx) (bool, error) {
 		banned = true
 		slog.Info("Join blacklist: banned", "user", h.user.Id, "chat", chatID, "kind", h.kind, "trigger", h.trigger)
 	}
-	clean := false
-	if s, err := c.App.Greetings(c.Ctx, chatID); err == nil {
-		clean = s.CleanService // the greetings handler never sees this message
-	}
-	if banned || clean {
+	if banned { // the greetings handler never sees this message
 		_, _ = c.Bot.DeleteMessageWithContext(c.Ctx, chatID, m.MessageId, nil)
+		c.ServiceGone = true
 	}
 	return true, nil
 }

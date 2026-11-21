@@ -581,9 +581,6 @@ func watchLocks(c *core.Ctx) (bool, error) {
 	return true, err
 }
 
-// ServiceCleaner is set by the greetings module: whether the chat wants join messages deleted.
-var cleanServiceHook func(c *core.Ctx, chatID int64) bool
-
 func watchBotsAdded(c *core.Ctx) (bool, error) {
 	m, adder := c.Msg, c.User
 	if c.Cb != nil || c.Edited || m == nil || len(m.NewChatMembers) == 0 || adder == nil || !isGroup(m.Chat.Type) {
@@ -627,10 +624,6 @@ func watchBotsAdded(c *core.Ctx) (bool, error) {
 	_, err = c.SendPlain(c.T("locks.bots_are_locked_in_this_chat", core.V{"names": strings.Join(names, ", ")}))
 	if err != nil {
 		return true, err
-	}
-	// This handler takes the message away from the greetings one.
-	if cleanServiceHook != nil && cleanServiceHook(c, chatID) {
-		_, _ = c.Bot.DeleteMessageWithContext(c.Ctx, chatID, m.MessageId, nil)
 	}
 	return true, nil
 }

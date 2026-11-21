@@ -243,7 +243,9 @@ var helpData = map[string]*core.Help{
 			{Usage: "/resetgoodbye", Description: "greetings.help.go_back_to_the_default_2", Section: "greetings.sections_2", Label: "common.admins"},
 			{Usage: "/welcomemute <on|off>", Description: "greetings.help.stop_new_members_from_sending", Section: "greetings.sections", Label: "common.admins"},
 			{Usage: "/cleanwelcome <on|off>", Description: "greetings.help.delete_my_previous_welcome_message", Section: "greetings.sections", Label: "common.admins"},
-			{Usage: "/cleanservice <on|off>", Description: "greetings.help.delete_the_joined_and_left", Section: "greetings.sections", Label: "common.admins"},
+			{Usage: "/cleanservice <type|on|off>", Description: "greetings.help.delete_the_joined_and_left", Section: "greetings.sections", Label: "common.admins"},
+			{Usage: "/keepservice <type>", Description: "greetings.help.stop_deleting_service_messages", Section: "greetings.sections", Label: "common.admins"},
+			{Usage: "/cleanservicetypes", Description: "greetings.help.list_the_service_message_types", Section: "greetings.sections", Label: "common.admins"},
 		},
 		Notes: []core.HelpNote{
 			{Title: "common.formatting", Text: "common.bold_italic_underline_strike_spoiler_code"},

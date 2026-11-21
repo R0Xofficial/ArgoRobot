@@ -101,6 +101,22 @@ func backupBlacklisted(row map[string]any) error {
 }
 
 func backupGreeting(row map[string]any) error {
+	kinds, _ := row["clean_service_types"].(string)
+	for _, word := range strings.Split(kinds, ",") {
+		known := word == ""
+		for _, kind := range CleanKinds {
+			known = known || word == kind
+		}
+		if !known {
+			return fmt.Errorf("clean_service_types has a value I don't know")
+		}
+	}
+	if old, _ := row["clean_service"].(bool); old && kinds == "" { // a backup from before the kinds: the old switch meant join and leave
+		row["clean_service_types"] = "join,leave"
+	}
+	if _, ok := row["clean_service"]; ok {
+		row["clean_service"] = false
+	}
 	for _, kind := range []string{"welcome", "goodbye"} {
 		if s, _ := row[kind+"_content"].(string); s != "" {
 			if err := markup.Check(i18n.English, s); err != nil {
@@ -151,7 +167,7 @@ func backupItems() []BackupItem {
 		{Key: "greetings", Label: "Welcome and goodbye messages", aliases: []string{"welcome", "goodbye", "welcomes"}, tables: []backupTable{
 			{name: "greetings", columns: cols("welcome_on", "b", "welcome_content", "s?", "welcome_media_type", "s?", "welcome_media_file_id", "s?",
 				"goodbye_on", "b", "goodbye_content", "s?", "goodbye_media_type", "s?", "goodbye_media_file_id", "s?",
-				"welcome_mute", "b", "clean_welcome", "b", "clean_service", "b"),
+				"welcome_mute", "b", "clean_welcome", "b", "clean_service", "b", "clean_service_types", "s"),
 				single: true, choices: map[string][]string{"welcome_media_type": backupMedia, "goodbye_media_type": backupMedia}, check: backupGreeting},
 		}},
 		{Key: "captcha", Label: "Captcha settings", aliases: []string{"captchas"}, tables: []backupTable{
