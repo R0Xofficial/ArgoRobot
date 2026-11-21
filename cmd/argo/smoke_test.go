@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -73,7 +74,7 @@ func TestSmokeStartAnswerStop(t *testing.T) {
 		t.Fatalf("expected start notice, answer and stop notice, got %d messages", len(sent))
 	}
 	first, last := sent[0].P["text"], sent[len(sent)-1].P["text"]
-	if first != "Bot started (@ArgoTestBot)." || last != "Bot stopped." {
+	if !strings.HasPrefix(first, "Bot started (@ArgoTestBot). Modules enabled: ") || last != "Bot stopped." {
 		t.Errorf("notices: %q ... %q", first, last)
 	}
 	if sent[0].P["chat_id"] != "1" {

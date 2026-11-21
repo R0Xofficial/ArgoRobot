@@ -155,7 +155,8 @@ func run() error {
 	dispatcher.AddHandler(app.Router.Handler())
 	updater := ext.NewUpdater(dispatcher, nil)
 
-	devLog(ctx, app, fmt.Sprintf("Bot started (@%s).", text.Esc(bot.Username)))
+	loaded, enabled := app.CountModules()
+	devLog(ctx, app, fmt.Sprintf("Bot started (@%s). Modules enabled: %d/%d.", text.Esc(bot.Username), enabled, loaded))
 
 	if err := updater.StartPolling(bot, &ext.PollingOpts{
 		GetUpdatesOpts: &gotgbot.GetUpdatesOpts{
