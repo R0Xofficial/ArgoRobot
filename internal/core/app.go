@@ -4,7 +4,6 @@ package core
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -14,7 +13,6 @@ import (
 	"argo/internal/blacklist"
 	"argo/internal/config"
 	"argo/internal/db"
-	"argo/internal/text"
 )
 
 // App is everything a handler may need. One is made at start-up and shared.
@@ -59,7 +57,7 @@ type App struct {
 	mt           mtState
 
 	errMu      sync.Mutex
-	lastReport time.Time
+	lastReport map[string]time.Time // an error by name and start of its text, when it was last reported
 }
 
 func NewApp(cfg *config.Settings, database *db.DB, bot *gotgbot.Bot) *App {
@@ -121,25 +119,8 @@ func (a *App) DevLog(ctx context.Context, msg string) {
 	}
 }
 
-// reportError tells the developer log about a failure, at most once every few seconds so a loop of failures
-// can't flood it.
-func (a *App) reportError(what string, err any) {
-	a.errMu.Lock()
-	quiet := time.Since(a.lastReport) < 10*time.Second
-	if !quiet {
-		a.lastReport = time.Now()
-	}
-	a.errMu.Unlock()
-	if quiet {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	a.DevLog(ctx, "<b>Error</b> in "+text.Esc(what)+":\n<code>"+text.Esc(text.Truncate(fmt.Sprint(err), 1500))+"</code>")
-}
-
 // ReportError is reportError for modules.
-func (a *App) ReportError(what string, err any) { a.reportError(what, err) }
+func (a *App) ReportError(what string, err any) { a.reportError(what, err, nil, nil) }
 
 // Cooldown is true when nothing was answered under key for the last d; it then records that something is. It keeps
 // a module from answering the same thing in a loop.

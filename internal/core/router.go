@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"log/slog"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
@@ -218,7 +219,7 @@ func (r *Router) Handle(b *gotgbot.Bot, update *gotgbot.Update) {
 	defer func() {
 		if p := recover(); p != nil {
 			slog.Error("Handler panicked", "panic", p)
-			r.app.reportError("a handler (panic)", p)
+			r.app.reportError("a handler (panic)", p, c, debug.Stack())
 		}
 	}()
 
@@ -274,7 +275,7 @@ func (r *Router) Handle(b *gotgbot.Bot, update *gotgbot.Update) {
 			handled, err := w.fn(c, e)
 			if err != nil {
 				slog.Error("Member watcher failed", "watcher", w.name, "err", err)
-				r.app.reportError(w.name, err)
+				r.app.reportError(w.name, err, c, nil)
 			}
 			if handled {
 				break
@@ -291,7 +292,7 @@ func (r *Router) Handle(b *gotgbot.Bot, update *gotgbot.Update) {
 			}
 			if handled, err := w.fn(c, e); err != nil {
 				slog.Error("Member watcher failed", "watcher", w.name, "err", err)
-				r.app.reportError(w.name, err)
+				r.app.reportError(w.name, err, c, nil)
 			} else if handled {
 				break
 			}
@@ -307,7 +308,7 @@ func (r *Router) Handle(b *gotgbot.Bot, update *gotgbot.Update) {
 			handled, err := w.fn(c, e)
 			if err != nil {
 				slog.Error("Reaction watcher failed", "watcher", w.name, "err", err)
-				r.app.reportError(w.name, err)
+				r.app.reportError(w.name, err, c, nil)
 			}
 			if handled {
 				break
@@ -323,7 +324,7 @@ func (r *Router) Handle(b *gotgbot.Bot, update *gotgbot.Update) {
 			}
 			if err := w.fn(c, req); err != nil {
 				slog.Error("Join request watcher failed", "watcher", w.name, "err", err)
-				r.app.reportError(w.name, err)
+				r.app.reportError(w.name, err, c, nil)
 			}
 		}
 	case update.CallbackQuery != nil:
@@ -357,7 +358,7 @@ func (r *Router) watch(c *Ctx, early bool) bool {
 		handled, err := w.fn(c)
 		if err != nil {
 			slog.Error("Watcher failed", "watcher", w.name, "err", err)
-			r.app.reportError(w.name, err)
+			r.app.reportError(w.name, err, c, nil)
 		}
 		if handled {
 			return true
@@ -394,7 +395,7 @@ func (r *Router) run(c *Ctx, h Handler) {
 		if c.Cb != nil {
 			what = "a button (" + c.Cb.Data + ")"
 		}
-		r.app.reportError(what, err)
+		r.app.reportError(what, err, c, nil)
 	}
 }
 

@@ -2,6 +2,7 @@ package modules_test
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -546,19 +547,44 @@ func TestRolesAndOwner(t *testing.T) {
 	_ = e2
 }
 
-func TestUnexpectedErrorGoesToDevLog(t *testing.T) {
+// Errors of Telegram are only logged (core/errors.py): the report would go through Telegram too.
+func TestTelegramErrorsAreOnlyLogged(t *testing.T) {
 	e := setup(t)
 	e.Fake.Fail("banChatMember", 500, "Internal Server Error")
 	e.Send(Msg{Chat: chat, From: alice, Text: "/ban 20"})
-	calls := e.Fake.Calls("sendMessage")
-	if len(calls) != 1 || calls[0].P["chat_id"] != "1" || !strings.Contains(calls[0].P["text"], "Internal Server Error") {
-		t.Fatalf("the error should go to the owner: %+v", calls)
+	for _, call := range e.Fake.Calls("sendMessage") {
+		if call.P["chat_id"] == "1" {
+			t.Fatalf("a Telegram error was reported to the owner: %+v", call.P)
+		}
 	}
-	// A second failure right away is not reported again (no flood).
+	if n := len(e.Fake.Calls("sendDocument")); n != 0 {
+		t.Fatalf("%d error files for a Telegram error", n)
+	}
+}
+
+func TestUnexpectedErrorReportIsAFile(t *testing.T) {
+	e := setup(t)
+	e.App.ReportError("/test", errors.New("boom\nsecond line"))
+	docs := e.Fake.Calls("sendDocument")
+	if len(docs) != 1 || docs[0].P["chat_id"] != "1" {
+		t.Fatalf("the report should go to the owner as a file: %+v", docs)
+	}
+	for _, part := range []string{"Bot Error Detected!", "boom", "In: /test", "Chat: N/A", "User: N/A", "Full details are attached"} {
+		contains(t, docs[0].P["caption"], part)
+	}
+	if strings.Contains(docs[0].P["caption"], "second line") {
+		t.Error("only the first line of the error belongs in the caption")
+	}
+	contains(t, docs[0].P["_file_document"], "Time (UTC):")
+	contains(t, docs[0].P["_file_document"], "second line")
+	// The same error right away is not reported again (no flood); another one is.
 	e.Fake.Reset()
-	e.Fake.Fail("banChatMember", 500, "Internal Server Error")
-	e.Send(Msg{Chat: chat, From: alice, Text: "/ban 20"})
-	if n := len(e.Fake.Calls("sendMessage")); n != 0 {
-		t.Errorf("reported twice within 10s: %d", n)
+	e.App.ReportError("/test", errors.New("boom\nsecond line"))
+	if n := len(e.Fake.Calls("sendDocument")); n != 0 {
+		t.Errorf("reported twice within a minute: %d", n)
+	}
+	e.App.ReportError("/test", errors.New("something else"))
+	if n := len(e.Fake.Calls("sendDocument")); n != 1 {
+		t.Errorf("a different error should be reported: %d", n)
 	}
 }
