@@ -1,6 +1,0 @@
-aiogram>=3.31,<4
-pydantic-settings>=2.2,<3
-asyncpg>=0.29
-tzdata
-Pillow>=10
-telethon>=1.36
