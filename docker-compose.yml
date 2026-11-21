@@ -23,18 +23,10 @@ services:
       GITHUB_URL: ${GITHUB_URL:-}
       CHAT_CLEANUP_HOURS: ${CHAT_CLEANUP_HOURS:-24}
       LOG_REPORT_HOURS: ${LOG_REPORT_HOURS:-6}
-      HEALTH_PORT: ${HEALTH_PORT:-8080}
       API_ID: ${API_ID:-}
       API_HASH: ${API_HASH:-}
     volumes:
       - argo-data:/app/data   # the MTProto session (see API_ID)
-    # To watch it from outside (UptimeRobot, ...) publish the port too:  ports: ["8080:8080"]  (GET /health)
-    healthcheck:
-      test: ["CMD", "/app/argo", "-health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
     networks:
       - default
       - postgres-internal

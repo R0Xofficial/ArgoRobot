@@ -31,9 +31,6 @@ type Settings struct {
 	// LogReportHours is how often the log goes to the developer log as a .txt file. 0 turns the reports off.
 	LogReportHours float64
 
-	// HealthPort is the port of the health endpoint (GET /health) for monitoring. 0 = off.
-	HealthPort int
-
 	// APIID and APIHash (from my.telegram.org) turn on the MTProto client that lists the members of a chat for /zombies.
 	APIID   int
 	APIHash string
@@ -120,30 +117,23 @@ func Load(envFile string) (*Settings, error) {
 	}
 	var errs []error
 	s.ChatCleanupHours = 24
-	if v := strings.TrimSpace(os.Getenv("CHAT_CLEANUP_HOURS")); v != "" {
+	if v := get("CHAT_CLEANUP_HOURS"); v != "" {
 		if h, err := strconv.ParseFloat(v, 64); err != nil || h < 0 {
 			errs = append(errs, errors.New("CHAT_CLEANUP_HOURS must be a number of hours (0 = off)"))
 		} else {
 			s.ChatCleanupHours = h
 		}
 	}
-	if v := strings.TrimSpace(os.Getenv("API_ID")); v != "" {
+	if v := get("API_ID"); v != "" {
 		if n, err := strconv.Atoi(v); err != nil || n <= 0 {
 			errs = append(errs, errors.New("API_ID must be a number (from my.telegram.org)"))
 		} else {
 			s.APIID = n
 		}
 	}
-	s.APIHash = strings.TrimSpace(os.Getenv("API_HASH"))
-	if v := strings.TrimSpace(os.Getenv("HEALTH_PORT")); v != "" {
-		if n, err := strconv.Atoi(v); err != nil || n < 0 || n > 65535 {
-			errs = append(errs, errors.New("HEALTH_PORT must be a port number (0 = off)"))
-		} else {
-			s.HealthPort = n
-		}
-	}
+	s.APIHash = get("API_HASH")
 	s.LogReportHours = 6
-	if v := strings.TrimSpace(os.Getenv("LOG_REPORT_HOURS")); v != "" {
+	if v := get("LOG_REPORT_HOURS"); v != "" {
 		if h, err := strconv.ParseFloat(v, 64); err != nil || h < 0 {
 			errs = append(errs, errors.New("LOG_REPORT_HOURS must be a number of hours (0 = off)"))
 		} else {

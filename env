@@ -1,0 +1,37 @@
+# Argo (Go): zmienne srodowiskowe. Wypelnij trzy wymagane, reszta jest opcjonalna.
+# Puste pole = wartosc domyslna. Bez cudzyslowow.
+
+# --- WYMAGANE ---
+BOT_TOKEN=
+OWNER_ID=
+DATABASE_URL=postgresql://uzytkownik:haslo@postgres:5432/argo
+
+# --- Logi dla tworcow (opcjonalne) ---
+# Czat dev logu (start/stop, bledy, raporty logow). Puste = twoj czat prywatny.
+DEV_LOG_CHAT=
+# Temat (topic) dla DEV_LOG_CHAT, jesli to forum.
+DEV_LOG_THREAD_ID=
+# Czat logu uzytkownikow (zmiany rol, gbany). Puste = dev log.
+LOG_CHAT_ID=
+LOG_THREAD_ID=
+# DEBUG, INFO, WARNING lub ERROR
+LOG_LEVEL=INFO
+# Co ile godzin plik .txt z logami idzie na dev log. 0 = wylaczone.
+LOG_REPORT_HOURS=6
+
+# --- Zachowanie bota (opcjonalne) ---
+# Co ile godzin sprawdzac zapisane czaty. 0 = wylaczone.
+CHAT_CLEANUP_HOURS=24
+# Znaki zaczynajace komende.
+COMMAND_PREFIXES=/!
+# Czat odwolan dla zbanowanych (z @) i link w /start.
+SUPPORT_CHAT_USERNAME=@ArgoRobotSupport
+GITHUB_URL=https://github.com/R0Xofficial/ArgoRobot
+
+# --- MTProto dla /zombies (opcjonalne, z my.telegram.org) ---
+API_ID=
+API_HASH=
+
+# --- Monitoring ---
+# Port dla GET /health. 0 = wylaczone.
+HEALTH_PORT=8080

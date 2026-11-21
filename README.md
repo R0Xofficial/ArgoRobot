@@ -72,8 +72,9 @@ Differences from the Python version that come from what is not ported yet:
   passed on untouched, as in Python.
 * The log report names every line `bot` or `usage` (commands) instead of the name of the Python logger.
 
-* `/gban`, `/ungban` and the federation commands answer in English only (as the Python modules do); `/gstat` and `/gbans`
-  use the chat language.
+* `/gban` and `/ungban` (staff only) answer in English, as in Python; `/gstat` and `/gbans` use the chat language. Most federation
+  commands (`/chatfed`, `/fedinfo`, ...) are translated, but the federation event notices ("New FedBan", the log lines) are
+  English, again as in Python.
 * The join blacklists take triggers as plain words with the wildcards of the blacklist; `exact:`/`prefix:` are not parsed there.
 * The picture captcha (`/captchamode text2`) is drawn with a small built-in dot-matrix font (the Python version uses
   Pillow and the system fonts), so it always works but looks different.
@@ -125,8 +126,31 @@ Docker: `docker compose up -d --build`. The Go version lives on its own branch, 
 are the ones of this branch. The variables are the same as in the Python version.
 
 `.gitignore` keeps `.env`, `data/` and build output out of git; `vendor/` is meant to be committed (or delete it and use `go mod download`).
-Health check: set `HEALTH_PORT` (the compose file uses 8080) and `GET /health` answers 200 when the database is reachable, else 503; the
-compose healthcheck calls `argo -health`. `.github/workflows/ci.yml` runs gofmt, vet and the tests (with a throw-away PostgreSQL) on every push.
+`.github/workflows/ci.yml` runs gofmt, vet and the tests (with a throw-away PostgreSQL) on every push.
+
+## Environment variables
+
+Read from the environment or from a `.env` file (the environment wins). The names are those of the Python version.
+
+| Variable | Needed | Default | Meaning |
+|---|---|---|---|
+| `BOT_TOKEN` | yes | | Token from BotFather |
+| `OWNER_ID` | yes | | Telegram id of the owner (root of the bot) |
+| `DATABASE_URL` | yes | | PostgreSQL, e.g. `postgresql://user:pass@host:5432/argo` |
+| `DEV_LOG_CHAT` | no | owner's private chat | Chat for the developer log (start/stop, errors, log reports) |
+| `DEV_LOG_THREAD_ID` | no | | Topic of `DEV_LOG_CHAT`, if it is a forum |
+| `LOG_CHAT_ID` | no | developer log | Chat for the user log (staff changes, global bans) |
+| `LOG_THREAD_ID` | no | | Topic of `LOG_CHAT_ID` |
+| `LOG_LEVEL` | no | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `LOG_REPORT_HOURS` | no | `6` | How often the log goes to the developer log as a `.txt` file; `0` = off |
+| `CHAT_CLEANUP_HOURS` | no | `24` | How often the stored chats are checked against Telegram; `0` = off |
+| `COMMAND_PREFIXES` | no | `/!` | Characters that start a command |
+| `SUPPORT_CHAT_USERNAME` | no | `@ArgoRobotSupport` | Appeal chat shown to banned people and in `/start` (may be empty) |
+| `GITHUB_URL` | no | the project's GitHub | Link shown by `/start` (http or https) |
+| `API_ID`, `API_HASH` | no | | From my.telegram.org; with both set `/zombies` lists whole chats through MTProto |
+| `LOCALES_DIR` | no | `locales` | Folder with the language files (`/app/locales` in the image) |
+| `TELEGRAM_API_URL` | no | api.telegram.org | A local Bot API server (and the tests) |
+| `TEST_DATABASE_URL` | tests | local test database | **Wiped** by `go test`, never the real one |
 
 ## Existing database
 

@@ -31,9 +31,6 @@ var allowedUpdates = []string{
 const stopStepTimeout = 8 * time.Second // what a step that talks to Telegram may take while the bot stops
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "-health" {
-		os.Exit(checkHealth())
-	}
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "Argo:", err)
 		os.Exit(1)
@@ -174,7 +171,6 @@ func run() error {
 	go app.RunCleanupSchedule(ctx, cfg.ChatCleanupHours)
 	go app.RunNightSweeper(ctx, bot)
 	go app.RunCaptchaSweeper(ctx, bot)
-	serveHealth(ctx, cfg.HealthPort, database.Pool.Ping)
 	go app.RunLogReport(ctx, cfg.LogReportHours) // the log, as a file, to the developer log
 
 	<-ctx.Done()
