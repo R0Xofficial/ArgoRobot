@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: argorobot
+    container_name: argorobot-go
     restart: unless-stopped
     init: true
     stop_grace_period: 30s
