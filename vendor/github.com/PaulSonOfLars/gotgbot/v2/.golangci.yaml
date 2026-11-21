@@ -1,0 +1,124 @@
+version: "2"
+run:
+  issues-exit-code: 1
+  tests: true
+output:
+  formats:
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
+linters:
+  default: none
+  enable:
+    - asciicheck
+    - bodyclose
+    - copyloopvar
+    - dupl
+    - durationcheck
+    - err113
+    - errcheck
+    - errorlint
+    - exhaustive
+    - forbidigo
+    - forcetypeassert
+    - godot
+    - gomoddirectives
+    - goprintffuncname
+    - gosec
+    - govet
+    - importas
+    - ineffassign
+    - makezero
+    - misspell
+    - nakedret
+    - nilerr
+    - noctx
+    - prealloc
+    - promlinter
+    - staticcheck
+    - tagliatelle
+    - unconvert
+    - unparam
+    - unused
+    - wastedassign
+  settings:
+    errcheck:
+      check-type-assertions: true
+      exclude-functions:
+        - (github.com/PaulSonOfLars/gotgbot/v2.Message).Reply
+        - (net/http.ResponseWriter).Write
+    tagliatelle:
+      case:
+        rules:
+          json: snake
+        use-field-name: true
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - staticcheck
+        text: "ST1012:" # Error naming (for EndGroups/ContinueGroups)
+        path: ext/dispatcher.go
+      - linters:
+          - gomoddirectives # We allow replace directives in the samples/ directory as we want to keep up to date
+          - gosec # We don't use rand for security reasons here
+        path: samples/
+      - linters:
+          - err113
+          - prealloc
+        path: scripts/generate/
+      - linters:
+          - staticcheck
+        text: 'SA1019:'
+      - linters:
+          - staticcheck
+        text: 'QF1008:' # Embedded field lint
+      - linters:
+          - staticcheck
+        text: 'QF1001:' # DeMorgan lint
+        path: scripts/generate
+      - linters:
+          - staticcheck
+        text: 'QF1003:' # Switch lint
+        path: scripts/generate
+      - linters:
+          - staticcheck
+        text: 'QF1012:' # QF1012: Use fmt.Fprintf(...) instead of WriteString(fmt.Sprintf(...))
+        path: scripts/generate
+      - linters:
+          - gosec
+        path: \w*_test.go
+        text: 'G404:'
+      - linters:
+          - gosec
+        text: 'G704:'
+      - linters:
+          - gosec
+        text: 'G703:'
+      - linters:
+          - gosec
+        text: 'G706:'
+      - linters:
+          - staticcheck
+        text: 'S1023:'
+issues:
+  max-same-issues: 0
+  uniq-by-line: true
+severity:
+  default: error
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
