@@ -12,3 +12,6 @@ data/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# vendored dependencies are not used (the Dockerfile downloads them)
+/vendor/
