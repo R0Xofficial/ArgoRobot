@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -14,6 +15,22 @@ import (
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/tg"
 )
+
+// MTProtoVersion names the MTProto library, its version and the API layer it speaks, e.g. "gotd/td v0.166.1 (layer 211)".
+func MTProtoVersion() string {
+	version := "unknown"
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, dep := range info.Deps {
+			if dep.Path == "github.com/gotd/td" {
+				version = dep.Version
+				if dep.Replace != nil && dep.Replace.Version != "" {
+					version = dep.Replace.Version
+				}
+			}
+		}
+	}
+	return fmt.Sprintf("gotd/td %s (layer %d)", version, tg.Layer)
+}
 
 // Full member lists through Telegram's MTProto interface (with gotd/td).
 //

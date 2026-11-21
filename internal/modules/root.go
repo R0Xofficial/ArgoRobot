@@ -300,6 +300,7 @@ func cmdStatus(c *core.Ctx) error {
 		// The versions of Go and of the bot library.
 		"• <b>Go:</b> <code>" + text.Esc(runtime.Version()) + "</code>",
 		"• <b>gotgbot:</b> <code>v2</code>",
+		"• <b>MTProto:</b> <code>" + text.Esc(core.MTProtoVersion()) + "</code>",
 	}
 	c.Say(strings.Join(lines, "\n"))
 	return nil

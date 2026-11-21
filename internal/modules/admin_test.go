@@ -650,6 +650,8 @@ func TestStatus(t *testing.T) {
 	contains(t, got, "• <b>Telegram:</b> <code>")
 	contains(t, got, "• <b>Database:</b> <code>")
 	contains(t, got, "• <b>Go:</b> <code>go")
+	contains(t, got, "• <b>MTProto:</b> <code>gotd/td ")
+	contains(t, got, "(layer ")
 }
 
 func TestLeave(t *testing.T) {

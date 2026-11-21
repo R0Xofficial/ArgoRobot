@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/gotd/td/tg"
@@ -78,5 +79,13 @@ func TestListMembersGroupAndErrors(t *testing.T) {
 	big := &fakeMT{total: 100000, pages: [][]tg.UserClass{{&tg.User{ID: 1}}, {&tg.User{ID: 2}}, {&tg.User{ID: 3}}}}
 	if got, _ := listMembers(context.Background(), big, -1000000000001, 2); len(got) != 2 {
 		t.Errorf("%d members", len(got))
+	}
+}
+
+func TestMTProtoVersion(t *testing.T) {
+	got := MTProtoVersion()
+	t.Log(got)
+	if !strings.HasPrefix(got, "gotd/td ") || !strings.Contains(got, " (layer ") {
+		t.Errorf("version line: %q", got)
 	}
 }
