@@ -185,7 +185,7 @@
   "approves.this_user_was_not_approved_in": "This user was not approved in this chat.",
   "approves.unapprove_all": "Unapprove all",
   "approves.unapprove_all_approved_users_of_this": "Unapprove all <b>{count}</b> approved users of this chat? This can't be undone.",
-  "approves.was_approved_locks_blacklists_antiflood_and": "{who} was <b>approved</b>{by}\nLocks, blacklists, antiflood and global and federation bans no longer apply to them here.",
+  "approves.was_approved_locks_blacklists_antiflood_and": "{who} was <b>approved</b>{by}\nLocks, blacklists, antiflood, global bans and federation bans no longer apply to them here.",
   "backups.about": "\nSave what this chat has set up, notes, filters, blacklists, rules, welcome messages, locks, warns, approved users and settings, in a file. Put it back in another chat, or in this one after a mistake.\n\nEverything goes by default, or name the items you want: /export notes approves. A file can hold several items; /import takes what it finds and you can pick from it the same way.\n\n/import adds what is missing and leaves what the chat already has alone. Add overwrite to replace the chat's own entries of those items with the file's.\n\nThe file is sent to you in private, so start a chat with me first. Only the owner of the chat can use these commands. Anything in a file that doesn't look right is skipped, and I tell you how many.\n",
   "backups.added": "{count} added",
   "backups.already_there": ", {kept} already there",
