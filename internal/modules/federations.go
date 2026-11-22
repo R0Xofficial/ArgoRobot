@@ -29,6 +29,7 @@ const (
 	cbFedTransfer      = "fx:"
 	cbFedPromote       = "fp:"
 	cbFedReason        = "fr:"
+	cbFedAdmins        = "fa:"
 	reasonTTL          = 5 * time.Minute // how long an "Update reason?" question stays valid
 )
 
@@ -69,6 +70,7 @@ func registerFederations(r *core.Router) {
 	r.Button(cbFedTransfer, cbFedTransferButton)
 	r.Button(cbFedPromote, cbFedPromoteButton)
 	r.Button(cbFedReason, cbFedReasonButton)
+	r.Button(cbFedAdmins, cbFedAdminsButton)
 
 	core.RegisterInfoNotes("federations", fedInfoNotes)
 }
@@ -507,6 +509,9 @@ func cmdFeddemote(c *core.Ctx) error {
 }
 
 func cmdFeddemoteme(c *core.Ctx) error {
+	if !privateOnly(c) {
+		return nil
+	}
 	user := person(c)
 	if user == nil {
 		return nil
@@ -700,7 +705,7 @@ func fedFileRows(bans []*core.FedBan) []core.BanFileRow {
 }
 
 func cmdFedexport(c *core.Ctx) error {
-	user, f := ownFed(c, false)
+	user, f := ownFed(c, true)
 	if f == nil {
 		return nil
 	}
@@ -736,7 +741,7 @@ func cmdFedexport(c *core.Ctx) error {
 }
 
 func cmdFedimport(c *core.Ctx) error {
-	user, f := ownFed(c, false)
+	user, f := ownFed(c, true)
 	if f == nil {
 		return nil
 	}
@@ -1209,8 +1214,10 @@ func cmdFedinfo(c *core.Ctx) error {
 	} else {
 		lines = append(lines, "Not subscribed to any federation.")
 	}
-	c.Say(strings.Join(lines, "\n"))
-	return nil
+	_, err := c.Reply(strings.Join(lines, "\n"), core.Keyboard([]gotgbot.InlineKeyboardButton{
+		fedBtn(c.T("federations.button.federation_admins"), cbFedAdmins+f.ID),
+	}))
+	return err
 }
 
 func subName(c *core.Ctx, id string) string {
@@ -1220,11 +1227,9 @@ func subName(c *core.Ctx, id string) string {
 	return c.T("common.unknown")
 }
 
-func cmdFedadmins(c *core.Ctx) error {
-	f := resolveFed(c, c.Args)
-	if f == nil {
-		return nil
-	}
+// fedAdminsText is the owner and the admins of a federation, as /fedadmins and the Federation Admins button of
+// /fedinfo show them.
+func fedAdminsText(c *core.Ctx, f *core.Federation) string {
 	lines := []string{c.T("federations.admins_of", core.V{"name": text.Esc(f.Name)}), fedItem(c.T("common.owner"), fedOwnerLink(f))}
 	admins, _ := c.App.FedAdmins(c.Ctx, f.ID)
 	for _, a := range admins {
@@ -1233,7 +1238,33 @@ func cmdFedadmins(c *core.Ctx) error {
 	if len(lines) == 2 {
 		lines = append(lines, "It has no other admins.")
 	}
-	c.Say(strings.Join(lines, "\n"))
+	return strings.Join(lines, "\n")
+}
+
+func cmdFedadmins(c *core.Ctx) error {
+	f := resolveFed(c, c.Args)
+	if f == nil {
+		return nil
+	}
+	c.Say(fedAdminsText(c, f))
+	return nil
+}
+
+func cbFedAdminsButton(c *core.Ctx) error {
+	if c.Msg == nil {
+		c.Answer(c.T("common.this_button_is_no_longer_valid"), true)
+		return nil
+	}
+	f, err := c.App.GetFed(c.Ctx, strings.ToLower(strings.TrimPrefix(c.Cb.Data, cbFedAdmins)))
+	if err != nil {
+		return err
+	}
+	if f == nil {
+		c.Answer(c.T("federations.that_federation_no_longer_exists"), true)
+		return nil
+	}
+	c.Answer("", false)
+	c.Say(fedAdminsText(c, f))
 	return nil
 }
 

@@ -40,6 +40,14 @@ func TestFederationLifecycle(t *testing.T) {
 	contains(t, got, "My Federation")
 	contains(t, got, id)
 	contains(t, got, "Not subscribed")
+	// the Federation Admins button shows the same list as /fedadmins
+	infoCalls := e.Fake.Calls("sendMessage")
+	markup := infoCalls[len(infoCalls)-1].P["reply_markup"]
+	contains(t, markup, "Federation Admins")
+	contains(t, markup, "fa:"+id)
+	e.Press(alice.ID, bob, "fa:"+id)
+	contains(t, lastText(t, e), "My Federation")
+	contains(t, lastText(t, e), "It has no other admins.")
 	e.Send(pm(alice, "/renamefed Renamed"))
 	contains(t, lastText(t, e), "Renamed")
 	e.Send(pm(alice, "/myfeds"))
@@ -228,6 +236,8 @@ func TestFedPromoteTransferDelete(t *testing.T) {
 	contains(t, lastText(t, e), "Bob")
 	e.Send(pm(bob, "/myfeds"))
 	contains(t, lastText(t, e), "(Admin)")
+	e.Send(Msg{Chat: chat, From: bob, Text: "/feddemoteme " + id})
+	contains(t, lastText(t, e), "private chat")
 	e.Fake.Reset()
 	e.Send(pm(bob, "/feddemoteme "+id))
 	answered(t, e, "no longer an admin")
@@ -259,6 +269,11 @@ func TestFedPromoteTransferDelete(t *testing.T) {
 
 func TestFedFilesAndClear(t *testing.T) {
 	e, id := fedSetup(t)
+	// exporting and importing the ban list is for the private chat only
+	e.Send(Msg{Chat: chat, From: alice, Text: "/fedexport"})
+	contains(t, lastText(t, e), "private chat")
+	e.Send(Msg{Chat: chat, From: alice, Text: "/fedimport"})
+	contains(t, lastText(t, e), "private chat")
 	e.Send(pm(alice, "/fedexport"))
 	contains(t, lastText(t, e), "no bans to export")
 	e.Fake.SetFile("fedf", []byte("101,spam\n102,\n10,the owner\n"))
