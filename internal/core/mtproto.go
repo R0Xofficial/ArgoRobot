@@ -109,11 +109,11 @@ func (a *App) memberLister() MemberLister {
 	defer s.mu.Unlock()
 	if err != nil {
 		s.failedAt = time.Now()
-		slog.Warn("MTProto client could not connect", "err", err)
+		slog.Warn("MTProto client could not connect: "+err.Error(), "module", "core.mtproto")
 		return nil
 	}
 	s.lister = c
-	slog.Info("MTProto client connected")
+	slog.Info("MTProto client connected", "module", "core.mtproto")
 	return c
 }
 

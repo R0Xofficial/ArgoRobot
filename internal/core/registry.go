@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sort"
 	"strings"
@@ -82,6 +83,7 @@ func (r *Router) Module(name, description string, opts ...ModuleOption) {
 		info = old
 	} else {
 		reg.modules[name] = info
+		slog.Info("Loaded module: "+name, "module", "main")
 	}
 	reg.mu.Unlock()
 	r.current = name
@@ -158,7 +160,7 @@ func (a *App) LoadModuleState(ctx context.Context) error {
 		if m, ok := reg.modules[name]; ok && !m.Protected {
 			m.enabled = enabled
 			if !enabled {
-				slog.Info("Module is disabled (stored state)", "module", name)
+				slog.Info(fmt.Sprintf("Module '%s' is disabled (stored state)", name), "module", "core.registry")
 			}
 		}
 		reg.mu.Unlock()
@@ -184,7 +186,7 @@ func (a *App) SetModuleEnabled(ctx context.Context, name string, enabled bool) (
 	m.enabled = enabled
 	reg.mu.Unlock()
 	_, err = a.DB.Exec(ctx, `INSERT INTO modules (name, enabled) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET enabled = EXCLUDED.enabled`, name, enabled)
-	slog.Info("Module switched", "module", name, "enabled", enabled)
+	slog.Info(fmt.Sprintf("Module '%s' %s", name, map[bool]string{true: "enabled", false: "disabled"}[enabled]), "module", "core.registry")
 	return true, err
 }
 

@@ -106,6 +106,7 @@ func run() error {
 	if err := database.Migrate(ctx); err != nil {
 		return fmt.Errorf("could not prepare the database: %w", err)
 	}
+	slog.Info("Database ready", "module", "core.database")
 
 	bot, err := gotgbot.NewBot(cfg.BotToken, &gotgbot.BotOpts{
 		DisableTokenCheck: true, // checked below, with retries
@@ -136,11 +137,13 @@ func run() error {
 	}); err != nil {
 		return err
 	}
-	slog.Info("Authorized", "username", bot.Username, "id", bot.Id)
+	slog.Info(fmt.Sprintf("Authorized as @%s (id=%d)", bot.Username, bot.Id))
 
 	app := core.NewApp(cfg, database, bot)
 	app.LogBuffer = logBuf
 	modules.Register(app)
+	registered, _ := app.CountModules()
+	slog.Info(fmt.Sprintf("Module discovery finished: %d loaded, 0 failed", registered), "module", "main")
 	if err := app.LoadModuleState(ctx); err != nil {
 		return fmt.Errorf("could not load the module switches: %w", err)
 	}
@@ -167,7 +170,7 @@ func run() error {
 	}); err != nil {
 		return fmt.Errorf("could not start polling: %w", err)
 	}
-	slog.Info("Polling for updates", "types", strings.Join(allowedUpdates, ", "))
+	slog.Info("Requesting update types: " + strings.Join(allowedUpdates, ", "))
 
 	go app.RunCleanupSchedule(ctx, cfg.ChatCleanupHours)
 	go app.RunNightSweeper(ctx, bot)
@@ -178,7 +181,7 @@ func run() error {
 
 	// The notice goes first, and every step that talks to Telegram has a time limit: the container is killed when
 	// stopping takes too long (stop_grace_period), and a slow Telegram must not eat that time.
-	slog.Info("Shutting down")
+	slog.Info("Shutting down", "module", "core.shutdown")
 	stopCtx, cancel := context.WithTimeout(context.Background(), stopStepTimeout)
 	devLog(stopCtx, app, "Bot stopped.")
 	app.SendLogReport(stopCtx) // the last report, with everything since the previous one
@@ -200,7 +203,7 @@ func retryDB(ctx context.Context, fn func() error) error {
 		if err = fn(); err == nil {
 			return nil
 		}
-		slog.Warn("The database is not reachable yet", "err", err, "attempt", attempt)
+		slog.Warn(fmt.Sprintf("Database not reachable (attempt %d/6): %v", attempt, err), "module", "core.database")
 		select {
 		case <-time.After(3 * time.Second):
 		case <-ctx.Done():
