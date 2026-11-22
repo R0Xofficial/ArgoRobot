@@ -45,9 +45,13 @@ class LoggingMiddleware(BaseMiddleware):
         if message and message.text and message.text.startswith(tuple(settings.COMMAND_PREFIXES)):
             user = message.from_user
             thread = f" thread={message.message_thread_id}" if message.is_topic_message else ""
-            log.info(
+            # The log line carries the module that owns the command: "... | modules.gbans | command=/fban ..."
+            word = message.text.split()[0]
+            found = disabled.lookup(word.split("@")[0])
+            logger = logging.getLogger(f"modules.{found[1]}") if found and found[1] else log
+            logger.info(
                 "command=%s user=%s (@%s) chat=%s [%s]%s",
-                message.text.split()[0],
+                word,
                 user.id if user else "?",
                 user.username if user else "-",
                 message.chat.id,
