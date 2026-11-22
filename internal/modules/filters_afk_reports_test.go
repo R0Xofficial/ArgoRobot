@@ -113,7 +113,7 @@ func TestAfk(t *testing.T) {
 func TestReporting(t *testing.T) {
 	e := setup2(t)
 	e.Fake.SetMember(chat, carol.ID, carol.Name, "member", nil)
-	e.Send(Msg{Chat: chat, From: bob, Text: "/report spam"})
+	e.Send(Msg{Chat: chat, From: bob, Text: "/report"})
 	contains(t, lastText(t, e), "Reply to the message")
 	e.Fake.Reset()
 	spam := &Msg{Chat: chat, From: carol, Text: "buy things now"}
@@ -123,7 +123,8 @@ func TestReporting(t *testing.T) {
 	}
 	var alerts int
 	for _, c := range e.Fake.Calls("sendMessage") {
-		if c.P["chat_id"] == itoa(alice.ID) && strings.Contains(c.P["text"], "buy things now") && strings.Contains(c.P["text"], "ads") {
+		if c.P["chat_id"] == itoa(alice.ID) && strings.Contains(c.P["text"], "buy things now") && strings.Contains(c.P["text"], "ads") &&
+			strings.Contains(c.P["text"], "[<code>"+itoa(carol.ID)+"</code>]") && strings.Contains(c.P["text"], "[<code>"+itoa(bob.ID)+"</code>]") {
 			alerts++
 		}
 	}
@@ -154,5 +155,52 @@ func TestReporting(t *testing.T) {
 	e.Send(Msg{Chat: dave.ID, Type: "private", From: alice, Text: "/reports off"})
 	if on, _ := e.App.ReportAlertsOn(e.Ctx(), alice.ID); on {
 		t.Fatal("alerts still on")
+	}
+}
+
+// /report <user> [reason] works without replying to anything: the user can be a @username or an id.
+func TestReportNamedUser(t *testing.T) {
+	e := setup2(t)
+	e.Fake.SetMember(chat, carol.ID, carol.Name, "member", nil)
+	e.Send(Msg{Chat: chat, From: bob, Text: "hello"}) // now the bot knows Bob
+	e.Fake.Reset()
+	e.Send(Msg{Chat: chat, From: carol, Text: "/report @bobby_x spamming  links"})
+	if !said(e, "Reported") || !said(e, "to the admins.") {
+		t.Fatalf("no notice: %v", sent(e))
+	}
+	contains(t, lastText(t, e), "Bob")
+	contains(t, lastText(t, e), "[<code>"+itoa(bob.ID)+"</code>]") // the notice shows the id of whoever was reported
+	var alerts int
+	for _, c := range e.Fake.Calls("sendMessage") {
+		if c.P["chat_id"] == itoa(alice.ID) && strings.Contains(c.P["text"], "spamming links") && strings.Contains(c.P["text"], "Bob") && !strings.Contains(c.P["text"], "Message:") &&
+			strings.Contains(c.P["text"], "[<code>"+itoa(bob.ID)+"</code>]") && strings.Contains(c.P["text"], "[<code>"+itoa(carol.ID)+"</code>]") {
+			alerts++
+		}
+	}
+	if alerts != 1 {
+		t.Fatalf("admin alerts: %d in %v", alerts, sent(e))
+	}
+
+	// The cooldown is the same as for a reply.
+	e.Send(Msg{Chat: chat, From: carol, Text: "/report @bobby_x again"})
+	contains(t, lastText(t, e), "just sent a report")
+
+	// By id, without a reason.
+	e.Fake.Reset()
+	e.Send(Msg{Chat: chat, From: dave, Text: "/report " + itoa(bob.ID)})
+	if !said(e, "to the admins.") {
+		t.Fatalf("report by id: %v", sent(e))
+	}
+
+	// Admins, yourself and unknown people cannot be reported, and a bare /report still asks for a reply.
+	e.Fake.Reset()
+	e.Send(Msg{Chat: chat, From: bob, Text: "/report " + itoa(alice.ID) + " bad"})
+	contains(t, lastText(t, e), "can't report an admin")
+	e.Send(Msg{Chat: chat, From: bob, Text: "/report @bobby_x"})
+	contains(t, lastText(t, e), "can't report yourself")
+	e.Fake.Reset()
+	e.Send(Msg{Chat: chat, From: carol, Text: "/report @nobody_here_1 hi"})
+	if said(e, "to the admins.") {
+		t.Fatalf("reported someone nobody knows: %v", sent(e))
 	}
 }

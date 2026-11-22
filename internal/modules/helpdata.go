@@ -391,6 +391,7 @@ var helpData = map[string]*core.Help{
 		About: "reporting.about",
 		Entries: []core.HelpEntry{
 			{Usage: "/report [reason]", Description: "reporting.help.reply_to_a_message_to"},
+			{Usage: "/report <user> [reason]", Description: "reporting.help.report_a_user_without_replying"},
 			{Usage: "@admin", Description: "reporting.help.reply_to_a_message_and"},
 			{Usage: "/reports [on|off]", Description: "reporting.help.in_a_group_turn_reporting", Label: "common.admins"},
 		},

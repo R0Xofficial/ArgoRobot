@@ -89,7 +89,7 @@ func (b *LogBuffer) Handle(ctx context.Context, r slog.Record) error {
 		add(a)
 	}
 	r.Attrs(func(a slog.Attr) bool { add(a); return true })
-	text := sb.String()
+	text := CleanLogText(sb.String())
 	if len(text) > logMaxChars {
 		text = text[:logMaxChars] + " ... (cut)"
 	}

@@ -48,7 +48,7 @@ func setupLogging(level string, report bool) *core.LogBuffer {
 	case "ERROR", "CRITICAL":
 		lvl = slog.LevelError
 	}
-	var h slog.Handler = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lvl})
+	var h slog.Handler = core.NewPrettyHandler(os.Stderr, lvl)
 	var buf *core.LogBuffer
 	if report {
 		buf = core.NewLogBuffer(h)

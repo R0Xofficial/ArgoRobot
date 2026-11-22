@@ -92,7 +92,7 @@ func errorLine(err any) string {
 func BuildErrorReport(what string, err any, u *gotgbot.Update, stack []byte, now time.Time) (caption, name string, data []byte) {
 	now = now.UTC()
 	chat, user := describeContext(u)
-	line := errorLine(err)
+	line := CleanLogText(errorLine(err))
 	caption = "<b>Bot Error Detected!</b>\n\n" +
 		"Error: " + text.Esc(text.Truncate(line, 300)) + "\n" +
 		"In: " + text.Esc(text.Truncate(what, 100)) + "\n" +
@@ -111,7 +111,7 @@ func BuildErrorReport(what string, err any, u *gotgbot.Update, stack []byte, now
 	} else {
 		fmt.Fprintf(&b, "Full error: %v\n(an error returned by the handler, there is no stack to show)\n", err)
 	}
-	return caption, "error_" + now.Format("20060102_150405") + ".txt", []byte(b.String())
+	return caption, "error_" + now.Format("20060102_150405") + ".txt", []byte(CleanLogText(b.String()))
 }
 
 // throttled says whether this error was reported lately; when it was not, it is marked as reported now.

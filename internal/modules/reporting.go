@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -40,16 +41,21 @@ func messageLink(chat gotgbot.Chat, id int64) string {
 	return ""
 }
 
+// withID shows a person or chat the way the reports do: the link or name, then the id.
+func withID(who string, id int64) string {
+	return fmt.Sprintf("%s [<code>%d</code>]", who, id)
+}
+
 func senderLink(c *core.Ctx, m *gotgbot.Message) string {
 	if m.SenderChat != nil {
 		t := m.SenderChat.Title
 		if t == "" {
 			t = c.T("reporting.a_channel")
 		}
-		return "<b>" + text.Esc(t) + "</b>"
+		return withID("<b>"+text.Esc(t)+"</b>", m.SenderChat.Id)
 	}
 	if m.From != nil {
-		return text.UserLink(m.From.Id, core.FullName(m.From))
+		return withID(text.UserLink(m.From.Id, core.FullName(m.From)), m.From.Id)
 	}
 	return c.T("reporting.someone")
 }
@@ -70,8 +76,9 @@ func squash(s string, limit int) string {
 }
 
 // fileReport reports target to the admins. m is what the reporter wrote; explicit is /report (which answers when
-// something is wrong) as opposed to an @admin in passing.
-func fileReport(c *core.Ctx, m, target *gotgbot.Message, reason string, explicit bool) error {
+// something is wrong) as opposed to an @admin in passing. Without a message to report, /report can name the user
+// instead (named): `/report <user> [reason]`.
+func fileReport(c *core.Ctx, m, target *gotgbot.Message, reason string, explicit, named bool) error {
 	chat := m.Chat
 	if !isGroup(chat.Type) {
 		if explicit {
@@ -88,12 +95,43 @@ func fileReport(c *core.Ctx, m, target *gotgbot.Message, reason string, explicit
 		}
 		return nil
 	}
+	var user *core.Target
 	if target == nil {
-		c.Say(c.T("reporting.reply_to_the_message_you_want"))
-		return nil
+		if !named || strings.TrimSpace(c.Args) == "" {
+			c.Say(c.T("reporting.reply_to_the_message_you_want"))
+			return nil
+		}
+		t, err := c.ResolveTarget(true, false)
+		if err != nil {
+			var te *core.TargetError
+			if errors.As(err, &te) {
+				c.Say(te.Msg)
+				return nil
+			}
+			return err
+		}
+		user, reason = t, t.Extra
 	}
 	reporter := m.From
-	if target != m { // an @admin that is no reply calls the admins for the message itself
+	if user != nil {
+		problem := ""
+		switch {
+		case user.ID == c.Bot.Id:
+			problem = c.T("reporting.report_me_i_m_the_one")
+		case user.ID == reporter.Id:
+			problem = c.T("reporting.you_can_t_report_yourself")
+		case c.IsChatAdmin(chat.Id, user.ID):
+			problem = c.T("reporting.you_can_t_report_an_admin")
+		default:
+			if ok, _ := c.App.IsApproved(c.Ctx, chat.Id, user.ID); ok {
+				problem = c.T("reporting.you_can_t_report_an_approved")
+			}
+		}
+		if problem != "" {
+			c.Say(problem)
+			return nil
+		}
+	} else if target != m { // an @admin that is no reply calls the admins for the message itself
 		problem := ""
 		author := target.From
 		switch {
@@ -138,7 +176,21 @@ func fileReport(c *core.Ctx, m, target *gotgbot.Message, reason string, explicit
 	}
 
 	reason = squash(reason, maxReportReason)
-	reported := senderLink(c, target)
+	var reported string
+	answerTo := target
+	if user != nil {
+		name := user.Name
+		if name == "" {
+			name = user.FirstName
+		}
+		if name == "" {
+			name = user.Username
+		}
+		reported = withID(text.UserLink(user.ID, name), user.ID)
+		answerTo = m // no message to report: answer the /report itself
+	} else {
+		reported = senderLink(c, target)
+	}
 	notice := c.T("reporting.reported_to_the_admins", core.V{"reported": reported})
 	if reason != "" {
 		notice += c.T("reporting.reason", core.V{"reason": text.Esc(reason)})
@@ -147,12 +199,13 @@ func fileReport(c *core.Ctx, m, target *gotgbot.Message, reason string, explicit
 	for _, a := range admins[:min(len(admins), maxMentioned)] {
 		notice += fmt.Sprintf("<a href=\"tg://user?id=%d\">​</a>", a.User.Id)
 	}
-	_, _ = c.ReplyTo(target, notice)
-	return alertAdmins(c, chat, target, admins, reporter, reported, reason)
+	_, _ = c.ReplyTo(answerTo, notice)
+	return alertAdmins(c, chat, answerTo, user == nil, admins, reporter, reported, reason)
 }
 
 // alertAdmins sends a private message to each admin who has alerts on (and has started a chat with the bot).
-func alertAdmins(c *core.Ctx, chat gotgbot.Chat, target *gotgbot.Message, admins []gotgbot.MergedChatMember, reporter *gotgbot.User, reported, reason string) error {
+// quote says whether target is the reported message (its text is quoted) or the /report that named the user.
+func alertAdmins(c *core.Ctx, chat gotgbot.Chat, target *gotgbot.Message, quote bool, admins []gotgbot.MergedChatMember, reporter *gotgbot.User, reported, reason string) error {
 	shown := admins[:min(len(admins), maxAlerted)]
 	ids := make([]int64, len(shown))
 	for i, a := range shown {
@@ -168,13 +221,13 @@ func alertAdmins(c *core.Ctx, chat gotgbot.Chat, target *gotgbot.Message, admins
 	}
 	lines := []string{
 		c.T("reporting.new_report_in", core.V{"v": text.Esc(title)}),
-		c.T("reporting.reporter", core.V{"id": text.UserLink(reporter.Id, core.FullName(reporter))}),
+		c.T("reporting.reporter", core.V{"id": withID(text.UserLink(reporter.Id, core.FullName(reporter)), reporter.Id)}),
 		c.T("reporting.reported", core.V{"reported": reported}),
 	}
 	if reason != "" {
 		lines = append(lines, "• <b>Reason:</b> <code>"+text.Esc(reason)+"</code>")
 	}
-	if ex := squash(core.TextOf(target), maxExcerpt); ex != "" {
+	if ex := squash(core.TextOf(target), maxExcerpt); quote && ex != "" {
 		lines = append(lines, "• <b>Message:</b> <code>"+text.Esc(ex)+"</code>")
 	}
 	opts := &gotgbot.SendMessageOpts{ParseMode: "HTML", LinkPreviewOptions: &gotgbot.LinkPreviewOptions{IsDisabled: true}}
@@ -192,7 +245,7 @@ func alertAdmins(c *core.Ctx, chat gotgbot.Chat, target *gotgbot.Message, admins
 }
 
 func cmdReport(c *core.Ctx) error {
-	return fileReport(c, c.Msg, core.RepliedMessage(c.Msg), c.Args, true)
+	return fileReport(c, c.Msg, core.RepliedMessage(c.Msg), c.Args, true, true)
 }
 
 // callsAdmins finds "@admin" / "@admins" as a whole word.
@@ -257,7 +310,7 @@ func watchAdminCall(c *core.Ctx) (bool, error) {
 	if target == nil {
 		target = m
 	}
-	return true, fileReport(c, m, target, removeCalls(body), false)
+	return true, fileReport(c, m, target, removeCalls(body), false, false)
 }
 
 func cmdReports(c *core.Ctx) error {
