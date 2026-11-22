@@ -96,7 +96,7 @@ EXPORT_COOLDOWN = 30.0
 RECENT_SECONDS = 30
 MAX_LIST_CHARS = 3500  # a longer /fedstat list is sent as a file
 RIGHT = "can_change_info"
-CB_DELETE, CB_TRANSFER, CB_PROMOTE, CB_REASON = "fd:", "fx:", "fp:", "fr:"
+CB_DELETE, CB_TRANSFER, CB_PROMOTE, CB_REASON, CB_ADMINS = "fd:", "fx:", "fp:", "fr:", "fa:"
 REASON_TTL = 300.0  # seconds an "Update reason?" question stays valid
 _pending_reasons: dict[tuple[int, int], tuple] = {}  # (chat, message) of a "Update Reason?" question -> what was asked
 
@@ -487,6 +487,8 @@ async def cmd_feddemote(message: Message, command: CommandObject) -> None:
 
 @router.message(cmd("feddemoteme"))
 async def cmd_feddemoteme(message: Message, command: CommandObject) -> None:
+    if not await _private(message):
+        return
     user = await _person(message)
     if user is None:
         return
@@ -617,7 +619,7 @@ async def cmd_unsetfedlog(message: Message) -> None:
 
 @router.message(cmd("fedexport"))
 async def cmd_fedexport(message: Message, command: CommandObject) -> None:
-    mine = await _own_fed(message)
+    mine = await _own_fed(message, private=True)
     if mine is None:
         return
     user, fed = mine
@@ -645,7 +647,7 @@ async def cmd_fedexport(message: Message, command: CommandObject) -> None:
 
 @router.message(cmd("fedimport"))
 async def cmd_fedimport(message: Message, command: CommandObject) -> None:
-    mine = await _own_fed(message)
+    mine = await _own_fed(message, private=True)
     if mine is None:
         return
     user, fed = mine
@@ -949,7 +951,20 @@ async def cmd_fedinfo(message: Message, command: CommandObject) -> None:
             lines.append(f"• {esc(other['name']) if other else tr("common.unknown")} (<code>{sub_id}</code>)")
     else:
         lines.append("Not subscribed to any federation.")
-    await reply(message, "\n".join(lines))
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=tr("federations.button.federation_admins"), callback_data=f"{CB_ADMINS}{fed_id}")]]
+    )
+    await reply(message, "\n".join(lines), reply_markup=keyboard)
+
+
+async def _admins_text(fed: dict[str, Any]) -> str:
+    """The owner and the admins of a federation, as /fedadmins and the Federation Admins button of /fedinfo show them."""
+    lines = [tr("federations.admins_of", name=esc(fed['name'])), _item(tr("common.owner"), _owner_link(fed))]
+    for admin in await federations.admins(fed["fed_id"]):
+        lines.append(f"• {user_link(admin['user_id'], admin['name'])}")
+    if len(lines) == 2:
+        lines.append("It has no other admins.")
+    return "\n".join(lines)
 
 
 @router.message(cmd("fedadmins"))
@@ -957,12 +972,21 @@ async def cmd_fedadmins(message: Message, command: CommandObject) -> None:
     fed = await _resolve_fed(message, command.args or "", message.from_user)
     if fed is None:
         return
-    lines = [tr("federations.admins_of", name=esc(fed['name'])), _item(tr("common.owner"), _owner_link(fed))]
-    for admin in await federations.admins(fed["fed_id"]):
-        lines.append(f"• {user_link(admin['user_id'], admin['name'])}")
-    if len(lines) == 2:
-        lines.append("It has no other admins.")
-    await reply(message, "\n".join(lines))
+    await reply(message, await _admins_text(fed))
+
+
+@router.callback_query(F.data.startswith(CB_ADMINS))
+async def cb_fedadmins(callback: CallbackQuery) -> None:
+    message = callback.message if isinstance(callback.message, Message) else None
+    fed = await federations.get(callback.data[len(CB_ADMINS):].lower())
+    if message is None:
+        await callback.answer(tr("common.this_button_is_no_longer_valid"), show_alert=True)
+        return
+    if fed is None:
+        await callback.answer(tr("federations.that_federation_no_longer_exists"), show_alert=True)
+        return
+    await callback.answer()
+    await reply(message, await _admins_text(fed))
 
 
 @router.message(cmd("fedsubs"))
