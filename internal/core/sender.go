@@ -168,6 +168,7 @@ type SendOpts struct {
 	Label       string                        // for the log
 	Chat        *gotgbot.Chat                 // the chat the message belongs to when sent elsewhere
 	ExtraButton *gotgbot.InlineKeyboardButton // one more button on a row of its own (the captcha button)
+	Alone       bool                          // a message of its own, not an answer to the current message (/permapin)
 }
 
 // SendSaved sends a saved message in answer to the current message, filled in for user. It returns the message sent
@@ -175,6 +176,13 @@ type SendOpts struct {
 func (c *Ctx) SendSaved(user *gotgbot.User, content, mediaType, mediaFileID string, o SendOpts) *gotgbot.Message {
 	if o.Label == "" {
 		o.Label = c.T("sender.saved_message")
+	}
+	if o.Alone {
+		// A made-up message (id 0) has nothing to answer to.
+		made, original := *c.Msg, c.Msg
+		made.MessageId = 0
+		c.Msg = &made
+		defer func() { c.Msg = original }()
 	}
 	var parsed *markup.Parsed
 	if o.Raw {

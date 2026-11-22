@@ -132,7 +132,7 @@ var blacklistActions = []string{"del", "warn", "ban", "kick", "mute", "tban", "t
 func backupItems() []BackupItem {
 	return []BackupItem{
 		{Key: "settings", Label: "Chat settings and the warn limit", aliases: []string{"chat", "chatsettings"}, tables: []backupTable{
-			{name: "chat_settings", columns: cols("staff_help", "b", "gban_enforce", "b", "admin_errors", "b", "anon_admin", "b", "clean_commands", "b", "reports", "b"), single: true},
+			{name: "chat_settings", columns: cols("staff_help", "b", "gban_enforce", "b", "admin_errors", "b", "anon_admin", "b", "clean_commands", "b", "reports", "b", "anti_channel_pin", "b", "clean_linked", "b"), single: true},
 			{name: "warn_settings", columns: cols("warn_limit", "i"), single: true, ranges: map[string][2]int64{"warn_limit": {1, 10}}},
 		}},
 		{Key: "antiflood", Label: "Antiflood settings", aliases: []string{"flood"}, tables: []backupTable{

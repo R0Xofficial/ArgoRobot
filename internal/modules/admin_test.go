@@ -853,3 +853,78 @@ func TestWhitelist(t *testing.T) {
 	e.Send(Msg{Chat: chat, From: dave, Text: "/whitelist", Reply: reply(bob, "x")})
 	nothing(t, e)
 }
+
+func TestPinned(t *testing.T) {
+	e := setup2(t)
+	e.Send(Msg{Chat: chat, From: dave, Text: "/pinned"})
+	want(t, lastText(t, e), "There is no pinned message in this chat.")
+	e.Fake.SetChat(itoa(chat), map[string]any{"id": chat, "type": "supergroup", "title": "Test group",
+		"pinned_message": map[string]any{"message_id": 55, "date": 1, "chat": map[string]any{"id": chat, "type": "supergroup", "title": "Test group"}}})
+	e.Fake.Reset()
+	e.Send(Msg{Chat: chat, From: dave, Text: "/pinned"})
+	c := e.Fake.Calls("sendMessage")
+	if len(c) != 1 || !strings.Contains(c[0].P["reply_parameters"], `"message_id":55`) || !strings.Contains(c[0].P["reply_markup"], "/55") {
+		t.Fatalf("/pinned should answer to the pinned message with a link: %+v", c)
+	}
+}
+
+func TestPermapin(t *testing.T) {
+	e := setup2(t)
+	e.Send(Msg{Chat: chat, From: alice, Text: "/permapin"})
+	contains(t, lastText(t, e), "Use /permapin")
+	e.Send(Msg{Chat: dave.ID, Type: "private", From: dave, Text: "/permapin hi"})
+	e.Fake.Reset()
+	e.Send(Msg{Chat: chat, From: dave, Text: "/permapin hello"})
+	if len(e.Fake.Calls("pinChatMessage")) != 0 {
+		t.Fatal("a member can't use /permapin")
+	}
+	e.Fake.Reset()
+	e.Send(Msg{Chat: chat, From: alice, Text: "/permapin <b>Rules</b> be nice"})
+	s := e.Fake.Calls("sendMessage")
+	if len(s) != 1 || !strings.Contains(s[0].P["text"], "<b>Rules</b> be nice") || s[0].P["reply_parameters"] != "" {
+		t.Fatalf("the message is sent on its own: %+v", s)
+	}
+	if p := e.Fake.Calls("pinChatMessage"); len(p) != 1 || p[0].P["disable_notification"] != "true" {
+		t.Fatalf("pinned quietly: %+v", p)
+	}
+	// A replied-to message works too.
+	e.Send(Msg{Chat: chat, From: alice, Text: "/permapin", Reply: reply(bob, "the rules")})
+	if s = e.Fake.Calls("sendMessage"); len(s) != 2 || !strings.Contains(s[1].P["text"], "the rules") {
+		t.Fatalf("replied text: %+v", s)
+	}
+}
+
+func TestLinkedChannelSwitches(t *testing.T) {
+	e := setup2(t)
+	for _, cmd := range []string{"antichannelpin", "cleanlinked"} {
+		e.Send(Msg{Chat: chat, From: alice, Text: "/" + cmd})
+		contains(t, lastText(t, e), "currently <b>off</b>")
+		e.Send(Msg{Chat: chat, From: alice, Text: "/" + cmd + " maybe"})
+		contains(t, lastText(t, e), "Use /"+cmd+" on")
+		e.Send(Msg{Chat: chat, From: alice, Text: "/" + cmd + " on"})
+		e.Send(Msg{Chat: chat, From: alice, Text: "/" + cmd})
+		contains(t, lastText(t, e), "currently <b>on</b>")
+	}
+	e.Send(Msg{Chat: dave.ID, Type: "private", From: dave, Text: "/cleanlinked on"})
+	contains(t, lastText(t, e), "supergroup")
+
+	e.Fake.Reset()
+	e.Send(Msg{Chat: chat, From: bob, Text: "post of the channel", Extra: map[string]any{"is_automatic_forward": true}})
+	if len(e.Fake.Calls("deleteMessage")) != 1 {
+		t.Fatalf("the forwarded post should be deleted: %+v", e.Fake.Calls("deleteMessage"))
+	}
+	e.Send(Msg{Chat: chat, From: bob, Text: "a normal message"})
+	if len(e.Fake.Calls("deleteMessage")) != 1 {
+		t.Fatal("ordinary messages stay")
+	}
+	e.Send(Msg{Chat: chat, From: bob, Extra: map[string]any{"pinned_message": map[string]any{
+		"message_id": 9, "date": 1, "is_automatic_forward": true, "chat": map[string]any{"id": chat, "type": "supergroup"}}}})
+	if u := e.Fake.Calls("unpinChatMessage"); len(u) != 1 || u[0].P["message_id"] != "9" {
+		t.Fatalf("the automatic pin should be undone: %+v", u)
+	}
+	e.Send(Msg{Chat: chat, From: bob, Extra: map[string]any{"pinned_message": map[string]any{
+		"message_id": 10, "date": 1, "chat": map[string]any{"id": chat, "type": "supergroup"}}}})
+	if len(e.Fake.Calls("unpinChatMessage")) != 1 {
+		t.Fatal("a pin by a person stays")
+	}
+}

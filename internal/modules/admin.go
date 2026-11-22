@@ -33,6 +33,10 @@ func registerAdmin(r *core.Router) {
 	r.Command(cmdAdminlist, "adminlist")
 	r.Command(cmdCleanbluetext, "cleanbluetext")
 	r.Command(cmdPin, "pin")
+	r.Command(cmdPinned, "pinned")
+	r.Command(cmdPermapin, "permapin")
+	r.Command(cmdAntichannelpin, "antichannelpin")
+	r.Command(cmdCleanlinked, "cleanlinked")
 	r.Command(cmdUnpin, "unpin")
 	r.Command(cmdUnpinall, "unpinall")
 	r.Button(cbUnpinall, cbUnpinallPress)
@@ -331,6 +335,108 @@ func cmdCleanbluetext(c *core.Ctx) error {
 }
 
 // --- /pin and /unpin ----------------------------------------------------------------
+
+func cmdPinned(c *core.Ctx) error {
+	if !core.IsGroup(c.Msg.Chat) {
+		c.Say(c.T("common.this_command_only_works_in_groups"))
+		return nil
+	}
+	chat, err := c.Bot.GetChatWithContext(c.Ctx, c.Msg.Chat.Id, nil)
+	if err != nil || chat.PinnedMessage == nil {
+		c.Say(c.T("admin.there_is_no_pinned_message"))
+		return nil
+	}
+	id := chat.PinnedMessage.MessageId
+	var markup *gotgbot.InlineKeyboardMarkup
+	if c.Msg.Chat.Type == "supergroup" {
+		link := "https://t.me/c/" + strings.TrimPrefix(strconv.FormatInt(c.Msg.Chat.Id, 10), "-100") + "/" + strconv.FormatInt(id, 10)
+		if c.Msg.Chat.Username != "" {
+			link = "https://t.me/" + c.Msg.Chat.Username + "/" + strconv.FormatInt(id, 10)
+		}
+		markup = &gotgbot.InlineKeyboardMarkup{InlineKeyboard: [][]gotgbot.InlineKeyboardButton{{{Text: c.T("admin.button.go_to_the_pinned_message"), Url: link}}}}
+	}
+	_, err = c.ReplyToWith(id, c.T("admin.the_pinned_message_is_here"), markup)
+	return err
+}
+
+func cmdPermapin(c *core.Ctx) error {
+	actor := c.BeginChatCommand(core.AuthorizeOpts{Right: pinRight})
+	if actor == nil {
+		return nil
+	}
+	replied := core.RepliedMessage(c.Msg)
+	body := core.ArgsOf(c.Msg, c.Args)
+	media := core.MediaOf(c.Msg)
+	if media == nil {
+		media = core.MediaOf(replied)
+	}
+	if body == "" && replied != nil {
+		body = core.TextOf(replied)
+	}
+	if body == "" && media == nil {
+		c.Say(c.T("admin.use_permapin_lt_text_gt_or"))
+		return nil
+	}
+	if err := c.Validate(body, media != nil); err != nil {
+		return sayMarkupError(c, err)
+	}
+	var kind, fileID string
+	if media != nil {
+		kind, fileID = media.Kind, media.FileID
+	}
+	sent := c.SendSaved(c.User, body, kind, fileID, core.SendOpts{Label: c.T("admin.permanent_pin"), Alone: true})
+	if sent == nil {
+		c.Say(c.T("admin.i_couldn_t_send_that_message"))
+		return nil
+	}
+	_, err := c.Bot.PinChatMessageWithContext(c.Ctx, c.Msg.Chat.Id, sent.MessageId, &gotgbot.PinChatMessageOpts{DisableNotification: true})
+	if err = c.Perform(err, pinRefused); err != nil {
+		return pinFailure(c, err, "pin")
+	}
+	return nil
+}
+
+// linkedSwitch is /antichannelpin and /cleanlinked: a yes/no setting for the chat's linked channel.
+func linkedSwitch(c *core.Ctx, setting, usageKey, onKey, offKey string) error {
+	if c.Msg.Chat.Type != "supergroup" {
+		c.Say(c.T("admin.this_only_works_in_a_supergroup"))
+		return nil
+	}
+	if c.BeginChatCommand(core.AuthorizeOpts{Right: pinRight}) == nil {
+		return nil
+	}
+	usage := c.T(usageKey)
+	arg := strings.ToLower(strings.TrimSpace(c.Args))
+	chatID := c.Msg.Chat.Id
+	if arg == "" {
+		c.Say(c.T("admin.current_setting", core.V{"opt": stateText(c, c.App.Setting(c.Ctx, setting, chatID)), "usage": usage}))
+		return nil
+	}
+	enabled, ok := text.ParseSwitch(arg)
+	if !ok {
+		c.Say(usage)
+		return nil
+	}
+	if err := c.App.SetSetting(c.Ctx, setting, chatID, enabled); err != nil {
+		return err
+	}
+	if enabled {
+		c.Say(c.T(onKey))
+	} else {
+		c.Say(c.T(offKey))
+	}
+	return nil
+}
+
+func cmdAntichannelpin(c *core.Ctx) error {
+	return linkedSwitch(c, "anti_channel_pin", "admin.use_antichannelpin_on_or_antichannelpin_off",
+		"admin.posts_of_the_linked_channel_will", "admin.posts_of_the_linked_channel_stay")
+}
+
+func cmdCleanlinked(c *core.Ctx) error {
+	return linkedSwitch(c, "clean_linked", "admin.use_cleanlinked_on_or_cleanlinked_off",
+		"admin.posts_of_the_linked_channel_will_be_deleted", "admin.posts_of_the_linked_channel_are_kept")
+}
 
 // pinProblem is a sentence for the failures Telegram reports as plain bad requests.
 func pinProblem(c *core.Ctx, err error, action string) string {

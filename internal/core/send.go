@@ -66,6 +66,18 @@ func (c *Ctx) ReplyOpts(msg string, markup *gotgbot.InlineKeyboardMarkup, previe
 	return c.send(chat, msg, opts)
 }
 
+// ReplyToWith is ReplyTo with buttons.
+func (c *Ctx) ReplyToWith(messageID int64, msg string, markup *gotgbot.InlineKeyboardMarkup) (*gotgbot.Message, error) {
+	opts := &gotgbot.SendMessageOpts{ParseMode: parseHTML}
+	if markup != nil {
+		opts.ReplyMarkup = *markup
+	}
+	chat, thread, _ := c.dest(false)
+	opts.MessageThreadId = thread
+	opts.ReplyParameters = &gotgbot.ReplyParameters{MessageId: messageID, AllowSendingWithoutReply: true}
+	return c.send(chat, msg, opts)
+}
+
 // SendPlain sends text to the chat and topic of the message without attaching it to the message.
 func (c *Ctx) SendPlain(msg string) (*gotgbot.Message, error) {
 	opts := &gotgbot.SendMessageOpts{ParseMode: parseHTML}

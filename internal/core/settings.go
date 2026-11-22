@@ -14,13 +14,17 @@ import (
 //	staff_help    whether the bot's staff (Owner, Developers, Sudo) may use the chat's admin commands. On by default.
 //	admin_errors  whether people who are not admins get an answer when they try an admin command. On by default.
 //	anon_admin    whether anonymous admins may use every command without being checked. Off by default.
+//	anti_channel_pin  whether the posts of the linked channel that Telegram pins by itself are unpinned again. Off by default.
+//	clean_linked  whether the posts of the linked channel that Telegram forwards into the chat are deleted. Off by default.
 var settingDefaults = map[string]bool{
-	"staff_help":     true,
-	"gban_enforce":   true,
-	"admin_errors":   true,
-	"anon_admin":     false,
-	"clean_commands": false,
-	"reports":        true,
+	"staff_help":       true,
+	"gban_enforce":     true,
+	"admin_errors":     true,
+	"anon_admin":       false,
+	"clean_commands":   false,
+	"reports":          true,
+	"anti_channel_pin": false,
+	"clean_linked":     false,
 }
 
 type settingsCache struct {

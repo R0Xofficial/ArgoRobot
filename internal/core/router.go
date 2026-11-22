@@ -240,6 +240,7 @@ func (r *Router) Handle(b *gotgbot.Bot, update *gotgbot.Update) {
 		r.connected(c, b)
 		if !c.Edited {
 			defer r.cleanService(c)
+			defer r.linkedChannel(c)
 		}
 		if r.watch(c, true) {
 			return
