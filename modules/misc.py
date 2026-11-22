@@ -150,7 +150,7 @@ def _help_parts(info: registry.ModuleInfo, role: Role | None, section: int | Non
 
     blocks = []
     for usage, description, who in help_index.detailed(info.module, role, chosen):
-        line = f"<code>{esc(usage)}</code>" + (f"  <i>({esc(tr(who))})</i>" if who else "")
+        line = f"<code>{esc(usage)}</code>"
         blocks.append(f"{line}\n{esc(tr(description))}")
     hint = ["", tr("misc.pick_a_section_below_for_the")] if chosen is None and help_index.visible_sections(info.module, role) else []
     notes = [(tr(note[0]), tr(note[1])) for note in getattr(info.module, "HELP_NOTES", ()) if (str(note[2]) if len(note) > 2 else None) == chosen]
