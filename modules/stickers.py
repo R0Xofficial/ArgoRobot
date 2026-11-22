@@ -22,7 +22,7 @@ from core.filters import cmd
 from core.helpers import reply
 from core.targets import replied_message
 from core.text import esc
-from core.i18n import tr
+from core.i18n import english, tr
 
 log = logging.getLogger(__name__)
 
@@ -90,9 +90,10 @@ _TITLE_KIND = {"static": "stickers.title_kind.static", "animated": "stickers.tit
 
 
 def _pack_title(user, kind: str, number: int) -> str:
-    """Like "Ann's sticker kang pack #1" (Telegram allows 64 characters)."""
-    name = (user.first_name or tr("stickers.my")).strip() or tr("stickers.my")
-    tail = tr("stickers.s_kang_pack", v=tr(_TITLE_KIND[kind]), number=number)
+    """Like "Ann's sticker kang pack #1" (Telegram allows 64 characters). Always English, whatever the chat speaks."""
+    with english():
+        name = (user.first_name or tr("stickers.my")).strip() or tr("stickers.my")
+        tail = tr("stickers.s_kang_pack", v=tr(_TITLE_KIND[kind]), number=number)
     return name[: 64 - len(tail)] + tail
 
 
