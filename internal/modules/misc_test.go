@@ -75,6 +75,9 @@ func TestHelpHidesStaffCommands(t *testing.T) {
 	e.Send(private(sudo, "/help gbans"))
 	text = lastText(t, e)
 	contains(t, text, "/gban &lt;user&gt;")
+	if strings.Contains(text, "and up)") || strings.Contains(text, "<i>(") {
+		t.Fatalf("a command is followed by who may use it: %s", text)
+	}
 	if strings.Contains(text, "/gexport") {
 		t.Fatal("Owner-only command shown to sudo")
 	}

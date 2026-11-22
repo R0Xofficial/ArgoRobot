@@ -266,9 +266,6 @@ func helpParts(c *core.Ctx, m helpModule, role core.Role, section int) (string, 
 	var blocks []string
 	for _, d := range m.detailed(c, role, chosen) {
 		line := "<code>" + text.Esc(d.usage) + "</code>"
-		if d.who != "" {
-			line += "  <i>(" + text.Esc(c.T(d.who)) + ")</i>"
-		}
 		blocks = append(blocks, line+"\n"+text.Esc(c.T(d.description)))
 	}
 	var hint []string
