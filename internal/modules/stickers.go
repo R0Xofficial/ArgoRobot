@@ -12,6 +12,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 
 	"argo/internal/core"
+	"argo/internal/i18n"
 	"argo/internal/text"
 )
 
@@ -48,13 +49,13 @@ func packName(userID int64, kind string, number int, bot string) string {
 	return fmt.Sprintf("%s%d_%d_by_%s", stickerKinds[kind], userID, number, bot)
 }
 
-// packTitle is like "Ann's sticker kang pack #1" (Telegram allows 64 characters).
+// packTitle is like "Ann's sticker kang pack #1" (Telegram allows 64 characters). It is English whatever the chat speaks.
 func packTitle(c *core.Ctx, u *gotgbot.User, kind string, number int) string {
 	name := strings.TrimSpace(u.FirstName)
 	if name == "" {
-		name = c.T("stickers.my")
+		name = i18n.English.T("stickers.my")
 	}
-	tail := c.T("stickers.s_kang_pack", core.V{"v": c.T("stickers.title_kind." + kind), "number": number})
+	tail := i18n.English.T("stickers.s_kang_pack", core.V{"v": i18n.English.T("stickers.title_kind." + kind), "number": number})
 	r := []rune(name)
 	if keep := 64 - len([]rune(tail)); keep < len(r) {
 		if keep < 0 {
