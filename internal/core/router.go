@@ -257,7 +257,7 @@ func (r *Router) Handle(b *gotgbot.Bot, update *gotgbot.Update) {
 					}
 					c.Cmd, c.Args = name, args
 					if c.User != nil {
-						slog.Info("command", "command", "/"+name, "user", c.User.Id, "username", c.User.Username, "chat", m.Chat.Id, "type", m.Chat.Type)
+						slog.Info("command", "module", "modules."+cmd.module, "command", "/"+name, "user", c.User.Id, "username", c.User.Username, "chat", m.Chat.Id, "type", m.Chat.Type)
 					}
 					// A chat can switch a command off for its members (the CommandGuard).
 					if !isGroupType(m.Chat.Type) || !c.blocked(name, cmd.module) {
@@ -346,7 +346,7 @@ func (r *Router) Handle(b *gotgbot.Bot, update *gotgbot.Update) {
 				if !c.active(bt.module) || c.Role < bt.min {
 					continue
 				}
-				slog.Info("callback", "data", cb.Data, "user", cb.From.Id, "username", cb.From.Username)
+				slog.Info("callback", "module", "modules."+bt.module, "data", cb.Data, "user", cb.From.Id, "username", cb.From.Username)
 				r.run(c, bt.handler)
 				return
 			}
