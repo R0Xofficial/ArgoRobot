@@ -234,6 +234,52 @@ class CleanServiceMiddleware(BaseMiddleware):
         return kind in greetings.clean_types(await greetings.get(message.chat.id))
 
 
+class LinkedChannelMiddleware(BaseMiddleware):
+    """
+    The two switches for the linked channel of a discussion group (modules/admin.py). Telegram forwards
+    every post of the channel into the chat and pins it by itself; the chat's admins can have me delete
+    those posts (/cleanlinked) or unpin them again (/antichannelpin). Like CleanServiceMiddleware it runs
+    after the other handlers.
+    """
+
+    async def __call__(
+        self,
+        handler: Callable[[Update, dict[str, Any]], Awaitable[Any]],
+        event: Update,
+        data: dict[str, Any],
+    ) -> Any:
+        try:
+            return await handler(event, data)
+        finally:
+            message = event.message
+            if message is not None and message.chat.type == "supergroup":
+                try:
+                    await self._act(message)
+                except TelegramAPIError:
+                    pass  # no right to delete or unpin, or already gone: nothing to do
+                except Exception:
+                    log.debug("Failed to handle a post of the linked channel", exc_info=True)
+
+    @staticmethod
+    async def _act(message) -> None:
+        pinned = getattr(message, "pinned_message", None)
+        forwarded = bool(getattr(message, "is_automatic_forward", False))
+        auto_pinned = pinned is not None and bool(getattr(pinned, "is_automatic_forward", False))
+        if not forwarded and not auto_pinned:
+            return
+        info = registry.get("admin")
+        if info is not None and not info.enabled:
+            return
+        chat_id = message.chat.id
+        if await disabled.module_off(chat_id, "admin"):
+            return
+        if forwarded and await chatsettings.clean_linked(chat_id):
+            await message.delete()
+            return
+        if auto_pinned and await chatsettings.anti_channel_pin(chat_id):
+            await message.bot.unpin_chat_message(chat_id, message_id=pinned.message_id)
+
+
 class ConnectionMiddleware(BaseMiddleware):
     """
     Runs a connected admin's group commands, sent in a private chat, for the group

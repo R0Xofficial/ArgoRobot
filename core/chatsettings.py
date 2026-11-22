@@ -20,6 +20,10 @@ therefore cached in memory:
                 (core/middlewares.py). Off by default; /cleanbluetext.
   reports       whether people may report messages to the admins (modules/reporting.py).
                 On by default; /reports.
+  anti_channel_pin  whether I unpin the posts of the chat's linked channel when Telegram pins
+                them by itself (core/middlewares.py). Off by default; /antichannelpin.
+  clean_linked  whether I delete the posts of the linked channel that Telegram forwards into the
+                chat (core/middlewares.py). Off by default; /cleanlinked.
 """
 
 from core import database
@@ -32,6 +36,8 @@ DEFAULTS = {
     "anon_admin": False,
     "clean_commands": False,
     "reports": True,
+    "anti_channel_pin": False,
+    "clean_linked": False,
 }
 
 _cache: dict[str, dict[int, bool]] = {name: {} for name in DEFAULTS}
@@ -106,6 +112,22 @@ async def reports(chat_id: int) -> bool:
 
 async def set_reports(chat_id: int, enabled: bool) -> None:
     await _set("reports", chat_id, enabled)
+
+
+async def anti_channel_pin(chat_id: int) -> bool:
+    return await _get("anti_channel_pin", chat_id)
+
+
+async def set_anti_channel_pin(chat_id: int, enabled: bool) -> None:
+    await _set("anti_channel_pin", chat_id, enabled)
+
+
+async def clean_linked(chat_id: int) -> bool:
+    return await _get("clean_linked", chat_id)
+
+
+async def set_clean_linked(chat_id: int, enabled: bool) -> None:
+    await _set("clean_linked", chat_id, enabled)
 
 
 def forget(chat_id: int) -> None:

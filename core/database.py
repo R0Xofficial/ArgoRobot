@@ -147,6 +147,9 @@ ALTER TABLE chat_settings ALTER COLUMN admin_errors SET DEFAULT TRUE;  -- I answ
 ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS anon_admin BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS clean_commands BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS reports BOOLEAN NOT NULL DEFAULT TRUE;
+-- The linked channel of a discussion group: unpin its auto-pinned posts / delete its posts (see core/chatsettings.py).
+ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS anti_channel_pin BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS clean_linked BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Antiflood settings of a chat (see core/flood.py). flood_limit and timer_count of 0 mean "off".
 CREATE TABLE IF NOT EXISTS flood_settings (

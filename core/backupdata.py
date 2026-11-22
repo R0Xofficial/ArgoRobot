@@ -96,7 +96,7 @@ def _greeting(row: dict[str, Any]) -> None:
 
 ITEMS: list[Item] = [
     Item("settings", "Chat settings and the warn limit", [
-        Table("chat_settings", {"staff_help": "b", "gban_enforce": "b", "admin_errors": "b", "anon_admin": "b", "clean_commands": "b", "reports": "b"}, single=True),
+        Table("chat_settings", {"staff_help": "b", "gban_enforce": "b", "admin_errors": "b", "anon_admin": "b", "clean_commands": "b", "reports": "b", "anti_channel_pin": "b", "clean_linked": "b"}, single=True),
         Table("warn_settings", {"warn_limit": "i"}, single=True, ranges={"warn_limit": (1, 10)}),
     ], ("chat", "chatsettings")),
     Item("antiflood", "Antiflood settings", [
