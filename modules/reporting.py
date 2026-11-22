@@ -17,7 +17,7 @@ from core.filters import cmd
 from core.helpers import reply
 from core.moderation import GROUP_TYPES
 from core.roles import Role
-from core.targets import replied_message
+from core.targets import Target, TargetError, replied_message, resolve_target
 from core.text import esc, truncate, user_link, SWITCH as _ANSWERS
 from core.i18n import tr
 
@@ -29,6 +29,7 @@ ABOUT = "reporting.about"
 
 HELP = [
     ("/report [reason]", "reporting.help.reply_to_a_message_to"),
+    ("/report <user> [reason]", "reporting.help.report_a_user_without_replying"),
     ("@admin", "reporting.help.reply_to_a_message_and"),
     ("/reports [on|off]", "reporting.help.in_a_group_turn_reporting", "common.admins"),
 ]
@@ -60,13 +61,18 @@ def _message_link(chat, message_id: int) -> str | None:
     return None
 
 
+def _with_id(who: str, ident: int) -> str:
+    """A person or chat as the reports show them: the link or name, then the id."""
+    return f"{who} [<code>{ident}</code>]"
+
+
 def _sender_link(message: Message) -> str:
-    """Who wrote a message, as a link, or the channel or group name."""
+    """Who wrote a message, as a link and an id, or the channel or group name and id."""
     sender_chat = getattr(message, "sender_chat", None)
     if sender_chat is not None:
-        return f"<b>{esc(sender_chat.title or tr("reporting.a_channel"))}</b>"
+        return _with_id(f"<b>{esc(sender_chat.title or tr("reporting.a_channel"))}</b>", sender_chat.id)
     user = message.from_user
-    return user_link(user.id, user.full_name) if user else tr("reporting.someone")
+    return _with_id(user_link(user.id, user.full_name), user.id) if user else tr("reporting.someone")
 
 
 async def _writes_as_admin(message: Message) -> bool:
@@ -92,10 +98,14 @@ def _excerpt(target: Message) -> str:
 
 # --- Filing a report ------------------------------------------------------------------------------
 
-async def _report(message: Message, target: Message | None, reason: str, *, explicit: bool) -> None:
+async def _report(
+    message: Message, target: Message | None, reason: str, *, explicit: bool, command: CommandObject | None = None
+) -> None:
     """
     Report `target` to the admins. `message` is what the reporter wrote. `explicit` is
     /report (which answers when something is wrong) as opposed to an @admin in passing.
+    Without a message to report, /report can name the user instead: `command` is then read for
+    `/report <user> [reason]`.
     """
     chat = message.chat
     if chat.type not in GROUP_TYPES:
@@ -108,12 +118,33 @@ async def _report(message: Message, target: Message | None, reason: str, *, expl
         if explicit:
             await reply(message, tr("reporting.reporting_is_turned_off_in_this"))
         return
+    named: Target | None = None
     if target is None:
-        await reply(message, tr("reporting.reply_to_the_message_you_want"))
-        return
+        if command is None or not (command.args or "").strip():
+            await reply(message, tr("reporting.reply_to_the_message_you_want"))
+            return
+        try:
+            named = await resolve_target(message, command, allow_bots=True)
+        except TargetError as error:
+            await reply(message, str(error))
+            return
+        reason = named.extra
 
     reporter = message.from_user
-    if target is not message:  # an @admin that is no reply calls the admins for the message itself
+    if named is not None:
+        problem = None
+        if named.user_id == message.bot.id:
+            problem = tr("reporting.report_me_i_m_the_one")
+        elif named.user_id == reporter.id:
+            problem = tr("reporting.you_can_t_report_yourself")
+        elif await moderation.is_chat_admin(message.bot, chat.id, named.user_id):
+            problem = tr("reporting.you_can_t_report_an_admin")
+        elif await approvals.is_approved(chat.id, named.user_id):
+            problem = tr("reporting.you_can_t_report_an_approved")
+        if problem:
+            await reply(message, problem)
+            return
+    elif target is not message:  # an @admin that is no reply calls the admins for the message itself
         sender_chat = getattr(target, "sender_chat", None)
         author = target.from_user
         problem = None
@@ -148,31 +179,31 @@ async def _report(message: Message, target: Message | None, reason: str, *, expl
         return
 
     reason = truncate(" ".join(reason.split()), MAX_REASON)
-    reported = _sender_link(target)
+    reported = _sender_link(target) if named is None else _with_id(user_link(named.user_id, named.name or named.first_name or named.username), named.user_id)
     notice = tr("reporting.reported_to_the_admins", reported=reported)
     if reason:
         notice += tr("reporting.reason", reason=esc(reason))
     # Invisible mentions: they notify the admins without cluttering the message.
     notice += "".join(f'<a href="tg://user?id={a.user.id}">​</a>' for a in admins[:MAX_MENTIONED])
     with suppress(TelegramAPIError):
-        await reply(target, notice, link_preview_options=NO_PREVIEW)
+        await reply(target or message, notice, link_preview_options=NO_PREVIEW)  # no message to report: answer the /report itself
 
     await _alert_admins(message, target, admins, reporter, reported, reason)
 
 
-async def _alert_admins(message: Message, target: Message, admins: list[Any], reporter, reported: str, reason: str) -> None:
+async def _alert_admins(message: Message, target: Message | None, admins: list[Any], reporter, reported: str, reason: str) -> None:
     """A private message to each admin who has alerts on (and has started a chat with the bot)."""
     chat = message.chat
     muted = await reports.opted_out(a.user.id for a in admins[:MAX_ALERTED])
-    link = _message_link(chat, target.message_id)
+    link = _message_link(chat, (target or message).message_id)  # the /report itself when no message is named
     lines = [
         tr("reporting.new_report_in", v=esc(chat.title or tr("common.a_chat"))),
-        tr("reporting.reporter", id=user_link(reporter.id, reporter.full_name)),
+        tr("reporting.reporter", id=_with_id(user_link(reporter.id, reporter.full_name), reporter.id)),
         tr("reporting.reported", reported=reported),
     ]
     if reason:
         lines.append(f"• <b>Reason:</b> <code>{esc(reason)}</code>")
-    excerpt = _excerpt(target)
+    excerpt = _excerpt(target) if target is not None else ""
     if excerpt:
         lines.append(f"• <b>Message:</b> <code>{esc(excerpt)}</code>")
     keyboard = (
@@ -191,7 +222,7 @@ async def _alert_admins(message: Message, target: Message, admins: list[Any], re
 
 @router.message(cmd("report"))
 async def cmd_report(message: Message, command: CommandObject) -> None:
-    await _report(message, replied_message(message), command.args or "", explicit=True)
+    await _report(message, replied_message(message), command.args or "", explicit=True, command=command)
 
 
 def _is_call(message: Message) -> bool:
