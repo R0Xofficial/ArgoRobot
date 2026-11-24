@@ -673,7 +673,7 @@ func cmdGstat(c *core.Ctx) error {
 		return nil
 	}
 	targetID, stored := viewer.Id, core.FullName(viewer)
-	if c.Role != core.NoRole && (strings.TrimSpace(c.Args) != "" || core.RepliedMessage(c.Msg) != nil) {
+	if strings.TrimSpace(c.Args) != "" || core.RepliedMessage(c.Msg) != nil { // anyone may look somebody up
 		target, err := c.ResolveTarget(true, false)
 		if err != nil {
 			targetError(c, err)
@@ -699,7 +699,7 @@ func cmdGstat(c *core.Ctx) error {
 	}
 	lines := []string{"<b>" + title + "</b>", c.T("gbans.user_3", core.V{"target_id": text.UserRef(targetID, name)}), ""}
 	if role := c.App.GetRole(c.Ctx, targetID); role != core.NoRole {
-		lines = append(lines, "• <b>Status:</b> <code>"+core.RoleLabel(role, false)+"</code>")
+		lines = append(lines, "This user is a member of my staff and can't have a global ban.")
 	} else if ban != nil {
 		lines = append(lines, "• <b>Status:</b> <code>Banned</code>",
 			"• <b>Reason:</b> <code>"+text.Esc(ban.Reason)+"</code>",
@@ -713,6 +713,9 @@ func cmdGstat(c *core.Ctx) error {
 			} else {
 				lines = append(lines, "• <b>Admin:</b> "+text.UserRef(ban.AdminID, ban.AdminName))
 			}
+		}
+		if support := atName(c.App.Cfg.SupportChatUsername); support != "" {
+			lines = append(lines, "• <b>Support:</b> "+text.Esc(support))
 		}
 	} else {
 		lines = append(lines, "• <b>Status:</b> <code>Not Banned</code>")

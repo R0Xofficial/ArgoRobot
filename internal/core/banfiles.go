@@ -14,7 +14,7 @@ import (
 
 // Ban lists as files: the formats of /fedexport, /fedimport, /gexport and /gimport.
 //
-//	csv      user_id,name,reason,banned_by,banned_at
+//	csv      user_id,name,reason
 //	minicsv  user_id,reason
 //	json     a list of {"user_id": ..., "name": ..., "reason": ...}; a file with one such object per line is read too
 //	human    one line per user, like: Name [123456] - reason
@@ -47,27 +47,18 @@ func ValidBanFormat(f string) bool {
 	return false
 }
 
-func stamp(r BanFileRow) string {
-	if r.CreatedAt.IsZero() {
-		return ""
-	}
-	return r.CreatedAt.UTC().Format("2006-01-02 15:04:05")
-}
-
 // RenderBanExport is (file content, extension) of a ban list.
 func RenderBanExport(rows []BanFileRow, format string) ([]byte, string) {
 	switch format {
 	case "json":
 		type entry struct {
-			UserID   int64  `json:"user_id"`
-			Name     string `json:"name"`
-			Reason   string `json:"reason"`
-			BannedBy string `json:"banned_by"`
-			BannedAt string `json:"banned_at"`
+			UserID int64  `json:"user_id"`
+			Name   string `json:"name"`
+			Reason string `json:"reason"`
 		}
 		list := make([]entry, 0, len(rows))
 		for _, r := range rows {
-			list = append(list, entry{r.UserID, r.Name, r.Reason, r.BannedBy, stamp(r)})
+			list = append(list, entry{r.UserID, r.Name, r.Reason})
 		}
 		var buf bytes.Buffer
 		enc := json.NewEncoder(&buf)
@@ -98,9 +89,9 @@ func RenderBanExport(rows []BanFileRow, format string) ([]byte, string) {
 			_ = w.Write([]string{strconv.FormatInt(r.UserID, 10), r.Reason})
 		}
 	} else {
-		_ = w.Write([]string{"user_id", "name", "reason", "banned_by", "banned_at"})
+		_ = w.Write([]string{"user_id", "name", "reason"})
 		for _, r := range rows {
-			_ = w.Write([]string{strconv.FormatInt(r.UserID, 10), r.Name, r.Reason, r.BannedBy, stamp(r)})
+			_ = w.Write([]string{strconv.FormatInt(r.UserID, 10), r.Name, r.Reason})
 		}
 	}
 	w.Flush()

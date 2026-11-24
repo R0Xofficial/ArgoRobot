@@ -45,21 +45,35 @@ func TestFederationLifecycle(t *testing.T) {
 	markup := infoCalls[len(infoCalls)-1].P["reply_markup"]
 	contains(t, markup, "Federation Admins")
 	contains(t, markup, "fa:"+id)
-	// other people neither get the list from the button nor from the command
-	before := len(e.Fake.Calls("sendMessage"))
-	e.Press(alice.ID, bob, "fa:"+id)
-	if len(e.Fake.Calls("sendMessage")) != before || len(e.Fake.Calls("editMessageReplyMarkup")) != 0 {
-		t.Fatal("only the owner and the admins may use the button")
+	// in a group the list is for the admins of that group: members get neither the command nor the click
+	e.Send(Msg{Chat: chat, From: dave, Text: "/fedadmins " + id})
+	contains(t, lastText(t, e), "Only the admins of this chat")
+	e.Send(Msg{Chat: chat, From: alice, Text: "/fedadmins " + id})
+	contains(t, lastText(t, e), "It has no other admins.")
+	e.Send(Msg{Chat: chat, From: alice, Text: "/fedinfo"})
+	contains(t, e.Fake.Calls("sendMessage")[len(e.Fake.Calls("sendMessage"))-1].P["reply_markup"], "fa:"+id)
+	e.Send(Msg{Chat: chat, From: dave, Text: "/fedinfo " + id})
+	contains(t, e.Fake.Calls("sendMessage")[len(e.Fake.Calls("sendMessage"))-1].P["reply_markup"], "fa:"+id) // everybody sees the button
+	e.Press(chat, dave, "fa:"+id)                                                                            // but a member can't press it
+	if len(e.Fake.Calls("editMessageReplyMarkup")) != 0 {
+		t.Fatal("a member's click must not take the button off")
 	}
+	// in private anyone may, and the button comes off after one click
 	e.Send(pm(bob, "/fedadmins "+id))
-	contains(t, lastText(t, e), "Only the owner and the admins")
-	// the owner's click sends the list and takes the button off, once
-	e.Press(alice.ID, alice, "fa:"+id)
+	contains(t, lastText(t, e), "It has no other admins.")
+	e.PressOn(alice.ID, "private", 555, alice, "fa:"+id)
 	contains(t, lastText(t, e), "My Federation")
 	contains(t, lastText(t, e), "It has no other admins.")
 	if len(e.Fake.Calls("editMessageReplyMarkup")) != 1 {
 		t.Fatalf("the button should come off: %+v", e.Fake.Calls("editMessageReplyMarkup"))
 	}
+	// without an ID: the federation the person owns
+	e.Send(pm(alice, "/fedadmins"))
+	contains(t, lastText(t, e), "My Federation")
+	e.Send(pm(alice, "/fedsubs"))
+	contains(t, lastText(t, e), "My Federation")
+	e.Send(pm(bob, "/fedadmins"))
+	contains(t, lastText(t, e), "don't own a federation")
 	e.Send(pm(alice, "/renamefed Renamed"))
 	contains(t, lastText(t, e), "Renamed")
 	e.Send(pm(alice, "/myfeds"))
@@ -111,12 +125,13 @@ func TestFedBanEnforcement(t *testing.T) {
 	contains(t, lastText(t, e), "not an admin")
 	e.Send(Msg{Chat: chat, From: alice, Text: "/fban 10 me"})
 	contains(t, lastText(t, e), "admin of the federation")
-	e.Send(Msg{Chat: chat, From: alice, Text: "/fban 61 staff"})
 	if err := e.App.SetRole(e.Ctx(), 61, core.Support, 0, "S", ""); err != nil {
 		t.Fatal(err)
 	}
+	// the owner of the federation decides: the bot's staff can be fbanned like anybody else
 	e.Send(Msg{Chat: chat, From: alice, Text: "/fban 61 staff"})
-	contains(t, lastText(t, e), "protected")
+	contains(t, lastText(t, e), "New FedBan")
+	e.Send(Msg{Chat: chat, From: alice, Text: "/unfban 61"})
 	e.Fake.Reset()
 	e.Send(Msg{Chat: chat, From: alice, Text: "/fban 20 spam"})
 	contains(t, lastText(t, e), "New FedBan")
@@ -296,6 +311,10 @@ func TestFedFilesAndClear(t *testing.T) {
 	e.Send(m)
 	answered(t, e, "Imported <b>2</b> bans")
 	answered(t, e, "Skipped <b>1</b>")
+	// an imported ban says so instead of naming the person who ran the import
+	e.Send(pm(alice, "/fstat 101 "+id))
+	contains(t, lastText(t, e), "Banned by:")
+	contains(t, lastText(t, e), "Imported ban")
 	e.Send(pm(alice, "/fedimport nonsense"))
 	contains(t, lastText(t, e), "Use /fedimport")
 	e.Send(pm(alice, "/fedexport json"))

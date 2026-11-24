@@ -268,10 +268,22 @@ func TestGstat(t *testing.T) {
 	contains(t, got, "<code>Banned</code>")
 	contains(t, got, "<code>a reason</code>")
 	contains(t, got, "Sudo Sam")
-	e.Send(Msg{Chat: chat, From: alice, Text: "/gstat 20"}) // not staff: it is about herself
-	contains(t, lastText(t, e), "Not Banned")
-	e.Send(Msg{Chat: chat, From: sudo, Text: "/gstat 40"})
-	contains(t, lastText(t, e), "Sudo")
+	// anyone can look somebody up, but the admin stays hidden
+	e.Send(Msg{Chat: chat, From: alice, Text: "/gstat 20"})
+	got = lastText(t, e)
+	contains(t, got, "<code>Banned</code>")
+	contains(t, got, "<code>a reason</code>")
+	if strings.Contains(got, "Sudo Sam") {
+		t.Fatalf("only staff sees the admin: %q", got)
+	}
+	e.Send(Msg{Chat: chat, From: alice, Text: "/gstat"})
+	contains(t, lastText(t, e), "Your Global Ban Status")
+	// staff can't have a global ban, and it says so
+	e.Send(Msg{Chat: chat, From: alice, Text: "/gstat 40"})
+	contains(t, lastText(t, e), "member of my staff and can't have a global ban")
+	if strings.Contains(lastText(t, e), "<b>Status:</b>") {
+		t.Fatalf("just the sentence: %q", lastText(t, e))
+	}
 }
 
 func TestGimportExport(t *testing.T) {

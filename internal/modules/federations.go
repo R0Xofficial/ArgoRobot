@@ -171,7 +171,7 @@ func ownFed(c *core.Ctx, private bool) (*gotgbot.User, *core.Federation) {
 	return user, f
 }
 
-// resolveFed is the federation an info command is about: the ID given, else the chat's, else the person's own.
+// resolveFed is the federation an info command is about: the ID given, else the one the person owns, else the chat's.
 func resolveFed(c *core.Ctx, arg string) *core.Federation {
 	arg = strings.TrimSpace(arg)
 	if arg != "" {
@@ -189,23 +189,25 @@ func resolveFed(c *core.Ctx, arg string) *core.Federation {
 		}
 		return f
 	}
+	if c.User != nil {
+		if f, _ := c.App.FedOwnedBy(c.Ctx, c.User.Id); f != nil {
+			return f
+		}
+	}
 	if isGroup(c.Msg.Chat.Type) {
 		if f, _ := c.App.ChatFed(c.Ctx, c.Msg.Chat.Id); f != nil {
 			return f
 		}
+		c.Say(c.T("federations.this_chat_is_not_in_a"))
+		return nil
 	}
-	if c.User != nil {
-		mine, _ := c.App.FedsOf(c.Ctx, c.User.Id)
-		switch {
-		case len(mine) == 1:
-			return mine[0]
-		case len(mine) > 1:
-			c.Say(c.T("federations.you_are_in_several_federations_give"))
-			return nil
-		}
-	}
-	c.Say(c.T("federations.this_chat_is_not_in_a"))
+	c.Say(c.T("federations.you_don_t_own_a_federation_2"))
 	return nil
+}
+
+// maySeeFedAdmins: the list of federation admins is for the admins of the chat it is asked in; in private anyone may.
+func maySeeFedAdmins(c *core.Ctx) bool {
+	return c.Msg.Chat.Type == "private" || c.IsChatAdmin(c.Msg.Chat.Id, c.User.Id)
 }
 
 // fedToBanIn is the federation a fed admin acts in: the chat's, or in private the only one they administer.
@@ -741,7 +743,7 @@ func cmdFedexport(c *core.Ctx) error {
 }
 
 func cmdFedimport(c *core.Ctx) error {
-	user, f := ownFed(c, true)
+	_, f := ownFed(c, true)
 	if f == nil {
 		return nil
 	}
@@ -799,7 +801,7 @@ func cmdFedimport(c *core.Ctx) error {
 			kept = append(kept, r)
 		}
 	}
-	added, err := c.App.ImportFedBans(c.Ctx, f.ID, kept, overwrite, user.Id, core.FullName(user))
+	added, err := c.App.ImportFedBans(c.Ctx, f.ID, kept, overwrite)
 	if err != nil {
 		return err
 	}
@@ -827,7 +829,7 @@ func fedProtected(c *core.Ctx, f *core.Federation, t *core.Target) string {
 		return c.T("federations.only_people_can_be_banned_in")
 	case t.ID == c.Bot.Id:
 		return c.T("federations.i_m_not_banning_myself")
-	case core.IsImmune(t.ID) || c.App.GetRole(c.Ctx, t.ID) != core.NoRole:
+	case core.IsImmune(t.ID):
 		return c.T("federations.that_account_is_protected_and_can")
 	}
 	if ok, _ := c.App.IsFedAdmin(c.Ctx, f, t.ID); ok {
@@ -879,7 +881,7 @@ func fedBanHere(c *core.Ctx, userID int64) {
 	if !isGroup(c.Msg.Chat.Type) {
 		return
 	}
-	if m := c.GetMember(chatID, userID); m == nil || !memberPresent(*m) || c.Spared(chatID, userID) {
+	if m := c.GetMember(chatID, userID); m == nil || !memberPresent(*m) || c.FedSpared(chatID, userID) {
 		return
 	}
 	fedBanIn(c, chatID, userID)
@@ -1214,11 +1216,8 @@ func cmdFedinfo(c *core.Ctx) error {
 	} else {
 		lines = append(lines, "Not subscribed to any federation.")
 	}
-	var markup *gotgbot.InlineKeyboardMarkup
-	if ok, _ := c.App.IsFedAdmin(c.Ctx, f, c.User.Id); ok {
-		// Only the owner and the admins may see the list, so only they get the button.
-		markup = core.Keyboard([]gotgbot.InlineKeyboardButton{fedBtn(c.T("federations.button.federation_admins"), cbFedAdmins+f.ID)})
-	}
+	// Everybody sees the button; pressing it is for the admins of the chat (anyone in private) only.
+	markup := core.Keyboard([]gotgbot.InlineKeyboardButton{fedBtn(c.T("federations.button.federation_admins"), cbFedAdmins+f.ID)})
 	_, err := c.Reply(strings.Join(lines, "\n"), markup)
 	return err
 }
@@ -1249,8 +1248,8 @@ func cmdFedadmins(c *core.Ctx) error {
 	if f == nil {
 		return nil
 	}
-	if ok, _ := c.App.IsFedAdmin(c.Ctx, f, c.User.Id); !ok {
-		c.Say(c.T("federations.only_the_owner_and_the_admins"))
+	if !maySeeFedAdmins(c) {
+		c.Say(c.T("federations.only_the_admins_of_this_chat"))
 		return nil
 	}
 	c.Say(fedAdminsText(c, f))
@@ -1270,8 +1269,8 @@ func cbFedAdminsButton(c *core.Ctx) error {
 		c.Answer(c.T("federations.that_federation_no_longer_exists"), true)
 		return nil
 	}
-	if ok, _ := c.App.IsFedAdmin(c.Ctx, f, c.User.Id); !ok {
-		c.Answer(c.T("federations.only_the_owner_and_the_admins"), true)
+	if !maySeeFedAdmins(c) {
+		c.Answer(c.T("federations.only_the_admins_of_this_chat"), true)
 		return nil
 	}
 	c.Answer("", false)
@@ -1330,6 +1329,12 @@ func cmdJoinfed(c *core.Ctx) error {
 		return nil
 	}
 	arg := strings.TrimSpace(c.Args)
+	if arg == "" {
+		// Without an ID: the federation this person owns.
+		if own, _ := c.App.FedOwnedBy(c.Ctx, c.User.Id); own != nil {
+			arg = own.ID
+		}
+	}
 	if !fedIDRE.MatchString(arg) {
 		c.Say(c.T("federations.use_joinfed_lt_fedid_gt"))
 		return nil
@@ -1612,7 +1617,7 @@ func enforceFed(c *core.Ctx, chatID int64, user *gotgbot.User, f *core.Federatio
 
 func fedBanOf(c *core.Ctx, chatID int64, user *gotgbot.User) (*core.Federation, *core.FedBan) {
 	f, ban, err := c.App.EffectiveFedBan(c.Ctx, chatID, user.Id)
-	if err != nil || ban == nil || c.Spared(chatID, user.Id) {
+	if err != nil || ban == nil || c.FedSpared(chatID, user.Id) {
 		return nil, nil
 	}
 	return f, ban
@@ -1749,8 +1754,8 @@ func fedInfoNotes(c *core.Ctx, userID, chatID int64) []string {
 	if ok, _ := c.App.IsFedAdmin(c.Ctx, f, userID); ok {
 		return []string{c.T("federations.this_user_is_a_fed_admin", core.V{"fed": fedName(f)})}
 	}
-	if c.App.GetRole(c.Ctx, userID) != core.NoRole || c.IsChatAdmin(chatID, userID) {
-		return nil // staff and admins are not touched by federation bans: nothing to say
+	if c.IsChatAdmin(chatID, userID) {
+		return nil // admins are not touched by federation bans: nothing to say
 	}
 	banned, ban, _ := c.App.EffectiveFedBan(c.Ctx, chatID, userID)
 	if ban == nil {

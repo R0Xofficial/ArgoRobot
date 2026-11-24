@@ -6,11 +6,20 @@ package core
 // person alone: restricting someone who has just been banned would turn the ban into a mute, and nobody wants a
 // welcome for somebody who is being removed.
 
-// Spared tells whether federation bans leave this person alone in this chat: the bot itself, immune accounts, staff,
-// people approved in the chat and its admins. The whitelist is not here: it protects from global bans only, and a
-// federation ban is avoided by being approved in the chat.
+// Spared tells whether a global ban leaves this person alone in this chat: the bot itself, immune accounts, staff,
+// people approved in the chat and its admins. The whitelist is not here: it protects from global bans only.
 func (c *Ctx) Spared(chatID, userID int64) bool {
-	if userID == c.Bot.Id || IsImmune(userID) || c.App.GetRole(c.Ctx, userID) != NoRole {
+	return c.spared(chatID, userID, true)
+}
+
+// FedSpared is Spared for federation bans: the owner of a federation decides who is banned in it, and that includes the
+// bot's staff, who are banned like anybody else. A federation ban is avoided by being approved in the chat.
+func (c *Ctx) FedSpared(chatID, userID int64) bool {
+	return c.spared(chatID, userID, false)
+}
+
+func (c *Ctx) spared(chatID, userID int64, staff bool) bool {
+	if userID == c.Bot.Id || IsImmune(userID) || staff && c.App.GetRole(c.Ctx, userID) != NoRole {
 		return true
 	}
 	if approved, _ := c.App.IsApproved(c.Ctx, chatID, userID); approved {
@@ -48,7 +57,7 @@ func (c *Ctx) Fbanned(chatID, userID int64) bool {
 		return false
 	}
 	banned, err := f(c.Ctx, chatID, userID)
-	return err == nil && banned && !c.Spared(chatID, userID)
+	return err == nil && banned && !c.FedSpared(chatID, userID)
 }
 
 // BanApplies is either of the two: they are being removed from this chat.

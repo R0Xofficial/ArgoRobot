@@ -630,8 +630,11 @@ func (a *App) FedBanCount(ctx context.Context, id string) (int, error) {
 	return len(ids), nil
 }
 
+// FedImportedBy is what an imported ban says it was banned by: nobody who is here to ask.
+const FedImportedBy = "Imported ban"
+
 // ImportFedBans adds rows. With overwrite the old list goes first. It returns how many were added.
-func (a *App) ImportFedBans(ctx context.Context, id string, rows []GbanRow, overwrite bool, byID int64, byName string) (int, error) {
+func (a *App) ImportFedBans(ctx context.Context, id string, rows []GbanRow, overwrite bool) (int, error) {
 	if overwrite {
 		if _, err := a.DB.Exec(ctx, "DELETE FROM fed_bans WHERE fed_id = $1", id); err != nil {
 			return 0, err
@@ -650,8 +653,8 @@ func (a *App) ImportFedBans(ctx context.Context, id string, rows []GbanRow, over
 			continue
 		}
 		if _, err := a.DB.Exec(ctx, `INSERT INTO fed_bans (fed_id, user_id, name, reason, banned_by, banned_by_name, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, now()) ON CONFLICT (fed_id, user_id) DO NOTHING`,
-			id, r.UserID, nullable(r.Name), clipReason(r.Reason), byID, nullable(byName)); err != nil {
+VALUES ($1, $2, $3, $4, NULL, $5, now()) ON CONFLICT (fed_id, user_id) DO NOTHING`,
+			id, r.UserID, nullable(r.Name), clipReason(r.Reason), FedImportedBy); err != nil {
 			return added, err
 		}
 		a.fedMark(ctx, id, r.UserID, true)
