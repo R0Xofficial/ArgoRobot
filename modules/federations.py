@@ -951,9 +951,12 @@ async def cmd_fedinfo(message: Message, command: CommandObject) -> None:
             lines.append(f"• {esc(other['name']) if other else tr("common.unknown")} (<code>{sub_id}</code>)")
     else:
         lines.append("Not subscribed to any federation.")
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text=tr("federations.button.federation_admins"), callback_data=f"{CB_ADMINS}{fed_id}")]]
-    )
+    keyboard = None
+    if await federations.is_admin(fed, message.from_user.id):
+        # Only the owner and the admins may see the list, so only they get the button.
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text=tr("federations.button.federation_admins"), callback_data=f"{CB_ADMINS}{fed_id}")]]
+        )
     await reply(message, "\n".join(lines), reply_markup=keyboard)
 
 
@@ -972,6 +975,9 @@ async def cmd_fedadmins(message: Message, command: CommandObject) -> None:
     fed = await _resolve_fed(message, command.args or "", message.from_user)
     if fed is None:
         return
+    if not await federations.is_admin(fed, message.from_user.id):
+        await reply(message, tr("federations.only_the_owner_and_the_admins"))
+        return
     await reply(message, await _admins_text(fed))
 
 
@@ -985,7 +991,13 @@ async def cb_fedadmins(callback: CallbackQuery) -> None:
     if fed is None:
         await callback.answer(tr("federations.that_federation_no_longer_exists"), show_alert=True)
         return
+    if not await federations.is_admin(fed, callback.from_user.id):
+        await callback.answer(tr("federations.only_the_owner_and_the_admins"), show_alert=True)
+        return
     await callback.answer()
+    # The button works once: it comes off the /fedinfo message as the list is sent.
+    with suppress(TelegramAPIError):
+        await message.edit_reply_markup(reply_markup=None)
     await reply(message, await _admins_text(fed))
 
 

@@ -589,6 +589,7 @@
   "federations.only_people_can_be_banned_in": "Only people can be banned in a federation.",
   "federations.only_people_can_be_federation_admins": "Only people can be federation admins.",
   "federations.only_the_admins_of_this_federation": "Only the admins of this federation can answer.",
+  "federations.only_the_owner_and_the_admins": "Only the owner and the admins of this federation can see this list.",
   "federations.only_the_owner_of_the_federation": "Only the owner of the federation can do this.",
   "federations.only_the_person_it_is_offered": "Only the person it is offered to can answer. The owner can only decline.",
   "federations.owner": "federation owner",
