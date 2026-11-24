@@ -23,7 +23,7 @@ from aiogram.types import (
 )
 
 from core.banfiles import FORMATS, MAX_IMPORT_BYTES, parse_import, render_export, stamp as _stamp
-from core import approvals, banguard, devnotify, federations, immunity, info_hooks, moderation, roles, users
+from core import approvals, banguard, devnotify, federations, immunity, info_hooks, moderation, users
 from core.federations import FederationError
 from core.help_index import Section
 from core.filters import HasRole, cmd
@@ -209,7 +209,7 @@ async def _admin_event(bot: Bot, fed: dict[str, Any], promoted: bool, user_id: i
 
 
 async def _resolve_fed(message: Message, argument: str, user) -> dict[str, Any] | None:
-    """The federation an info command is about: the ID given, else the chat's, else the person's own."""
+    """The federation an info command is about: the ID given, else the one the person owns, else the chat's."""
     argument = argument.strip()
     if argument:
         if not _FED_ID.match(argument):
@@ -219,19 +219,23 @@ async def _resolve_fed(message: Message, argument: str, user) -> dict[str, Any] 
         if fed is None:
             await reply(message, tr("federations.i_can_t_find_a_federation"))
         return fed
+    if user is not None:
+        fed = await federations.owned_by(user.id)
+        if fed is not None:
+            return fed
     if message.chat.type in GROUP_TYPES:
         fed = await federations.chat_fed(message.chat.id)
         if fed is not None:
             return fed
-    if user is not None:
-        mine = await federations.feds_of(user.id)
-        if len(mine) == 1:
-            return mine[0]
-        if len(mine) > 1:
-            await reply(message, tr("federations.you_are_in_several_federations_give"))
-            return None
-    await reply(message, tr("federations.this_chat_is_not_in_a"))
+        await reply(message, tr("federations.this_chat_is_not_in_a"))
+        return None
+    await reply(message, tr("federations.you_don_t_own_a_federation_2"))
     return None
+
+
+async def _may_see_admins(bot: Bot, chat: Any, user_id: int) -> bool:
+    """The list of federation admins is for the admins of the chat it is asked in; in private anyone may see it."""
+    return chat.type == "private" or await moderation.is_chat_admin(bot, chat.id, user_id)
 
 
 async def _fed_to_ban_in(message: Message, user) -> dict[str, Any] | None:
@@ -676,7 +680,7 @@ async def cmd_fedimport(message: Message, command: CommandObject) -> None:
     status = await reply(message, tr("federations.importing_bans_please_wait", rows=len(rows))) if len(rows) > 2000 else None
     admins = {a["user_id"] for a in await federations.admins(fed["fed_id"])} | {fed["owner_id"], message.bot.id}
     kept = [r for r in rows if r[0] not in admins and not immunity.is_immune(r[0])]
-    added = await federations.import_bans(fed["fed_id"], kept, overwrite, user.id, user.full_name)
+    added = await federations.import_bans(fed["fed_id"], kept, overwrite)
     skipped = len(rows) - added
     send = (lambda m, text: edit(status, text)) if status is not None else reply
     await send(
@@ -695,7 +699,7 @@ async def _protected(bot: Bot, fed: dict[str, Any], target) -> str | None:
         return tr("federations.only_people_can_be_banned_in")
     if target.user_id == bot.id:
         return tr("federations.i_m_not_banning_myself")
-    if immunity.is_immune(target.user_id) or await roles.get_role(target.user_id) is not None:
+    if immunity.is_immune(target.user_id):
         return tr("federations.that_account_is_protected_and_can")
     if await federations.is_admin(fed, target.user_id):
         return tr("federations.that_person_is_an_admin_of")
@@ -951,12 +955,10 @@ async def cmd_fedinfo(message: Message, command: CommandObject) -> None:
             lines.append(f"• {esc(other['name']) if other else tr("common.unknown")} (<code>{sub_id}</code>)")
     else:
         lines.append("Not subscribed to any federation.")
-    keyboard = None
-    if await federations.is_admin(fed, message.from_user.id):
-        # Only the owner and the admins may see the list, so only they get the button.
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text=tr("federations.button.federation_admins"), callback_data=f"{CB_ADMINS}{fed_id}")]]
-        )
+    # Everybody sees the button; pressing it is for the admins of the chat (anyone in private) only.
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=tr("federations.button.federation_admins"), callback_data=f"{CB_ADMINS}{fed_id}")]]
+    )
     await reply(message, "\n".join(lines), reply_markup=keyboard)
 
 
@@ -975,8 +977,8 @@ async def cmd_fedadmins(message: Message, command: CommandObject) -> None:
     fed = await _resolve_fed(message, command.args or "", message.from_user)
     if fed is None:
         return
-    if not await federations.is_admin(fed, message.from_user.id):
-        await reply(message, tr("federations.only_the_owner_and_the_admins"))
+    if not await _may_see_admins(message.bot, message.chat, message.from_user.id):
+        await reply(message, tr("federations.only_the_admins_of_this_chat"))
         return
     await reply(message, await _admins_text(fed))
 
@@ -991,8 +993,8 @@ async def cb_fedadmins(callback: CallbackQuery) -> None:
     if fed is None:
         await callback.answer(tr("federations.that_federation_no_longer_exists"), show_alert=True)
         return
-    if not await federations.is_admin(fed, callback.from_user.id):
-        await callback.answer(tr("federations.only_the_owner_and_the_admins"), show_alert=True)
+    if not await _may_see_admins(callback.bot, message.chat, callback.from_user.id):
+        await callback.answer(tr("federations.only_the_admins_of_this_chat"), show_alert=True)
         return
     await callback.answer()
     # The button works once: it comes off the /fedinfo message as the list is sent.
@@ -1047,6 +1049,10 @@ async def cmd_joinfed(message: Message, command: CommandObject) -> None:
         await moderation.deny(message, exc)
         return
     argument = (command.args or "").strip()
+    if not argument:
+        # Without an ID: the federation this person owns.
+        own = await federations.owned_by(message.from_user.id)
+        argument = own["fed_id"] if own is not None else ""
     if not _FED_ID.match(argument):
         await reply(message, tr("federations.use_joinfed_lt_fedid_gt"))
         return
@@ -1190,8 +1196,8 @@ async def _ban_in(bot: Bot, chat_id: int, user_id: int) -> bool:
 
 
 async def _spared(bot: Bot, chat_id: int, user_id: int) -> bool:
-    """Whether federation bans leave this person alone in this chat (immune, staff, approved, admin; not the whitelist)."""
-    return await banguard.spared(bot, chat_id, user_id)
+    """Whether federation bans leave this person alone in this chat (immune, approved, admin; not staff, not the whitelist)."""
+    return await banguard.spared(bot, chat_id, user_id, staff=False)
 
 
 async def _lift(bot: Bot, fed_id: str, user_id: int) -> None:
@@ -1391,8 +1397,8 @@ async def _info_notes(bot: Bot, user_id: int, chat_id: int | None) -> list[str]:
         return []
     if await federations.is_admin(fed, user_id):
         return [tr("federations.this_user_is_a_fed_admin", fed=_fed_name(fed))]
-    if await roles.get_role(user_id) is not None or await moderation.is_chat_admin(bot, chat_id, user_id):
-        return []  # staff and admins are not touched by federation bans: nothing to say
+    if await moderation.is_chat_admin(bot, chat_id, user_id):
+        return []  # admins are not touched by federation bans: nothing to say
     found = await federations.effective_ban(chat_id, user_id)
     if found is None:
         return [tr("federations.this_user_is_not_fbanned_in")]

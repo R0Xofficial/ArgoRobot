@@ -1,13 +1,14 @@
 """
 Ban lists as files: the formats of /fedexport, /fedimport, /gexport and /gimport.
 
-csv      user_id,name,reason,banned_by,banned_at
+csv      user_id,name,reason
 minicsv  user_id,reason
 json     a list of {"user_id": ..., "name": ..., "reason": ...}; a file with one such object
          per line (JSON lines, as other bots export it) is read too
 human    one line per user, like: Name [123456] - reason
 
-Rows are dicts with user_id, name, reason, banned_by_name and created_at.
+Rows are dicts with user_id, name, reason (who banned them and when is not exported: an import sets
+its own, "Imported ban" and the time of the import).
 Nothing here talks to Telegram or the database.
 """
 
@@ -31,7 +32,7 @@ def render_export(rows: list[dict[str, Any]], fmt: str) -> tuple[bytes, str]:
     """(file content, extension) of a ban list."""
     if fmt == "json":
         data = [
-            {"user_id": r["user_id"], "name": r["name"], "reason": r["reason"], "banned_by": r["banned_by_name"], "banned_at": stamp(r)}
+            {"user_id": r["user_id"], "name": r["name"], "reason": r["reason"]}
             for r in rows
         ]
         return json.dumps(data, ensure_ascii=False, indent=1).encode(), "json"
@@ -45,9 +46,9 @@ def render_export(rows: list[dict[str, Any]], fmt: str) -> tuple[bytes, str]:
         for r in rows:
             writer.writerow([r["user_id"], r["reason"] or ""])
     else:
-        writer.writerow(["user_id", "name", "reason", "banned_by", "banned_at"])
+        writer.writerow(["user_id", "name", "reason"])
         for r in rows:
-            writer.writerow([r["user_id"], r["name"] or "", r["reason"] or "", r["banned_by_name"] or "", stamp(r)])
+            writer.writerow([r["user_id"], r["name"] or "", r["reason"] or ""])
     return out.getvalue().encode(), "csv"
 
 

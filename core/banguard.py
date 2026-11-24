@@ -11,16 +11,19 @@ from aiogram import Bot
 from core import approvals, chatsettings, federations, gbans, immunity, moderation, roles, whitelist
 
 
-async def spared(bot: Bot, chat_id: int, user_id: int) -> bool:
+async def spared(bot: Bot, chat_id: int, user_id: int, *, staff: bool = True) -> bool:
     """
-    Whether federation bans leave this person alone in this chat: the bot itself, immune accounts,
+    Whether a ban leaves this person alone in this chat: the bot itself, immune accounts,
     staff, people approved in the chat and its admins. The whitelist is not here: it protects from
     global bans only, and a federation ban is avoided by being approved in the chat.
+
+    `staff=False` is for federation bans: the owner of a federation decides who is banned in it,
+    and that includes the bot's staff, who are banned like anybody else.
     """
     return (
         user_id == bot.id
         or immunity.is_immune(user_id)
-        or await roles.get_role(user_id) is not None
+        or (staff and await roles.get_role(user_id) is not None)
         or await approvals.is_approved(chat_id, user_id)
         or await moderation.is_chat_admin(bot, chat_id, user_id)
     )
@@ -40,7 +43,7 @@ async def gbanned(bot: Bot, chat_id: int, user_id: int) -> bool:
 
 async def fbanned(bot: Bot, chat_id: int, user_id: int) -> bool:
     """The user is banned in this chat's federation (or one it subscribes to) and nobody spares them."""
-    return await federations.effective_ban(chat_id, user_id) is not None and not await spared(bot, chat_id, user_id)
+    return await federations.effective_ban(chat_id, user_id) is not None and not await spared(bot, chat_id, user_id, staff=False)
 
 
 async def applies(bot: Bot, chat_id: int, user_id: int) -> bool:

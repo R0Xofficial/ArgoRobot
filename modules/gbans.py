@@ -625,7 +625,7 @@ async def cmd_gstat(message: Message, command: CommandObject, role: Role | None 
         await reply(message, tr("gbans.i_can_t_tell_who_you"))
         return
 
-    if role is not None and (command.args or replied_message(message)):
+    if command.args or replied_message(message):  # anyone may look somebody up
         try:
             target = await resolve_target(message, command, allow_bots=True)
         except TargetError as exc:
@@ -646,7 +646,7 @@ async def cmd_gstat(message: Message, command: CommandObject, role: Role | None 
 
     target_role = await roles.get_role(target_id)
     if target_role is not None:
-        lines.append(f"• <b>Status:</b> <code>{roles.label(target_role)}</code>")
+        lines.append("This user is a member of my staff and can't have a global ban.")
     elif ban:
         lines.append("• <b>Status:</b> <code>Banned</code>")
         lines.append(f"• <b>Reason:</b> <code>{esc(ban['reason'])}</code>")
@@ -658,6 +658,8 @@ async def cmd_gstat(message: Message, command: CommandObject, role: Role | None 
                 lines.append("• <b>Admin:</b> This ban is imported.")
             else:
                 lines.append(f"• <b>Admin:</b> {user_ref(ban['admin_id'], ban['admin_name'])}")
+        if at_name(settings.SUPPORT_CHAT_USERNAME):
+            lines.append(f"• <b>Support:</b> {esc(at_name(settings.SUPPORT_CHAT_USERNAME))}")
     else:
         lines.append("• <b>Status:</b> <code>Not Banned</code>")
 

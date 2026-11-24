@@ -294,7 +294,10 @@ async def ban_count(fed_id: str) -> int:
     return len(await _ban_ids(fed_id))
 
 
-async def import_bans(fed_id: str, rows: list[tuple[int, str | None, str | None]], overwrite: bool, by_id: int, by_name: str | None) -> int:
+IMPORTED_BY = "Imported ban"  # what an imported ban says it was banned by: nobody who is here to ask
+
+
+async def import_bans(fed_id: str, rows: list[tuple[int, str | None, str | None]], overwrite: bool) -> int:
     """Add (user id, name, reason) rows. With overwrite the old list goes first. Returns how many were added."""
     if overwrite:
         await database.execute("DELETE FROM fed_bans WHERE fed_id = $1", fed_id)
@@ -307,7 +310,7 @@ async def import_bans(fed_id: str, rows: list[tuple[int, str | None, str | None]
         await database.execute(
             "INSERT INTO fed_bans (fed_id, user_id, name, reason, banned_by, banned_by_name, created_at) "
             "VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (fed_id, user_id) DO NOTHING",
-            fed_id, user_id, name, (reason or "")[:MAX_REASON] or None, by_id, by_name, _now(),
+            fed_id, user_id, name, (reason or "")[:MAX_REASON] or None, None, IMPORTED_BY, _now(),
         )
         known.add(user_id)
         added += 1
