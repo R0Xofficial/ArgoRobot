@@ -1214,9 +1214,12 @@ func cmdFedinfo(c *core.Ctx) error {
 	} else {
 		lines = append(lines, "Not subscribed to any federation.")
 	}
-	_, err := c.Reply(strings.Join(lines, "\n"), core.Keyboard([]gotgbot.InlineKeyboardButton{
-		fedBtn(c.T("federations.button.federation_admins"), cbFedAdmins+f.ID),
-	}))
+	var markup *gotgbot.InlineKeyboardMarkup
+	if ok, _ := c.App.IsFedAdmin(c.Ctx, f, c.User.Id); ok {
+		// Only the owner and the admins may see the list, so only they get the button.
+		markup = core.Keyboard([]gotgbot.InlineKeyboardButton{fedBtn(c.T("federations.button.federation_admins"), cbFedAdmins+f.ID)})
+	}
+	_, err := c.Reply(strings.Join(lines, "\n"), markup)
 	return err
 }
 
@@ -1246,6 +1249,10 @@ func cmdFedadmins(c *core.Ctx) error {
 	if f == nil {
 		return nil
 	}
+	if ok, _ := c.App.IsFedAdmin(c.Ctx, f, c.User.Id); !ok {
+		c.Say(c.T("federations.only_the_owner_and_the_admins"))
+		return nil
+	}
 	c.Say(fedAdminsText(c, f))
 	return nil
 }
@@ -1263,7 +1270,13 @@ func cbFedAdminsButton(c *core.Ctx) error {
 		c.Answer(c.T("federations.that_federation_no_longer_exists"), true)
 		return nil
 	}
+	if ok, _ := c.App.IsFedAdmin(c.Ctx, f, c.User.Id); !ok {
+		c.Answer(c.T("federations.only_the_owner_and_the_admins"), true)
+		return nil
+	}
 	c.Answer("", false)
+	// The button works once: it comes off the /fedinfo message as the list is sent.
+	c.RemoveButtons()
 	c.Say(fedAdminsText(c, f))
 	return nil
 }

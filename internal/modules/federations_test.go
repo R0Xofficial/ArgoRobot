@@ -45,9 +45,21 @@ func TestFederationLifecycle(t *testing.T) {
 	markup := infoCalls[len(infoCalls)-1].P["reply_markup"]
 	contains(t, markup, "Federation Admins")
 	contains(t, markup, "fa:"+id)
+	// other people neither get the list from the button nor from the command
+	before := len(e.Fake.Calls("sendMessage"))
 	e.Press(alice.ID, bob, "fa:"+id)
+	if len(e.Fake.Calls("sendMessage")) != before || len(e.Fake.Calls("editMessageReplyMarkup")) != 0 {
+		t.Fatal("only the owner and the admins may use the button")
+	}
+	e.Send(pm(bob, "/fedadmins "+id))
+	contains(t, lastText(t, e), "Only the owner and the admins")
+	// the owner's click sends the list and takes the button off, once
+	e.Press(alice.ID, alice, "fa:"+id)
 	contains(t, lastText(t, e), "My Federation")
 	contains(t, lastText(t, e), "It has no other admins.")
+	if len(e.Fake.Calls("editMessageReplyMarkup")) != 1 {
+		t.Fatalf("the button should come off: %+v", e.Fake.Calls("editMessageReplyMarkup"))
+	}
 	e.Send(pm(alice, "/renamefed Renamed"))
 	contains(t, lastText(t, e), "Renamed")
 	e.Send(pm(alice, "/myfeds"))

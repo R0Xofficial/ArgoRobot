@@ -587,6 +587,7 @@
  "federations.only_people_can_be_banned_in": "W federacji można banować tylko ludzi.",
  "federations.only_people_can_be_federation_admins": "Adminami federacji mogą być tylko ludzie.",
  "federations.only_the_admins_of_this_federation": "Odpowiedzieć mogą tylko admini tej federacji.",
+ "federations.only_the_owner_and_the_admins": "Tylko właściciel i administratorzy tej federacji mogą zobaczyć tę listę.",
  "federations.only_the_owner_of_the_federation": "Tylko właściciel federacji może to zrobić.",
  "federations.only_the_person_it_is_offered": "Odpowiedzieć może tylko osoba, której to zaproponowano. Właściciel może jedynie odmówić.",
  "federations.owner": "właściciel federacji",
