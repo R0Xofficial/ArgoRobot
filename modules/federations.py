@@ -964,9 +964,10 @@ async def cmd_fedinfo(message: Message, command: CommandObject) -> None:
 
 async def _admins_text(fed: dict[str, Any]) -> str:
     """The owner and the admins of a federation, as /fedadmins and the Federation Admins button of /fedinfo show them."""
-    lines = [tr("federations.admins_of", name=esc(fed['name'])), _item(tr("common.owner"), _owner_link(fed))]
+    lines = [tr("federations.admins_of", name=esc(fed['name'])),
+             f"• {user_ref(fed['owner_id'], fed['owner_name'])} <i>(Owner)</i>"]
     for admin in await federations.admins(fed["fed_id"]):
-        lines.append(f"• {user_link(admin['user_id'], admin['name'])}")
+        lines.append(f"• {user_ref(admin['user_id'], admin['name'])}")
     if len(lines) == 2:
         lines.append("It has no other admins.")
     return "\n".join(lines)
