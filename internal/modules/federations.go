@@ -1232,10 +1232,10 @@ func subName(c *core.Ctx, id string) string {
 // fedAdminsText is the owner and the admins of a federation, as /fedadmins and the Federation Admins button of
 // /fedinfo show them.
 func fedAdminsText(c *core.Ctx, f *core.Federation) string {
-	lines := []string{c.T("federations.admins_of", core.V{"name": text.Esc(f.Name)}), fedItem(c.T("common.owner"), fedOwnerLink(f))}
+	lines := []string{c.T("federations.admins_of", core.V{"name": text.Esc(f.Name)}), "• " + text.UserRef(f.OwnerID, f.OwnerName) + " <i>(Owner)</i>"}
 	admins, _ := c.App.FedAdmins(c.Ctx, f.ID)
 	for _, a := range admins {
-		lines = append(lines, "• "+text.UserLink(a.UserID, a.Name))
+		lines = append(lines, "• "+text.UserRef(a.UserID, a.Name))
 	}
 	if len(lines) == 2 {
 		lines = append(lines, "It has no other admins.")

@@ -50,6 +50,8 @@ func TestFederationLifecycle(t *testing.T) {
 	contains(t, lastText(t, e), "Only the admins of this chat")
 	e.Send(Msg{Chat: chat, From: alice, Text: "/fedadmins " + id})
 	contains(t, lastText(t, e), "It has no other admins.")
+	contains(t, lastText(t, e), "<i>(Owner)</i>")
+	contains(t, lastText(t, e), "[<code>")
 	e.Send(Msg{Chat: chat, From: alice, Text: "/fedinfo"})
 	contains(t, e.Fake.Calls("sendMessage")[len(e.Fake.Calls("sendMessage"))-1].P["reply_markup"], "fa:"+id)
 	e.Send(Msg{Chat: chat, From: dave, Text: "/fedinfo " + id})
