@@ -421,30 +421,26 @@ func askSudo(c *core.Ctx, kind, tag string, target *core.Target, reason string, 
 
 // tellBanned lets somebody know, in their private chat, that they have been globally banned. They may never have
 // started the bot, in which case nothing happens.
-func tellBanned(c *core.Ctx, userID int64, reason string, updated bool, admin, approvedBy string) {
+func tellBanned(c *core.Ctx, userID int64, reason string, updated bool, admin string) {
 	head := "You have been globally banned."
 	if updated {
 		head = "The reason of your global ban has been updated."
 	}
-	msg := notice(head, reason, admin, approvedBy)
+	msg := notice(head, reason, admin)
 	if support := atName(c.App.Cfg.SupportChatUsername); support != "" {
 		msg += "\nIf you think this is a mistake, contact " + text.Esc(support) + "."
 	}
 	c.App.SendTo(c.Ctx, userID, msg, nil)
 }
 
-func tellUnbanned(c *core.Ctx, userID int64, reason, admin, approvedBy string) {
-	c.App.SendTo(c.Ctx, userID, notice("Your global ban has been lifted.", reason, admin, approvedBy), nil)
+func tellUnbanned(c *core.Ctx, userID int64, reason, admin string) {
+	c.App.SendTo(c.Ctx, userID, notice("Your global ban has been lifted.", reason, admin), nil)
 }
 
-// notice is what the person is told: what happened, why, when and by whom (and who approved it).
-func notice(head, reason, admin, approvedBy string) string {
-	msg := "<b>" + head + "</b>\n<b>Reason:</b> <code>" + text.Esc(reason) + "</code>\n<b>Timestamp:</b> " +
+// notice is what the person is told: what happened, why, when and by whom. Who approved a request is for the staff only.
+func notice(head, reason, admin string) string {
+	return "<b>" + head + "</b>\n<b>Reason:</b> <code>" + text.Esc(reason) + "</code>\n<b>Timestamp:</b> " +
 		core.Timestamp(time.Time{}) + "\n<b>Admin:</b> " + admin
-	if approvedBy != "" {
-		msg += "\n<b>Approved by:</b> " + approvedBy
-	}
-	return msg
 }
 
 func targetError(c *core.Ctx, err error) bool {
@@ -542,7 +538,7 @@ func cmdGban(c *core.Ctx) error {
 		parts.oldReason = old.Reason
 	}
 	c.App.RoleLog(c.Ctx, gbanLogText(c.L, parts), nil)
-	tellBanned(c, target.ID, reason, old != nil, text.UserRef(admin.Id, core.FullName(admin)), "")
+	tellBanned(c, target.ID, reason, old != nil, text.UserRef(admin.Id, core.FullName(admin)))
 	c.Say(gbanDone(c.L, old))
 	return nil
 }
@@ -595,7 +591,7 @@ func cmdUngban(c *core.Ctx) error {
 	}
 	c.App.RoleLog(c.Ctx, gbanLogText(c.L, logParts{tag: "#UNGBANNED", origin: originHTML(c.L, c.Msg), target: who, reason: reason,
 		admin: text.UserRef(admin.Id, core.FullName(admin))}), nil)
-	tellUnbanned(c, target.ID, reason, text.UserRef(admin.Id, core.FullName(admin)), "")
+	tellUnbanned(c, target.ID, reason, text.UserRef(admin.Id, core.FullName(admin)))
 	c.Say(c.T("gbans.let_s_give_them_another_chance"))
 	p := replyPlace(c.Msg)
 	spawnUnban(c, target.ID, &p)
@@ -700,7 +696,7 @@ func cbGbanRequest(c *core.Ctx) error {
 		}
 		finish(gbanLogText(c.L, parts), true)
 		notifyChat(c.Ctx, c.Bot, where, gbanDone(c.L, old))
-		tellBanned(c, request.TargetID, request.Reason, old != nil, requester, approverRef)
+		tellBanned(c, request.TargetID, request.Reason, old != nil, requester)
 		return nil
 	}
 	// ungban
@@ -716,7 +712,7 @@ func cbGbanRequest(c *core.Ctx) error {
 	c.Answer(c.T("gbans.approved"), false)
 	finish(gbanLogText(c.L, logParts{tag: "#UNGBANNED", origin: request.OriginHTML, target: who, reason: request.Reason,
 		admin: requester, approvedBy: approverRef}), true)
-	tellUnbanned(c, request.TargetID, request.Reason, requester, approverRef)
+	tellUnbanned(c, request.TargetID, request.Reason, requester)
 	origin := place{chat: request.ChatID, thread: request.ThreadID}
 	if request.ChatID < 0 {
 		origin.msg = request.MsgID

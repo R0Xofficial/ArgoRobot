@@ -244,7 +244,7 @@ func TestUngbanAndRequests(t *testing.T) {
 	told := false
 	for _, c := range e.Fake.Calls("sendMessage") {
 		if c.P["chat_id"] == "20" && strings.Contains(c.P["text"], "You have been globally banned") && strings.Contains(c.P["text"], "scam") &&
-			strings.Contains(c.P["text"], "Timestamp:") && strings.Contains(c.P["text"], "Admin:") && strings.Contains(c.P["text"], "Approved by:") {
+			strings.Contains(c.P["text"], "Timestamp:") && strings.Contains(c.P["text"], "Admin:") && !strings.Contains(c.P["text"], "Approved by") {
 			told = true
 		}
 	}
