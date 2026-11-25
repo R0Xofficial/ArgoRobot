@@ -607,8 +607,8 @@ async def cb_request(callback: CallbackQuery, role: Role | None = None) -> None:
 
     deliveries = json.loads(request.get("deliveries") or "[]")
 
-    async def finish(text: str, *, log_it: bool = True) -> None:
-        """Show the outcome in every copy of the request, and in the log chat (unless the request was a log message)."""
+    async def finish(text: str, *, log_text: str | None = None) -> None:
+        """Show the outcome in every copy of the request; what happened goes to the log chat as `log_text`, if there is one."""
         if message is not None:
             await edit(message, text, reply_markup=None, link_preview_options=LinkPreviewOptions(is_disabled=True))
         here = (message.chat.id, message.message_id) if message is not None else None
@@ -619,13 +619,18 @@ async def cb_request(callback: CallbackQuery, role: Role | None = None) -> None:
                         text, chat_id=copy[0], message_id=copy[1], reply_markup=None,
                         link_preview_options=LinkPreviewOptions(is_disabled=True),
                     )
-        if deliveries and log_it:  # the log doesn't need to say who pressed the button
-            await logs.role_log(bot, "\n".join(l for l in text.split("\n") if not l.startswith("<b>Approved by:</b>")))
+        if log_text:
+            await logs.role_log(bot, log_text)
+
+    def approved(fallback: str) -> str:
+        """The request as it was sent, with who approved it: the copies stay a request, the log says what happened."""
+        who_pressed = user_ref(approver.id, approver.full_name)
+        return f"{message.html_text}\n<b>Approved by:</b> {who_pressed}" if message is not None else fallback
 
     if not approving:
         await callback.answer(tr("gbans.request_declined"))
         if message is not None:
-            await finish(await logs.render(lambda: tr("gbans.declined_by", html_text=message.html_text, id=user_ref(approver.id, approver.full_name))), log_it=False)  # nothing happened: nothing to log
+            await finish(await logs.render(lambda: tr("gbans.declined_by", html_text=message.html_text, id=user_ref(approver.id, approver.full_name))))  # nothing happened: nothing to log
         await _notify(bot, chat_id, lambda: tr("gbans.request_declined_2"), msg_id, thread_id)
         return
 
@@ -633,7 +638,7 @@ async def cb_request(callback: CallbackQuery, role: Role | None = None) -> None:
         problem = await _protection(bot, target_id)
         if problem is not None:
             await callback.answer(tr("gbans.this_user_can_no_longer_be"), show_alert=True)
-            await finish(await logs.render(lambda: tr("gbans.cancelled", opt=message.html_text if message else '', problem=problem)), log_it=False)
+            await finish(await logs.render(lambda: tr("gbans.cancelled", opt=message.html_text if message else '', problem=problem)))
             await _notify(bot, chat_id, lambda: tr("gbans.request_cancelled", problem=problem), msg_id, thread_id)
             return
         await callback.answer(tr("gbans.approved"))
@@ -651,15 +656,10 @@ async def cb_request(callback: CallbackQuery, role: Role | None = None) -> None:
             if request["kind"] == "dgban" and request["target_msg_id"]
             else None,
         )
-        await finish(await logs.render(lambda: _log_text(
-            _tag_for(old),
-            origin,
-            who,
-            reason,
-            requester,
-            old_reason=old["reason"] if old else None,
-            approved_by=user_ref(approver.id, approver.full_name),
-        )))
+        entry = await logs.render(lambda: _log_text(
+            _tag_for(old), origin, who, reason, requester, old_reason=old["reason"] if old else None,
+        ))
+        await finish(approved(entry), log_text=entry)
         await _notify(bot, chat_id, lambda: _done_text(old), msg_id, thread_id)
         await _tell_banned(bot, target_id, reason, old is not None, requester)
         return
@@ -668,17 +668,11 @@ async def cb_request(callback: CallbackQuery, role: Role | None = None) -> None:
     removed = await gbans.remove(target_id)
     if removed is None:
         await callback.answer(tr("gbans.this_user_is_not_globally_banned"), show_alert=True)
-        await finish(await logs.render(lambda: tr("gbans.cancelled_not_globally_banned_any_more", opt=message.html_text if message else '')), log_it=False)
+        await finish(await logs.render(lambda: tr("gbans.cancelled_not_globally_banned_any_more", opt=message.html_text if message else '')))
         return
     await callback.answer(tr("gbans.approved"))
-    await finish(await logs.render(lambda: _log_text(
-        "#UNGBANNED",
-        origin,
-        who,
-        reason,
-        requester,
-        approved_by=user_ref(approver.id, approver.full_name),
-    )))
+    entry = await logs.render(lambda: _log_text("#UNGBANNED", origin, who, reason, requester))
+    await finish(approved(entry), log_text=entry)
     await _tell_unbanned(bot, target_id, reason, requester)
     _spawn(_propagate_unban(bot, target_id, (chat_id, msg_id if chat_id < 0 else None, thread_id)))
 
