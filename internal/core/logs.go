@@ -39,6 +39,24 @@ func (a *App) RoleLog(ctx context.Context, msg string, markup *gotgbot.InlineKey
 	return true
 }
 
+// SendTo sends a message to somebody's private chat and returns its id; false when they can't be reached
+// (they never started the bot, or blocked it).
+func (a *App) SendTo(ctx context.Context, chat int64, msg string, markup *gotgbot.InlineKeyboardMarkup) (int64, bool) {
+	if chat <= 0 {
+		return 0, false
+	}
+	opts := &gotgbot.SendMessageOpts{ParseMode: parseHTML, LinkPreviewOptions: &gotgbot.LinkPreviewOptions{IsDisabled: true}}
+	if markup != nil {
+		opts.ReplyMarkup = *markup
+	}
+	sent, err := a.Bot.SendMessageWithContext(ctx, chat, msg, opts)
+	if err != nil {
+		slog.Debug("Could not message", "chat", chat, "err", err)
+		return 0, false
+	}
+	return sent.MessageId, true
+}
+
 // Timestamp is a time as shown in the logs: 2026-10-29 18:09:00 UTC, in a <code> tag.
 func Timestamp(t time.Time) string {
 	if t.IsZero() {

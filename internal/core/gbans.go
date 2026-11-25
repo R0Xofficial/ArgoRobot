@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"sync"
@@ -50,6 +51,39 @@ type GbanRequest struct {
 	ThreadID        int64
 	TargetMsgID     int64
 	OriginHTML      string
+	Deliveries      []GbanDelivery // the copies sent to the Sudo users' private chats
+}
+
+// GbanDelivery is one copy of a request: the private chat it went to and its message.
+type GbanDelivery struct {
+	Chat int64 `json:"c"`
+	Msg  int64 `json:"m"`
+}
+
+// SaveGbanDeliveries remembers where the copies of a request went, so a decision can update all of them.
+func (a *App) SaveGbanDeliveries(ctx context.Context, id int64, d []GbanDelivery) error {
+	raw, _ := json.Marshal(d)
+	_, err := a.DB.Exec(ctx, "UPDATE gban_requests SET deliveries = $2 WHERE id = $1", id, string(raw))
+	return err
+}
+
+// GbanApprovers are the people who may decide a request: the owner, the developers and the Sudo users.
+func (a *App) GbanApprovers(ctx context.Context) []int64 {
+	ids := []int64{a.Cfg.OwnerID}
+	seen := map[int64]bool{a.Cfg.OwnerID: true}
+	for _, role := range []Role{Developer, Sudo} {
+		members, _ := a.ListRole(ctx, role)
+		for _, m := range members {
+			if !seen[m.UserID] {
+				seen[m.UserID] = true
+				ids = append(ids, m.UserID)
+			}
+		}
+	}
+	if ids[0] == 0 {
+		ids = ids[1:]
+	}
+	return ids
 }
 
 func (a *App) gbanIDs(ctx context.Context) (map[int64]bool, error) {
@@ -301,13 +335,15 @@ ON CONFLICT (target_id) DO NOTHING RETURNING id`, []any{r.TargetID, nullable(r.T
 func (a *App) ClaimGbanRequest(ctx context.Context, id int64) (*GbanRequest, error) {
 	var r GbanRequest
 	var name, byName *string
+	var deliveries string
 	var msg, thread, tmsg *int64
 	found, err := a.DB.Found(ctx, `DELETE FROM gban_requests WHERE id = $1
-RETURNING id, target_id, target_name, kind, reason, requested_by, requested_by_name, chat_id, msg_id, thread_id, target_msg_id, origin_html`,
-		[]any{id}, &r.ID, &r.TargetID, &name, &r.Kind, &r.Reason, &r.RequestedBy, &byName, &r.ChatID, &msg, &thread, &tmsg, &r.OriginHTML)
+RETURNING id, target_id, target_name, kind, reason, requested_by, requested_by_name, chat_id, msg_id, thread_id, target_msg_id, origin_html, deliveries`,
+		[]any{id}, &r.ID, &r.TargetID, &name, &r.Kind, &r.Reason, &r.RequestedBy, &byName, &r.ChatID, &msg, &thread, &tmsg, &r.OriginHTML, &deliveries)
 	if err != nil || !found {
 		return nil, err
 	}
+	_ = json.Unmarshal([]byte(deliveries), &r.Deliveries)
 	if name != nil {
 		r.TargetName = *name
 	}

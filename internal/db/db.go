@@ -340,8 +340,10 @@ CREATE TABLE IF NOT EXISTS gban_requests (
     thread_id         BIGINT,
     target_msg_id     BIGINT,
     origin_html       TEXT NOT NULL,
+    deliveries        TEXT NOT NULL DEFAULT '[]',
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE gban_requests ADD COLUMN IF NOT EXISTS deliveries TEXT NOT NULL DEFAULT '[]';
 CREATE TABLE IF NOT EXISTS gban_bans (
     user_id   BIGINT NOT NULL,
     chat_id   BIGINT NOT NULL,

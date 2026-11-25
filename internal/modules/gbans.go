@@ -400,12 +400,51 @@ func askSudo(c *core.Ctx, kind, tag string, target *core.Target, reason string, 
 	if old != nil {
 		parts.oldReason = old.Reason
 	}
-	if !c.App.RoleLog(c.Ctx, gbanLogText(l, parts), requestKeyboard(id)) {
+	body, markup := gbanLogText(l, parts), requestKeyboard(id)
+	var delivered []core.GbanDelivery
+	for _, approver := range c.App.GbanApprovers(c.Ctx) { // every Sudo user and above gets it in their private chat
+		if msgID, ok := c.App.SendTo(c.Ctx, approver, body, markup); ok {
+			delivered = append(delivered, core.GbanDelivery{Chat: approver, Msg: msgID})
+		}
+	}
+	if len(delivered) > 0 {
+		if err := c.App.SaveGbanDeliveries(c.Ctx, id, delivered); err != nil {
+			c.App.ReportError("/"+c.Cmd, err)
+		}
+	} else if !c.App.RoleLog(c.Ctx, body, markup) { // nobody reachable: the log chat still gets it
 		_ = c.App.DropGbanRequest(c.Ctx, id)
 		c.Say(l.T("gbans.i_couldn_t_deliver_your_request"))
 		return
 	}
 	c.Say(l.T("gbans.request_sent"))
+}
+
+// tellBanned lets somebody know, in their private chat, that they have been globally banned. They may never have
+// started the bot, in which case nothing happens.
+func tellBanned(c *core.Ctx, userID int64, reason string, updated bool, admin, approvedBy string) {
+	head := "You have been globally banned."
+	if updated {
+		head = "The reason of your global ban has been updated."
+	}
+	msg := notice(head, reason, admin, approvedBy)
+	if support := atName(c.App.Cfg.SupportChatUsername); support != "" {
+		msg += "\nIf you think this is a mistake, contact " + text.Esc(support) + "."
+	}
+	c.App.SendTo(c.Ctx, userID, msg, nil)
+}
+
+func tellUnbanned(c *core.Ctx, userID int64, reason, admin, approvedBy string) {
+	c.App.SendTo(c.Ctx, userID, notice("Your global ban has been lifted.", reason, admin, approvedBy), nil)
+}
+
+// notice is what the person is told: what happened, why, when and by whom (and who approved it).
+func notice(head, reason, admin, approvedBy string) string {
+	msg := "<b>" + head + "</b>\n<b>Reason:</b> <code>" + text.Esc(reason) + "</code>\n<b>Timestamp:</b> " +
+		core.Timestamp(time.Time{}) + "\n<b>Admin:</b> " + admin
+	if approvedBy != "" {
+		msg += "\n<b>Approved by:</b> " + approvedBy
+	}
+	return msg
 }
 
 func targetError(c *core.Ctx, err error) bool {
@@ -503,6 +542,7 @@ func cmdGban(c *core.Ctx) error {
 		parts.oldReason = old.Reason
 	}
 	c.App.RoleLog(c.Ctx, gbanLogText(c.L, parts), nil)
+	tellBanned(c, target.ID, reason, old != nil, text.UserRef(admin.Id, core.FullName(admin)), "")
 	c.Say(gbanDone(c.L, old))
 	return nil
 }
@@ -555,6 +595,7 @@ func cmdUngban(c *core.Ctx) error {
 	}
 	c.App.RoleLog(c.Ctx, gbanLogText(c.L, logParts{tag: "#UNGBANNED", origin: originHTML(c.L, c.Msg), target: who, reason: reason,
 		admin: text.UserRef(admin.Id, core.FullName(admin))}), nil)
+	tellUnbanned(c, target.ID, reason, text.UserRef(admin.Id, core.FullName(admin)), "")
 	c.Say(c.T("gbans.let_s_give_them_another_chance"))
 	p := replyPlace(c.Msg)
 	spawnUnban(c, target.ID, &p)
@@ -598,28 +639,46 @@ func cbGbanRequest(c *core.Ctx) error {
 	if c.Msg != nil {
 		shown = c.Msg.OriginalHTML()
 	}
-	finish := func(msg string) {
-		if c.Msg == nil {
-			return
+	// finish shows the outcome in every copy of the request and, unless it is a cancellation, in the log chat
+	// (when the request was itself a log message, that is the one being edited).
+	finish := func(msg string, logIt bool) {
+		edit := func(chat, id int64) {
+			_, _, err := c.Bot.EditMessageTextWithContext(c.Ctx, &gotgbot.EditMessageTextOpts{
+				ChatId: chat, MessageId: id, Text: msg, ParseMode: "HTML",
+				LinkPreviewOptions: &gotgbot.LinkPreviewOptions{IsDisabled: true},
+			})
+			if err != nil {
+				slog.Debug("Could not edit the request", "err", err)
+			}
 		}
-		_, _, err := c.Bot.EditMessageTextWithContext(c.Ctx, &gotgbot.EditMessageTextOpts{
-			ChatId: c.Msg.Chat.Id, MessageId: c.Msg.MessageId, Text: msg, ParseMode: "HTML",
-			LinkPreviewOptions: &gotgbot.LinkPreviewOptions{IsDisabled: true},
-		})
-		if err != nil {
-			slog.Debug("Could not edit the request", "err", err)
+		if c.Msg != nil {
+			edit(c.Msg.Chat.Id, c.Msg.MessageId)
+		}
+		for _, d := range request.Deliveries {
+			if c.Msg == nil || d.Chat != c.Msg.Chat.Id || d.Msg != c.Msg.MessageId {
+				edit(d.Chat, d.Msg)
+			}
+		}
+		if len(request.Deliveries) > 0 && logIt {
+			var kept []string // the log doesn't need to say who pressed the button
+			for _, line := range strings.Split(msg, "\n") {
+				if !strings.HasPrefix(line, "<b>Approved by:</b>") {
+					kept = append(kept, line)
+				}
+			}
+			c.App.RoleLog(c.Ctx, strings.Join(kept, "\n"), nil)
 		}
 	}
 	if !approving {
 		c.Answer(c.T("gbans.request_declined"), false)
-		finish(c.T("gbans.declined_by", core.V{"html_text": shown, "id": approverRef}))
+		finish(c.T("gbans.declined_by", core.V{"html_text": shown, "id": approverRef}), false) // nothing happened: nothing to log
 		notifyChat(c.Ctx, c.Bot, where, c.T("gbans.request_declined_2"))
 		return nil
 	}
 	if request.Kind == "gban" || request.Kind == "dgban" {
 		if problem := gbanProtection(c, request.TargetID); problem != "" {
 			c.Answer(c.T("gbans.this_user_can_no_longer_be"), true)
-			finish(c.T("gbans.cancelled", core.V{"opt": shown, "problem": problem}))
+			finish(c.T("gbans.cancelled", core.V{"opt": shown, "problem": problem}), false)
 			notifyChat(c.Ctx, c.Bot, where, c.T("gbans.request_cancelled", core.V{"problem": problem}))
 			return nil
 		}
@@ -639,8 +698,9 @@ func cbGbanRequest(c *core.Ctx) error {
 		if old != nil {
 			parts.oldReason = old.Reason
 		}
-		finish(gbanLogText(c.L, parts))
+		finish(gbanLogText(c.L, parts), true)
 		notifyChat(c.Ctx, c.Bot, where, gbanDone(c.L, old))
+		tellBanned(c, request.TargetID, request.Reason, old != nil, requester, approverRef)
 		return nil
 	}
 	// ungban
@@ -650,12 +710,13 @@ func cbGbanRequest(c *core.Ctx) error {
 	}
 	if !removed {
 		c.Answer(c.T("gbans.this_user_is_not_globally_banned"), true)
-		finish(c.T("gbans.cancelled_not_globally_banned_any_more", core.V{"opt": shown}))
+		finish(c.T("gbans.cancelled_not_globally_banned_any_more", core.V{"opt": shown}), false)
 		return nil
 	}
 	c.Answer(c.T("gbans.approved"), false)
 	finish(gbanLogText(c.L, logParts{tag: "#UNGBANNED", origin: request.OriginHTML, target: who, reason: request.Reason,
-		admin: requester, approvedBy: approverRef}))
+		admin: requester, approvedBy: approverRef}), true)
+	tellUnbanned(c, request.TargetID, request.Reason, requester, approverRef)
 	origin := place{chat: request.ChatID, thread: request.ThreadID}
 	if request.ChatID < 0 {
 		origin.msg = request.MsgID

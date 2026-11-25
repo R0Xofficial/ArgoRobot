@@ -207,6 +207,16 @@ func TestUngbanAndRequests(t *testing.T) {
 	}
 	contains(t, request.P["text"], "#GBANREQUEST")
 	contains(t, request.P["reply_markup"], "gban:apr:")
+	// the request goes to the private chat of every Sudo user and above, not to the log chat
+	copies := map[string]bool{}
+	for _, c := range e.Fake.Calls("sendMessage") {
+		if strings.Contains(c.P["text"], "#GBANREQUEST") {
+			copies[c.P["chat_id"]] = true
+		}
+	}
+	if len(copies) != 2 || !copies[itoa(OwnerID)] || !copies[itoa(sudo.ID)] {
+		t.Fatalf("copies of the request: %v", copies)
+	}
 	e.Send(Msg{Chat: chat, From: support, Text: "/gban 20 scam"})
 	contains(t, lastText(t, e), "already a pending request")
 	id := strings.TrimSuffix(strings.Split(request.P["reply_markup"], "gban:apr:")[1], `"}`)
@@ -222,9 +232,31 @@ func TestUngbanAndRequests(t *testing.T) {
 	if ok, _ := e.App.IsGbanned(e.Ctx(), 20); !ok {
 		t.Fatal("banned after approval")
 	}
+	// the copies of the request show the outcome, the log chat gets it, and the banned user is told
+	if n := len(e.Fake.Calls("editMessageText")); n != 3 { // the pressed message and both copies
+		t.Fatalf("edited copies: %d", n)
+	}
+	for _, c := range e.Fake.Calls("sendMessage") {
+		if strings.Contains(c.P["text"], "#GBANNED") && strings.Contains(c.P["text"], "Approved by") {
+			t.Fatalf("the log doesn't say who approved: %q", c.P["text"])
+		}
+	}
+	told := false
+	for _, c := range e.Fake.Calls("sendMessage") {
+		if c.P["chat_id"] == "20" && strings.Contains(c.P["text"], "You have been globally banned") && strings.Contains(c.P["text"], "scam") &&
+			strings.Contains(c.P["text"], "Timestamp:") && strings.Contains(c.P["text"], "Admin:") && strings.Contains(c.P["text"], "Approved by:") {
+			told = true
+		}
+	}
+	if !told {
+		t.Fatal("the banned user is told in a private message")
+	}
 	e.Press(logCh, sudo, "gban:apr:"+id)
 	if n := len(e.Fake.Calls("answerCallbackQuery")); n < 3 {
 		t.Fatalf("answers: %d", n)
+	}
+	if a := lastCall(e, "answerCallbackQuery"); !strings.Contains(a.P["text"], "already been handled") {
+		t.Fatalf("a second press: %q", a.P["text"])
 	}
 	// decline
 	e.Send(Msg{Chat: chat, From: support, Text: "/gban 20 again"}) // bob is gbanned: update request
@@ -354,5 +386,30 @@ func TestGbanOnReaction(t *testing.T) {
 	}})
 	if len(e.Fake.Calls("banChatMember")) != 0 {
 		t.Fatal("acted on a reaction without a user")
+	}
+}
+
+func TestDeclinedRequestIsNotLogged(t *testing.T) {
+	e := gbanSetup(t)
+	e.Send(Msg{Chat: chat, From: support, Text: "/gban 21 meh"})
+	var request Call
+	for _, c := range e.Fake.Calls("sendMessage") {
+		if strings.Contains(c.P["text"], "#GBANREQUEST") {
+			request = c
+		}
+	}
+	id := strings.Trim(strings.SplitN(strings.Split(request.P["reply_markup"], "gban:apr:")[1], `"`, 2)[0], "}]")
+	before := len(e.Fake.Calls("sendMessage"))
+	e.Press(logCh, sudo, "gban:dec:"+id)
+	for _, c := range e.Fake.Calls("sendMessage")[before:] {
+		if strings.Contains(c.P["text"], "Declined by") {
+			t.Fatalf("a declined request is not logged: %q", c.P["text"])
+		}
+	}
+	if n := len(e.Fake.Calls("editMessageText")); n != 3 {
+		t.Fatalf("the copies still show the outcome: %d", n)
+	}
+	if ok, _ := e.App.IsGbanned(e.Ctx(), 21); ok {
+		t.Fatal("not banned")
 	}
 }

@@ -442,6 +442,12 @@ func cmdStaffRole(c *core.Ctx) error {
 		}
 		c.Say(c.T("root.has_been_removed_from", core.V{"who": who, "label": label}))
 	}
+	// a promotion is told to the person themselves, if they can be reached
+	if granting {
+		c.App.SendTo(c.Ctx, target.ID, "<b>You have been promoted to "+label+".</b>"+byLines(actor.Id, actorName), nil)
+	} else {
+		c.App.SendTo(c.Ctx, target.ID, "<b>You have been demoted: you are no longer "+label+".</b>"+byLines(actor.Id, actorName), nil)
+	}
 	tags := core.RoleLogTags[targetRole]
 	tag := tags[1]
 	if granting {
@@ -623,4 +629,9 @@ func cmdWhitelist(c *core.Ctx) error {
 	}
 	c.App.RoleLog(c.Ctx, core.AuditText(tag, target.ID, target.Name, actor.Id, core.FullName(actor)), nil)
 	return nil
+}
+
+// byLines is when and by whom, as the person is told about their promotion or demotion.
+func byLines(adminID int64, adminName string) string {
+	return "\n<b>Timestamp:</b> " + core.Timestamp(time.Time{}) + "\n<b>Admin:</b> " + text.UserRef(adminID, adminName)
 }

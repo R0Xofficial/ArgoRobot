@@ -731,6 +731,16 @@ func TestStaffRoles(t *testing.T) {
 	e.Fake.Reset()
 	e.Send(Msg{Chat: chat, From: root, Text: "/adddev", Reply: reply(dave, "x")})
 	answered(t, e, link(dave)+" has been promoted to <b>Developer</b>.")
+	toldDave := false
+	for _, c := range e.Fake.Calls("sendMessage") {
+		if c.P["chat_id"] == itoa(dave.ID) && strings.Contains(c.P["text"], "You have been promoted to") && strings.Contains(c.P["text"], "Developer") &&
+			strings.Contains(c.P["text"], "Timestamp:") && strings.Contains(c.P["text"], "Admin:") {
+			toldDave = true
+		}
+	}
+	if !toldDave {
+		t.Fatal("the promoted person is told in a private message")
+	}
 	if r := e.App.GetRole(e.Ctx(), dave.ID); r.String() != "Developer" {
 		t.Fatalf("role: %v", r)
 	}
