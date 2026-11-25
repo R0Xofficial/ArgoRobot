@@ -344,6 +344,9 @@ CREATE TABLE IF NOT EXISTS gban_requests (
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE gban_requests ADD COLUMN IF NOT EXISTS deliveries TEXT NOT NULL DEFAULT '[]';
+CREATE TABLE IF NOT EXISTS gban_request_optout (
+    user_id BIGINT PRIMARY KEY
+);
 CREATE TABLE IF NOT EXISTS gban_bans (
     user_id   BIGINT NOT NULL,
     chat_id   BIGINT NOT NULL,

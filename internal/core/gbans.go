@@ -67,7 +67,24 @@ func (a *App) SaveGbanDeliveries(ctx context.Context, id int64, d []GbanDelivery
 	return err
 }
 
-// GbanApprovers are the people who may decide a request: the owner, the developers and the Sudo users.
+// GbanRequestsWanted tells whether the requests come to this person's private chat (they do unless turned off).
+func (a *App) GbanRequestsWanted(ctx context.Context, userID int64) bool {
+	found, _ := a.DB.Found(ctx, "SELECT 1 FROM gban_request_optout WHERE user_id = $1", []any{userID}, new(int))
+	return !found
+}
+
+// SetGbanRequestsWanted turns the requests in somebody's private chat on or off.
+func (a *App) SetGbanRequestsWanted(ctx context.Context, userID int64, wanted bool) error {
+	var err error
+	if wanted {
+		_, err = a.DB.Exec(ctx, "DELETE FROM gban_request_optout WHERE user_id = $1", userID)
+	} else {
+		_, err = a.DB.Exec(ctx, "INSERT INTO gban_request_optout (user_id) VALUES ($1) ON CONFLICT DO NOTHING", userID)
+	}
+	return err
+}
+
+// GbanApprovers are the people who may decide a request and want it: the owner, the developers and the Sudo users.
 func (a *App) GbanApprovers(ctx context.Context) []int64 {
 	ids := []int64{a.Cfg.OwnerID}
 	seen := map[int64]bool{a.Cfg.OwnerID: true}
@@ -80,10 +97,13 @@ func (a *App) GbanApprovers(ctx context.Context) []int64 {
 			}
 		}
 	}
-	if ids[0] == 0 {
-		ids = ids[1:]
+	var wanted []int64
+	for _, id := range ids {
+		if id != 0 && a.GbanRequestsWanted(ctx, id) {
+			wanted = append(wanted, id)
+		}
 	}
-	return ids
+	return wanted
 }
 
 func (a *App) gbanIDs(ctx context.Context) (map[int64]bool, error) {

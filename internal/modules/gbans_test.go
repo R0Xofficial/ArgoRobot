@@ -427,3 +427,30 @@ func TestDeclinedRequestIsNotLogged(t *testing.T) {
 		t.Fatal("not banned")
 	}
 }
+
+func TestGbanRequestsCanBeTurnedOff(t *testing.T) {
+	e := gbanSetup(t)
+	e.Send(Msg{Chat: chat, From: sudo, Text: "/gbanrequests"})
+	contains(t, lastText(t, e), "come to your private chat")
+	e.Send(Msg{Chat: chat, From: sudo, Text: "/gbanrequests maybe"})
+	contains(t, lastText(t, e), "Invalid choice")
+	e.Send(Msg{Chat: chat, From: bob, Text: "/gbanrequests off"})
+	if !e.App.GbanRequestsWanted(e.Ctx(), bob.ID) {
+		t.Fatal("a plain member can't change it")
+	}
+	e.Send(Msg{Chat: chat, From: sudo, Text: "/gbanrequests off"})
+	contains(t, lastText(t, e), "don't come")
+	e.Fake.Reset()
+	e.Send(Msg{Chat: chat, From: support, Text: "/gban 21 meh"})
+	copies := map[string]bool{}
+	for _, c := range e.Fake.Calls("sendMessage") {
+		if strings.Contains(c.P["text"], "#GBANREQUEST") {
+			copies[c.P["chat_id"]] = true
+		}
+	}
+	if len(copies) != 1 || !copies[itoa(OwnerID)] {
+		t.Fatalf("whoever turned it off is skipped: %v", copies)
+	}
+	e.Send(Msg{Chat: chat, From: sudo, Text: "/gbanrequests on"})
+	contains(t, lastText(t, e), "come to your private chat")
+}

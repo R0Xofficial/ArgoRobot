@@ -979,6 +979,7 @@
   "gbans.help.reply_to_a_file_to": "Reply to a file to import global bans from it (or send the file wit' the command). The format be detected if ye leave it out. JSON files wit' one ban per line work too.",
   "gbans.help.reply_to_a_message_delete": "Reply to a missive: delete it an' ban its author globally.",
   "gbans.help.show_whether_you_are_globally": "Show whether ye or the soul ye name be globally banned, an' why. Anyone can look up anyone, by @username, ID or reply. Alias: /gbanstat.",
+  "gbans.help.stop_or_resume_getting_gban_requests": "Stop or resume gettin' the global ban requests in yer private chat. Without on/off it shows yer current setting, matey.",
   "gbans.i_banned_them_here": "<code>I banned 'em here!</code>",
   "gbans.i_can_t_tell_who_you": "I can't tell who ye be. Send this as yerself, not anonymously.",
   "gbans.i_couldn_t_deliver_your_request": "I couldn't deliver yer request to the staff. Try again later.",

@@ -227,6 +227,7 @@ var helpData = map[string]*core.Help{
 			{Usage: "/dgban <reason>", Description: "gbans.help.reply_to_a_message_delete", MinRole: 1},
 			{Usage: "/ungban <user> <reason>", Description: "gbans.help.lift_a_global_ban_support", MinRole: 1},
 			{Usage: "/gstat [user]", Description: "gbans.help.show_whether_you_are_globally"},
+			{Usage: "/gbanrequests [on|off]", Description: "gbans.help.stop_or_resume_getting_gban_requests", MinRole: 2},
 			{Usage: "/gbans [on|off]", Description: "gbans.help.choose_whether_this_chat_removes", Label: "common.chat_owner"},
 			{Usage: "/gimport [csv|minicsv|json|human]", Description: "gbans.help.reply_to_a_file_to", MinRole: 4},
 			{Usage: "/gexport [csv|minicsv|json|human]", Description: "gbans.help.get_the_list_of_global", MinRole: 4},

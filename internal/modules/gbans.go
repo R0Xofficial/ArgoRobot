@@ -34,6 +34,7 @@ func registerGbans(r *core.Router) {
 	r.CommandRole(core.Support, cmdGban, "gban", "dgban")
 	r.CommandRole(core.Support, cmdUngban, "ungban")
 	r.Command(cmdGstat, "gstat", "gbanstat")
+	r.CommandRole(core.Sudo, cmdGbanrequests, "gbanrequests")
 	r.Command(cmdGbans, "gbans", "enforcegban")
 	r.CommandRole(core.Owner, cmdGimport, "gimport")
 	r.CommandRole(core.Owner, cmdGexport, "gexport")
@@ -814,6 +815,29 @@ func cmdGbans(c *core.Ctx) error {
 		c.Say(c.T("gbans.global_ban_enforcement_has_been_enabled"))
 	} else {
 		c.Say(c.T("gbans.global_ban_enforcement_has_been_disabled"))
+	}
+	return nil
+}
+
+// --- /gbanrequests ------------------------------------------------------------------------
+
+// cmdGbanrequests chooses whether the requests of the Support users come to the person's private chat. They do by default.
+func cmdGbanrequests(c *core.Ctx) error {
+	arg := strings.ToLower(strings.TrimSpace(c.Args))
+	if arg != "" {
+		on, ok := text.ParseSwitch(arg)
+		if !ok {
+			c.Say("Invalid choice. Use /gbanrequests on or /gbanrequests off.")
+			return nil
+		}
+		if err := c.App.SetGbanRequestsWanted(c.Ctx, c.User.Id, on); err != nil {
+			return err
+		}
+	}
+	if c.App.GbanRequestsWanted(c.Ctx, c.User.Id) {
+		c.Say("Global ban requests <b>come to your private chat</b>.")
+	} else {
+		c.Say("Global ban requests <b>don't come to your private chat</b> any more. The other Sudo users still get them.")
 	}
 	return nil
 }
