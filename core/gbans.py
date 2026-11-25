@@ -181,6 +181,18 @@ async def create_request(
     return row["id"] if row else None
 
 
+async def requests_muted() -> set[int]:
+    """The staff who don't want the requests in their private chat."""
+    return {row["user_id"] for row in await database.fetch_all("SELECT user_id FROM gban_request_optout")}
+
+
+async def set_requests(user_id: int, wanted: bool) -> None:
+    if wanted:
+        await database.execute("DELETE FROM gban_request_optout WHERE user_id = $1", user_id)
+    else:
+        await database.execute("INSERT INTO gban_request_optout (user_id) VALUES ($1) ON CONFLICT DO NOTHING", user_id)
+
+
 async def save_deliveries(request_id: int, deliveries: list[tuple[int, int]]) -> None:
     """Remember the copies of a request that went out (chat id, message id), so a decision can update all of them."""
     await database.execute(

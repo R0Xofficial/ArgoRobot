@@ -973,6 +973,7 @@
  "gbans.help.reply_to_a_file_to": "Odpowiedz na plik, żeby zaimportować z niego bany globalne (albo wyślij plik z poleceniem). Format jest wykrywany, jeśli go pominiesz. Pliki JSON z jednym banem w linii też działają.",
  "gbans.help.reply_to_a_message_delete": "Odpowiedz na wiadomość: usuń ją i zbanuj jej autora globalnie.",
  "gbans.help.show_whether_you_are_globally": "Pokaż, czy ty albo podany użytkownik jest zbanowany globalnie, i dlaczego. Każdy może sprawdzić każdego, przez @username, ID albo odpowiedź. Alias: /gbanstat.",
+ "gbans.help.stop_or_resume_getting_gban_requests": "Wyłącz lub włącz otrzymywanie próśb o globalne bany w prywatnej wiadomości. Bez on/off pokazuje obecne ustawienie.",
  "gbans.i_banned_them_here": "<code>Zbanowałem go tutaj!</code>",
  "gbans.i_can_t_tell_who_you": "Nie wiem, kim jesteś. Wyślij to jako ty sam, nie anonimowo.",
  "gbans.i_couldn_t_deliver_your_request": "Nie udało mi się dostarczyć Twojej prośby do staffu. Spróbuj później.",

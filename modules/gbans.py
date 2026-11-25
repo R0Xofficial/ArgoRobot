@@ -47,6 +47,7 @@ HELP = [
     ("/dgban <reason>", "gbans.help.reply_to_a_message_delete", Role.SUPPORT),
     ("/ungban <user> <reason>", "gbans.help.lift_a_global_ban_support", Role.SUPPORT),
     ("/gstat [user]", "gbans.help.show_whether_you_are_globally"),
+    ("/gbanrequests [on|off]", "gbans.help.stop_or_resume_getting_gban_requests", Role.SUDO),
     ("/gbans [on|off]", "gbans.help.choose_whether_this_chat_removes", "common.chat_owner"),
     ("/gimport [csv|minicsv|json|human]", "gbans.help.reply_to_a_file_to", Role.OWNER),
     ("/gexport [csv|minicsv|json|human]", "gbans.help.get_the_list_of_global", Role.OWNER),
@@ -391,7 +392,8 @@ async def _approvers() -> list[int]:
     for role in (Role.DEVELOPER, Role.SUDO):
         for row in await roles.list_role(role):
             ids.setdefault(row["user_id"])
-    return [user_id for user_id in ids if user_id]
+    muted = await gbans.requests_muted()
+    return [user_id for user_id in ids if user_id and user_id not in muted]
 
 
 async def _tell_user(bot: Bot, user_id: int, text: str) -> None:
@@ -771,6 +773,27 @@ async def cmd_gbans(message: Message, command: CommandObject, role: Role | None 
             message,
             tr("gbans.global_ban_enforcement_has_been_disabled"),
         )
+
+
+# --- /gbanrequests ------------------------------------------------------------------------------
+
+@router.message(cmd("gbanrequests"), HasRole(Role.SUDO))
+@i18n.english_only
+async def cmd_gbanrequests(message: Message, command: CommandObject, role: Role | None = None) -> None:
+    """Whether the requests of the Support users come to this person's private chat. On by default."""
+    user_id = message.from_user.id
+    argument = (command.args or "").strip().lower()
+    if argument:
+        if argument not in _ANSWERS:
+            await reply(message, "Invalid choice. Use /gbanrequests on or /gbanrequests off.")
+            return
+        await gbans.set_requests(user_id, _ANSWERS[argument])
+    wanted = user_id not in await gbans.requests_muted()
+    if wanted:
+        text = "Global ban requests <b>come to your private chat</b>."
+    else:
+        text = "Global ban requests <b>don't come to your private chat</b> any more. The other Sudo users still get them."
+    await reply(message, text)
 
 
 # --- /gimport and /gexport -----------------------------------------------------------------------------

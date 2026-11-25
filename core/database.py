@@ -368,6 +368,11 @@ CREATE TABLE IF NOT EXISTS gban_requests (
 );
 ALTER TABLE gban_requests ADD COLUMN IF NOT EXISTS deliveries TEXT NOT NULL DEFAULT '[]';
 
+-- Staff who turned the global ban requests off in their private chat (see modules/gbans.py).
+CREATE TABLE IF NOT EXISTS gban_request_optout (
+    user_id BIGINT PRIMARY KEY
+);
+
 -- Users a chat has approved: trusted there, so global bans, federation bans, locks
 -- and the like don't apply to them (see core/approvals.py).
 CREATE TABLE IF NOT EXISTS approvals (
