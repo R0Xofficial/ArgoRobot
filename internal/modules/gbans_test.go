@@ -236,6 +236,20 @@ func TestUngbanAndRequests(t *testing.T) {
 	if n := len(e.Fake.Calls("editMessageText")); n != 3 { // the pressed message and both copies
 		t.Fatalf("edited copies: %d", n)
 	}
+	for _, c := range e.Fake.Calls("editMessageText") { // the copies stay the request, now with who approved it
+		if !strings.Contains(c.P["text"], "<b>Approved by:</b>") || strings.Contains(c.P["text"], "#GBANNED") {
+			t.Fatalf("an edited copy: %q", c.P["text"])
+		}
+	}
+	logged := false
+	for _, c := range e.Fake.Calls("sendMessage") {
+		if strings.HasPrefix(c.P["text"], "<b>#GBANNED</b>") {
+			logged = true
+		}
+	}
+	if !logged {
+		t.Fatal("the log chat gets what happened")
+	}
 	for _, c := range e.Fake.Calls("sendMessage") {
 		if strings.Contains(c.P["text"], "#GBANNED") && strings.Contains(c.P["text"], "Approved by") {
 			t.Fatalf("the log doesn't say who approved: %q", c.P["text"])
