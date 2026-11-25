@@ -13,6 +13,7 @@ The ids of banned users are kept in memory: every message of every chat is
 checked against them, and that check must not cost a database query.
 """
 
+import json
 import logging
 from datetime import timedelta
 from typing import Any, Iterable
@@ -178,6 +179,13 @@ async def create_request(
         origin_html,
     )
     return row["id"] if row else None
+
+
+async def save_deliveries(request_id: int, deliveries: list[tuple[int, int]]) -> None:
+    """Remember the copies of a request that went out (chat id, message id), so a decision can update all of them."""
+    await database.execute(
+        "UPDATE gban_requests SET deliveries = $2 WHERE id = $1", request_id, json.dumps([list(d) for d in deliveries])
+    )
 
 
 async def claim_request(request_id: int) -> dict[str, Any] | None:

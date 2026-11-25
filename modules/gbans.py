@@ -366,11 +366,63 @@ async def _ask_sudo(
         old_reason=old["reason"] if old else None,
         timestamp=False,
     ))
-    if not await logs.role_log(message.bot, text, await logs.render(lambda: _request_keyboard(request_id))):
+    markup = await logs.render(lambda: _request_keyboard(request_id))
+    delivered: list[tuple[int, int]] = []
+    for approver in await _approvers():  # every Sudo user and above gets it in their PM
+        try:
+            sent = await message.bot.send_message(
+                approver, text, reply_markup=markup, link_preview_options=LinkPreviewOptions(is_disabled=True)
+            )
+            delivered.append((approver, sent.message_id))
+        except TelegramAPIError as exc:  # they never started the bot, or blocked it
+            log.debug("Could not send a request to %s: %s", approver, exc)
+    if delivered:
+        await gbans.save_deliveries(request_id, delivered)
+    elif not await logs.role_log(message.bot, text, markup):  # nobody reachable: the log chat still gets it
         await gbans.drop_request(request_id)
         await reply(message, tr("gbans.i_couldn_t_deliver_your_request"))
         return
     await reply(message, tr("gbans.request_sent"))
+
+
+async def _approvers() -> list[int]:
+    """Who may decide a request: the owner, the developers and the Sudo users."""
+    ids = dict.fromkeys([settings.OWNER_ID])
+    for role in (Role.DEVELOPER, Role.SUDO):
+        for row in await roles.list_role(role):
+            ids.setdefault(row["user_id"])
+    return [user_id for user_id in ids if user_id]
+
+
+async def _tell_user(bot: Bot, user_id: int, text: str) -> None:
+    """Tell someone in their PM what happened to them. They may never have started the bot: that's fine."""
+    if user_id <= 0:
+        return
+    try:
+        await bot.send_message(user_id, text, link_preview_options=LinkPreviewOptions(is_disabled=True))
+    except TelegramAPIError as exc:
+        log.debug("Could not tell %s: %s", user_id, exc)
+
+
+def _appeal() -> str:
+    support = at_name(settings.SUPPORT_CHAT_USERNAME)
+    return f"\nIf you think this is a mistake, contact {esc(support)}." if support else ""
+
+
+def _notice(head: str, reason: str, admin: str, approved_by: str | None) -> str:
+    lines = [f"<b>{head}</b>", f"<b>Reason:</b> <code>{esc(reason)}</code>", f"<b>Timestamp:</b> {logs.timestamp()}", f"<b>Admin:</b> {admin}"]
+    if approved_by:
+        lines.append(f"<b>Approved by:</b> {approved_by}")
+    return "\n".join(lines)
+
+
+async def _tell_banned(bot: Bot, user_id: int, reason: str, updated: bool, admin: str, approved_by: str | None = None) -> None:
+    head = "The reason of your global ban has been updated." if updated else "You have been globally banned."
+    await _tell_user(bot, user_id, _notice(head, reason, admin, approved_by) + _appeal())
+
+
+async def _tell_unbanned(bot: Bot, user_id: int, reason: str, admin: str, approved_by: str | None = None) -> None:
+    await _tell_user(bot, user_id, _notice("Your global ban has been lifted.", reason, admin, approved_by))
 
 
 @router.message(cmd("gban", "dgban"), HasRole(Role.SUPPORT))
@@ -458,6 +510,7 @@ async def cmd_gban(message: Message, command: CommandObject, role: Role) -> None
         )),
     )
     await reply(message, _done_text(old))
+    await _tell_banned(bot, target.user_id, reason, old is not None, user_ref(admin.id, admin.full_name))
 
 
 @router.message(cmd("ungban"), HasRole(Role.SUPPORT))
@@ -516,6 +569,7 @@ async def cmd_ungban(message: Message, command: CommandObject, role: Role) -> No
         await logs.render(lambda: _log_text("#UNGBANNED", _origin_html(message), who, reason, user_ref(admin.id, admin.full_name))),
     )
     await reply(message, tr("gbans.let_s_give_them_another_chance"))
+    await _tell_unbanned(bot, target.user_id, reason, user_ref(admin.id, admin.full_name))
     _spawn(_propagate_unban(bot, target.user_id, _reply_place(message)))
 
 
@@ -552,14 +606,27 @@ async def cb_request(callback: CallbackQuery, role: Role | None = None) -> None:
     origin = request["origin_html"]
     reason = request["reason"]
 
-    async def finish(text: str) -> None:
+    deliveries = json.loads(request.get("deliveries") or "[]")
+
+    async def finish(text: str, *, log_it: bool = True) -> None:
+        """Show the outcome in every copy of the request, and in the log chat (unless the request was a log message)."""
         if message is not None:
             await edit(message, text, reply_markup=None, link_preview_options=LinkPreviewOptions(is_disabled=True))
+        here = (message.chat.id, message.message_id) if message is not None else None
+        for copy in deliveries:
+            if tuple(copy) != here:
+                with suppress(TelegramAPIError):
+                    await bot.edit_message_text(
+                        text, chat_id=copy[0], message_id=copy[1], reply_markup=None,
+                        link_preview_options=LinkPreviewOptions(is_disabled=True),
+                    )
+        if deliveries and log_it:  # the log doesn't need to say who pressed the button
+            await logs.role_log(bot, "\n".join(l for l in text.split("\n") if not l.startswith("<b>Approved by:</b>")))
 
     if not approving:
         await callback.answer(tr("gbans.request_declined"))
         if message is not None:
-            await finish(await logs.render(lambda: tr("gbans.declined_by", html_text=message.html_text, id=user_ref(approver.id, approver.full_name))))
+            await finish(await logs.render(lambda: tr("gbans.declined_by", html_text=message.html_text, id=user_ref(approver.id, approver.full_name))), log_it=False)  # nothing happened: nothing to log
         await _notify(bot, chat_id, lambda: tr("gbans.request_declined_2"), msg_id, thread_id)
         return
 
@@ -567,7 +634,7 @@ async def cb_request(callback: CallbackQuery, role: Role | None = None) -> None:
         problem = await _protection(bot, target_id)
         if problem is not None:
             await callback.answer(tr("gbans.this_user_can_no_longer_be"), show_alert=True)
-            await finish(await logs.render(lambda: tr("gbans.cancelled", opt=message.html_text if message else '', problem=problem)))
+            await finish(await logs.render(lambda: tr("gbans.cancelled", opt=message.html_text if message else '', problem=problem)), log_it=False)
             await _notify(bot, chat_id, lambda: tr("gbans.request_cancelled", problem=problem), msg_id, thread_id)
             return
         await callback.answer(tr("gbans.approved"))
@@ -595,13 +662,14 @@ async def cb_request(callback: CallbackQuery, role: Role | None = None) -> None:
             approved_by=user_ref(approver.id, approver.full_name),
         )))
         await _notify(bot, chat_id, lambda: _done_text(old), msg_id, thread_id)
+        await _tell_banned(bot, target_id, reason, old is not None, requester, user_ref(approver.id, approver.full_name))
         return
 
     # ungban
     removed = await gbans.remove(target_id)
     if removed is None:
         await callback.answer(tr("gbans.this_user_is_not_globally_banned"), show_alert=True)
-        await finish(await logs.render(lambda: tr("gbans.cancelled_not_globally_banned_any_more", opt=message.html_text if message else '')))
+        await finish(await logs.render(lambda: tr("gbans.cancelled_not_globally_banned_any_more", opt=message.html_text if message else '')), log_it=False)
         return
     await callback.answer(tr("gbans.approved"))
     await finish(await logs.render(lambda: _log_text(
@@ -612,6 +680,7 @@ async def cb_request(callback: CallbackQuery, role: Role | None = None) -> None:
         requester,
         approved_by=user_ref(approver.id, approver.full_name),
     )))
+    await _tell_unbanned(bot, target_id, reason, requester, user_ref(approver.id, approver.full_name))
     _spawn(_propagate_unban(bot, target_id, (chat_id, msg_id if chat_id < 0 else None, thread_id)))
 
 

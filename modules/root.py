@@ -3,11 +3,12 @@
 import asyncio
 import platform
 import time
+from contextlib import suppress
 
 from aiogram import BaseMiddleware, F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions, Message
 
 from config import settings
 from core import chats, database, federations, gbans, immunity, info_hooks, logs, registry, roles, speedtest, whitelist
@@ -349,6 +350,16 @@ async def cmd_staff_role(message: Message, command: CommandObject, role: Role | 
         await roles.remove_role(target.user_id)
         await reply(message, tr("root.has_been_removed_from", who=who, label=label))
 
+    with suppress(TelegramAPIError):  # a promotion is told to the person themselves, if they can be reached
+        await message.bot.send_message(
+            target.user_id,
+            (
+                f"<b>You have been promoted to {label}.</b>"
+                if granting
+                else f"<b>You have been demoted: you are no longer {label}.</b>"
+            ) + f"\n<b>Timestamp:</b> {logs.timestamp()}\n<b>Admin:</b> {user_ref(actor.id, actor.full_name)}",
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
+        )
     granted_tag, revoked_tag = roles.LOG_TAGS[target_role]
     await logs.role_log(
         message.bot,

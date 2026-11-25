@@ -363,8 +363,10 @@ CREATE TABLE IF NOT EXISTS gban_requests (
     thread_id         BIGINT,
     target_msg_id     BIGINT,
     origin_html       TEXT NOT NULL,   -- "Initiated From" line, rendered when the request was made
+    deliveries        TEXT NOT NULL DEFAULT '[]',   -- JSON [[chat_id, message_id], ...]: the copies sent to the Sudo users
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE gban_requests ADD COLUMN IF NOT EXISTS deliveries TEXT NOT NULL DEFAULT '[]';
 
 -- Users a chat has approved: trusted there, so global bans, federation bans, locks
 -- and the like don't apply to them (see core/approvals.py).
