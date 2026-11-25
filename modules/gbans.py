@@ -409,20 +409,19 @@ def _appeal() -> str:
     return f"\nIf you think this is a mistake, contact {esc(support)}." if support else ""
 
 
-def _notice(head: str, reason: str, admin: str, approved_by: str | None) -> str:
+def _notice(head: str, reason: str, admin: str) -> str:
+    """What the person is told: what happened, why, when and by whom. Who approved a request is for the staff only."""
     lines = [f"<b>{head}</b>", f"<b>Reason:</b> <code>{esc(reason)}</code>", f"<b>Timestamp:</b> {logs.timestamp()}", f"<b>Admin:</b> {admin}"]
-    if approved_by:
-        lines.append(f"<b>Approved by:</b> {approved_by}")
     return "\n".join(lines)
 
 
-async def _tell_banned(bot: Bot, user_id: int, reason: str, updated: bool, admin: str, approved_by: str | None = None) -> None:
+async def _tell_banned(bot: Bot, user_id: int, reason: str, updated: bool, admin: str) -> None:
     head = "The reason of your global ban has been updated." if updated else "You have been globally banned."
-    await _tell_user(bot, user_id, _notice(head, reason, admin, approved_by) + _appeal())
+    await _tell_user(bot, user_id, _notice(head, reason, admin) + _appeal())
 
 
-async def _tell_unbanned(bot: Bot, user_id: int, reason: str, admin: str, approved_by: str | None = None) -> None:
-    await _tell_user(bot, user_id, _notice("Your global ban has been lifted.", reason, admin, approved_by))
+async def _tell_unbanned(bot: Bot, user_id: int, reason: str, admin: str) -> None:
+    await _tell_user(bot, user_id, _notice("Your global ban has been lifted.", reason, admin))
 
 
 @router.message(cmd("gban", "dgban"), HasRole(Role.SUPPORT))
@@ -662,7 +661,7 @@ async def cb_request(callback: CallbackQuery, role: Role | None = None) -> None:
             approved_by=user_ref(approver.id, approver.full_name),
         )))
         await _notify(bot, chat_id, lambda: _done_text(old), msg_id, thread_id)
-        await _tell_banned(bot, target_id, reason, old is not None, requester, user_ref(approver.id, approver.full_name))
+        await _tell_banned(bot, target_id, reason, old is not None, requester)
         return
 
     # ungban
@@ -680,7 +679,7 @@ async def cb_request(callback: CallbackQuery, role: Role | None = None) -> None:
         requester,
         approved_by=user_ref(approver.id, approver.full_name),
     )))
-    await _tell_unbanned(bot, target_id, reason, requester, user_ref(approver.id, approver.full_name))
+    await _tell_unbanned(bot, target_id, reason, requester)
     _spawn(_propagate_unban(bot, target_id, (chat_id, msg_id if chat_id < 0 else None, thread_id)))
 
 
