@@ -306,7 +306,10 @@ func TestGstat(t *testing.T) {
 	e := gbanSetup(t)
 	e.Send(Msg{Chat: chat, From: carol, Type: "private", Text: "/gstat"})
 	got := lastText(t, e)
-	contains(t, got, "Your Global Ban Status")
+	contains(t, got, "Global Ban Status")
+	if strings.Contains(got, "Your") || strings.Contains(got, "\n\n") {
+		t.Fatalf("no 'Your', no gap after the user: %q", got)
+	}
 	contains(t, got, "Not Banned")
 	e.Send(Msg{Chat: chat, From: sudo, Text: "/gban 20 a reason"})
 	e.Send(Msg{Chat: chat, From: sudo, Text: "/gstat 20"})
@@ -319,16 +322,20 @@ func TestGstat(t *testing.T) {
 	got = lastText(t, e)
 	contains(t, got, "<code>Banned</code>")
 	contains(t, got, "<code>a reason</code>")
+	contains(t, got, "\n\nIf you think this is a mistake, contact ")
+	if strings.Contains(got, "Support:") {
+		t.Fatalf("the support chat is named at the bottom: %q", got)
+	}
 	if strings.Contains(got, "Sudo Sam") {
 		t.Fatalf("only staff sees the admin: %q", got)
 	}
 	e.Send(Msg{Chat: chat, From: alice, Text: "/gstat"})
-	contains(t, lastText(t, e), "Your Global Ban Status")
+	contains(t, lastText(t, e), "Global Ban Status")
 	// staff can't have a global ban, and it says so
 	e.Send(Msg{Chat: chat, From: alice, Text: "/gstat 40"})
-	contains(t, lastText(t, e), "member of my staff and can't have a global ban")
-	if strings.Contains(lastText(t, e), "<b>Status:</b>") {
-		t.Fatalf("just the sentence: %q", lastText(t, e))
+	got = lastText(t, e)
+	if !strings.HasSuffix(got, "</a> [<code>40</code>] is a member of my staff and can't have a global ban.") || strings.Contains(got, "Status") {
+		t.Fatalf("just the sentence: %q", got)
 	}
 }
 
@@ -453,4 +460,81 @@ func TestGbanRequestsCanBeTurnedOff(t *testing.T) {
 	}
 	e.Send(Msg{Chat: chat, From: sudo, Text: "/gbanrequests on"})
 	contains(t, lastText(t, e), "come to your private chat")
+}
+
+func TestBanOfSomeoneTelegramCantFind(t *testing.T) {
+	e := gbanSetup(t)
+	stranger := Person{ID: 777, Name: "Stranger"}
+	// a ban works on people who aren't here: it is saved and applied when they show up
+	e.Fake.Fail("banChatMember", 400, "Bad Request: user not found")
+	e.Send(Msg{Chat: chat, From: sudo, Text: "/ban 777 spam links"})
+	got := lastText(t, e)
+	contains(t, got, "The ban is saved")
+	contains(t, got, "spam links")
+	if !e.App.HasPreban(e.Ctx(), chat, 777) {
+		t.Fatal("the ban is saved")
+	}
+	e.Fake.Reset()
+	e.Send(Msg{Chat: chat, From: stranger, Text: "hello"})
+	if n := len(e.Fake.Calls("banChatMember")); n != 1 {
+		t.Fatalf("banned when they wrote: %d", n)
+	}
+	contains(t, lastText(t, e), "was banned: the ban was saved earlier")
+	if e.App.HasPreban(e.Ctx(), chat, 777) {
+		t.Fatal("a saved ban is used once")
+	}
+	// a timed ban is saved with its end, and /unban forgets it
+	e.Fake.Fail("banChatMember", 400, "Bad Request: user not found")
+	e.Send(Msg{Chat: chat, From: sudo, Text: "/tban 778 2h flooding"})
+	contains(t, lastText(t, e), "The ban is saved")
+	e.Fake.Reset()
+	e.Send(Msg{Chat: chat, From: sudo, Text: "/unban 778"})
+	contains(t, lastText(t, e), "was unbanned")
+	if e.App.HasPreban(e.Ctx(), chat, 778) || len(e.Fake.Calls("unbanChatMember")) != 0 {
+		t.Fatal("/unban forgets a saved ban")
+	}
+	// any other refusal is still a refusal
+	e.Fake.Fail("banChatMember", 400, "Bad Request: not enough rights to restrict/unrestrict chat member")
+	e.Send(Msg{Chat: chat, From: sudo, Text: "/ban 779"})
+	if e.App.HasPreban(e.Ctx(), chat, 779) {
+		t.Fatal("nothing is saved when the refusal is about rights")
+	}
+}
+
+func TestMuteOfSomeoneTelegramCantFind(t *testing.T) {
+	e := gbanSetup(t)
+	stranger := Person{ID: 777, Name: "Stranger"}
+	e.Fake.Fail("restrictChatMember", 400, "Bad Request: user not found")
+	e.Send(Msg{Chat: chat, From: sudo, Text: "/tmute 777 2h noise"})
+	contains(t, lastText(t, e), "The mute is saved")
+	if !e.App.HasPreban(e.Ctx(), chat, 777) {
+		t.Fatal("the mute is saved")
+	}
+	e.Fake.Reset()
+	e.Send(Msg{Chat: chat, From: stranger, Text: "hello"})
+	if n := len(e.Fake.Calls("restrictChatMember")); n != 1 {
+		t.Fatalf("muted when they wrote: %d", n)
+	}
+	contains(t, lastText(t, e), "was muted: the mute was saved earlier")
+	if len(e.Fake.Calls("banChatMember")) != 0 || len(e.Fake.Calls("deleteMessage")) != 0 {
+		t.Fatal("a mute doesn't ban or delete")
+	}
+	// /unmute forgets a saved mute; a ban is not replaced by a mute
+	e.Fake.Fail("restrictChatMember", 400, "Bad Request: user not found")
+	e.Send(Msg{Chat: chat, From: sudo, Text: "/mute 778"})
+	e.Fake.Reset()
+	e.Send(Msg{Chat: chat, From: sudo, Text: "/unmute 778"})
+	contains(t, lastText(t, e), "was unmuted")
+	if e.App.HasPreban(e.Ctx(), chat, 778) || len(e.Fake.Calls("restrictChatMember")) != 0 {
+		t.Fatal("/unmute forgets a saved mute")
+	}
+	e.Fake.Fail("banChatMember", 400, "Bad Request: user not found")
+	e.Send(Msg{Chat: chat, From: sudo, Text: "/ban 779"})
+	e.Fake.Fail("restrictChatMember", 400, "Bad Request: user not found")
+	e.Send(Msg{Chat: chat, From: sudo, Text: "/mute 779"})
+	e.Fake.Reset()
+	e.Send(Msg{Chat: chat, From: Person{ID: 779, Name: "Both"}, Text: "hi"})
+	if len(e.Fake.Calls("banChatMember")) != 1 || len(e.Fake.Calls("restrictChatMember")) != 0 {
+		t.Fatal("the saved ban wins")
+	}
 }

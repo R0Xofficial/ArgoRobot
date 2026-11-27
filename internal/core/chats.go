@@ -17,7 +17,7 @@ var chatTables = []string{
 	"user_chats", "gban_bans", "captcha_pending", "captcha_settings", "warns", "warn_settings", "chat_logs",
 	"disabled_commands", "connections", "chat_settings", "flood_settings", "blacklist", "blacklist_settings",
 	"greetings", "fed_chats", "fed_applied", "antiraid", "nightmode", "locks", "lock_settings", "lock_allowlist",
-	"rules", "join_blacklist", "notes", "filters", "approvals",
+	"rules", "join_blacklist", "notes", "filters", "approvals", "chat_prebans",
 }
 
 // migratedTables follow a chat to its new id when a group becomes a supergroup.
@@ -25,7 +25,7 @@ var migratedTables = []string{
 	"chat_settings", "warn_settings", "warns", "approvals", "gban_bans", "flood_settings", "blacklist",
 	"blacklist_settings", "filters", "greetings", "join_blacklist", "notes", "rules", "locks", "lock_settings",
 	"lock_allowlist", "fed_chats", "fed_applied", "disabled_commands", "connections", "captcha_settings",
-	"captcha_pending", "chat_logs", "antiraid", "nightmode",
+	"captcha_pending", "chat_logs", "antiraid", "nightmode", "chat_prebans",
 }
 
 type chatKey struct {

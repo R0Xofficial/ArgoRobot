@@ -42,6 +42,7 @@ type App struct {
 	raid      raidState
 	marks     memberMarks
 	captcha   captchaState
+	prebans   prebanState
 	cleanup   sync.Mutex // held while the chats are being checked
 
 	registry     registry

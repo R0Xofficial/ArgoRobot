@@ -38,6 +38,8 @@ type ModerationError struct {
 	Msg string
 	// NotAllowed marks "you may not use this command here": chats can choose not to answer these (/adminerror).
 	NotAllowed bool
+	// Unknown marks a user Telegram can't find: the bot has never seen them. A ban of theirs can be saved for later.
+	Unknown bool
 }
 
 func (e *ModerationError) Error() string { return e.Msg }
@@ -305,6 +307,20 @@ func (c *Ctx) RequireReply() *gotgbot.Message {
 }
 
 const rightsMessage = "moderation.rights_message"
+
+// PerformBan is Perform for a ban: a user Telegram can't find is not "not in this chat", because a ban works on
+// people who aren't there. It means Telegram doesn't know that ID to the bot: the error says so (Unknown).
+func (c *Ctx) PerformBan(err error) error {
+	if tg := TgError(err); tg != nil && tg.Code == 400 {
+		p := strings.ToLower(tg.Description)
+		for _, k := range []string{"user not found", "participant_id_invalid", "user_not_participant", "member not found"} {
+			if strings.Contains(p, k) {
+				return &ModerationError{Msg: c.T("common.that_user_isn_t_in_this"), Unknown: true}
+			}
+		}
+	}
+	return c.Perform(err)
+}
 
 // Perform turns the usual Telegram refusals into a *ModerationError. Anything else is returned as it is.
 func (c *Ctx) Perform(err error, rightsTag ...string) error {

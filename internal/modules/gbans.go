@@ -753,14 +753,11 @@ func cmdGstat(c *core.Ctx) error {
 		stored = ban.Name
 	}
 	name := c.DisplayName(targetID, stored)
-	title := c.T("gbans.global_ban_status")
-	if targetID == viewer.Id {
-		title = c.T("gbans.your_global_ban_status")
+	if c.App.GetRole(c.Ctx, targetID) != core.NoRole { // staff can't be banned: nothing else to tell
+		return replyNoPreview(c, text.UserRef(targetID, name)+" is a member of my staff and can't have a global ban.")
 	}
-	lines := []string{"<b>" + title + "</b>", c.T("gbans.user_3", core.V{"target_id": text.UserRef(targetID, name)}), ""}
-	if role := c.App.GetRole(c.Ctx, targetID); role != core.NoRole {
-		lines = append(lines, "This user is a member of my staff and can't have a global ban.")
-	} else if ban != nil {
+	lines := []string{"<b>" + c.T("gbans.global_ban_status") + "</b>", c.T("gbans.user_3", core.V{"target_id": text.UserRef(targetID, name)})}
+	if ban != nil {
 		lines = append(lines, "• <b>Status:</b> <code>Banned</code>",
 			"• <b>Reason:</b> <code>"+text.Esc(ban.Reason)+"</code>",
 			"• <b>Timestamp:</b> "+core.Timestamp(ban.CreatedAt))
@@ -775,7 +772,7 @@ func cmdGstat(c *core.Ctx) error {
 			}
 		}
 		if support := atName(c.App.Cfg.SupportChatUsername); support != "" {
-			lines = append(lines, "• <b>Support:</b> "+text.Esc(support))
+			lines = append(lines, "\nIf you think this is a mistake, contact "+text.Esc(support)+".")
 		}
 	} else {
 		lines = append(lines, "• <b>Status:</b> <code>Not Banned</code>")
