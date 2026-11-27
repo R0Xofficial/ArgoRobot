@@ -229,3 +229,43 @@ func TestFilterNamedLikeACommand(t *testing.T) {
 		}
 	}
 }
+
+func TestFilterCooldownCommand(t *testing.T) {
+	e := setup2(t)
+	e.Send(Msg{Chat: chat, From: alice, Text: "/filter hello Hi there"})
+	e.Send(Msg{Chat: chat, From: alice, Text: "/filtercooldown"})
+	contains(t, lastText(t, e), "waits 5 s")
+	e.Send(Msg{Chat: chat, From: bob, Text: "/filtercooldown 0"})
+	if e.App.FilterCooldown(e.Ctx(), chat) != 5 {
+		t.Fatal("a member changed the break")
+	}
+	e.Send(Msg{Chat: chat, From: alice, Text: "/filtercooldown 0"})
+	contains(t, lastText(t, e), "now waits 0 s")
+	e.Fake.Reset()
+	e.Send(Msg{Chat: chat, From: bob, Text: "hello"})
+	e.Send(Msg{Chat: chat, From: bob, Text: "hello again"})
+	if n := len(e.Fake.Calls("sendMessage")); n != 2 {
+		t.Fatalf("0 means every time: %d answers", n)
+	}
+	e.Send(Msg{Chat: chat, From: alice, Text: "/filtercooldown 60"})
+	if e.App.FilterCooldown(e.Ctx(), chat) != 60 {
+		t.Fatal("not kept")
+	}
+	e.Fake.Reset()
+	e.Send(Msg{Chat: chat, From: bob, Text: "hello"})
+	e.Send(Msg{Chat: chat, From: bob, Text: "hello"})
+	if n := len(e.Fake.Calls("sendMessage")); n != 1 {
+		t.Fatalf("60 s: %d answers", n)
+	}
+	for _, bad := range []string{"abc", "-3", "3601", "2.5", "+5", "1 2"} {
+		e.Send(Msg{Chat: chat, From: alice, Text: "/filtercooldown " + bad})
+		contains(t, lastText(t, e), "Use /filtercooldown")
+		if e.App.FilterCooldown(e.Ctx(), chat) != 60 {
+			t.Fatalf("%q changed it", bad)
+		}
+	}
+	e.Send(Msg{Chat: chat, From: alice, Text: "/filtercooldown default"})
+	if e.App.FilterCooldown(e.Ctx(), chat) != 5 {
+		t.Fatal("default")
+	}
+}

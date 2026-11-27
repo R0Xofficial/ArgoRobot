@@ -94,6 +94,12 @@ CREATE TABLE IF NOT EXISTS warns (
 ALTER TABLE warns ADD COLUMN IF NOT EXISTS warned_by_staff BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS warns_user_idx ON warns (chat_id, user_id);
 
+-- How long the same filter waits before it answers again in a chat (core/filterstore.go); no row = the default.
+CREATE TABLE IF NOT EXISTS filter_settings (
+    chat_id  BIGINT PRIMARY KEY,
+    cooldown INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS warn_settings (
     chat_id    BIGINT PRIMARY KEY,
     warn_limit SMALLINT NOT NULL

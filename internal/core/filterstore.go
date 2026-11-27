@@ -234,6 +234,44 @@ func (t filterTrigger) matches(s string) bool {
 	return false
 }
 
+// The break between two answers of the same filter, per chat (/filtercooldown).
+const (
+	DefaultFilterCooldown = 5 // seconds
+	MaxFilterCooldown     = 3600
+)
+
+// FilterCooldown is the seconds the same filter waits before it answers again in this chat (0: it answers every time).
+func (a *App) FilterCooldown(ctx context.Context, chatID int64) int {
+	if v, ok := a.filterWaits.get(chatID); ok {
+		return v
+	}
+	v := DefaultFilterCooldown
+	if err := a.DB.Row(ctx, "SELECT cooldown FROM filter_settings WHERE chat_id = $1", []any{chatID}, &v); err != nil && err != errNoRows {
+		logErr("Could not read the filter cooldown", err)
+		return DefaultFilterCooldown
+	} else if err == errNoRows {
+		v = DefaultFilterCooldown
+	}
+	a.filterWaits.put(chatID, v)
+	return v
+}
+
+// SetFilterCooldown sets the break; a negative number puts back the default. It returns what is in force now.
+func (a *App) SetFilterCooldown(ctx context.Context, chatID int64, seconds int) (int, error) {
+	var err error
+	if seconds < 0 || seconds == DefaultFilterCooldown {
+		seconds = DefaultFilterCooldown
+		_, err = a.DB.Exec(ctx, "DELETE FROM filter_settings WHERE chat_id = $1", chatID)
+	} else {
+		_, err = a.DB.Exec(ctx, `INSERT INTO filter_settings (chat_id, cooldown) VALUES ($1, $2)
+ON CONFLICT (chat_id) DO UPDATE SET cooldown = EXCLUDED.cooldown`, chatID, seconds)
+	}
+	if err == nil {
+		a.filterWaits.put(chatID, seconds)
+	}
+	return seconds, err
+}
+
 type filterList struct{ triggers []filterTrigger }
 
 func (a *App) filterTriggers(ctx context.Context, chatID int64) (*filterList, error) {

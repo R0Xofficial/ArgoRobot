@@ -3,6 +3,7 @@ package modules
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -18,7 +19,6 @@ import (
 
 const (
 	cbFiltersClear = "filters:clear:" // filters:clear:yes / filters:clear:no
-	filterCooldown = 5 * time.Second
 	maxListedFilt  = 100
 )
 
@@ -26,6 +26,7 @@ func registerFilters(r *core.Router) {
 	r.Command(cmdFilters, "filters")
 	r.Command(cmdFilter, "filter")
 	r.Command(cmdStop, "stop")
+	r.Command(cmdFilterCooldown, "filtercooldown")
 	r.Command(cmdStopall, "stopall")
 	r.Button(cbFiltersClear, cbStopall)
 	// Answering a keyword (or a filter named like a command) never takes a message from anyone else.
@@ -127,6 +128,37 @@ func cmdFilter(c *core.Ctx) error {
 		lines = append(lines, c.T("filters.this_chat_is_full_filters_not", core.V{"MAX_FILTERS": core.MaxFilters})+codeList(full)+".")
 	}
 	c.Say(strings.Join(lines, "\n"))
+	return nil
+}
+
+func cmdFilterCooldown(c *core.Ctx) error {
+	if !isGroup(c.Msg.Chat.Type) {
+		c.Say(c.T("common.this_command_only_works_in_groups"))
+		return nil
+	}
+	if !adminOnly(c) {
+		return nil
+	}
+	chatID := c.Msg.Chat.Id
+	arg := strings.ToLower(strings.TrimSpace(core.ArgsOf(c.Msg, c.Args)))
+	if arg == "" {
+		c.Say(c.T("filters.cooldown_is", core.V{"seconds": c.App.FilterCooldown(c.Ctx, chatID), "max": core.MaxFilterCooldown}))
+		return nil
+	}
+	seconds := -1
+	if arg != "default" && arg != "reset" {
+		n, err := strconv.Atoi(arg)
+		if err != nil || n < 0 || n > core.MaxFilterCooldown || strings.HasPrefix(arg, "+") {
+			c.Say(c.T("filters.cooldown_usage", core.V{"max": core.MaxFilterCooldown}))
+			return nil
+		}
+		seconds = n
+	}
+	now, err := c.App.SetFilterCooldown(c.Ctx, chatID, seconds)
+	if err != nil {
+		return err
+	}
+	c.Say(c.T("filters.cooldown_set", core.V{"seconds": now}))
 	return nil
 }
 
@@ -245,7 +277,7 @@ func watchFilters(c *core.Ctx) (bool, error) {
 		body = word
 	}
 	pattern := c.App.FilterMatch(c.Ctx, m.Chat.Id, body)
-	if pattern == "" || !c.App.Cooldown(fmt.Sprintf("filter:%d/%s", m.Chat.Id, pattern), filterCooldown) {
+	if pattern == "" || !c.App.Cooldown(fmt.Sprintf("filter:%d/%s", m.Chat.Id, pattern), time.Duration(c.App.FilterCooldown(c.Ctx, m.Chat.Id))*time.Second) {
 		return false, nil
 	}
 	row, err := c.App.GetFilter(c.Ctx, m.Chat.Id, pattern)

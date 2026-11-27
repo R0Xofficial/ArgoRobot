@@ -53,6 +53,7 @@ type App struct {
 	blSettings   cache[int64, BlacklistSettings]
 	joinLists    cache[int64, *JoinLists]
 	filterCache  cache[int64, *filterList]
+	filterWaits  cache[int64, int]
 	afk          afkState
 	adminRefresh adminRefreshState
 	mt           mtState

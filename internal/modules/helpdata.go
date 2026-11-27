@@ -191,6 +191,7 @@ var helpData = map[string]*core.Help{
 			{Usage: "/filter \"a long sentence\" <reply or text>", Description: "filters.help.save_a_filter_for_a_2", Label: "common.admins"},
 			{Usage: "/filter (word1, word2, \"long sentence\") <reply or text>", Description: "filters.help.save_one_filter_that_matches", Label: "common.admins"},
 			{Usage: "/stop <keyword>", Description: "filters.help.remove_a_filter_accepts_the", Label: "common.admins"},
+			{Usage: "/filtercooldown [seconds|default]", Description: "filters.help.show_or_set_how_long_the_same", Label: "common.admins"},
 			{Usage: "/stopAll", Description: "filters.help.remove_every_filter_at_once", Label: "common.chat_owner"},
 		},
 		Notes: []core.HelpNote{

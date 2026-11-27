@@ -14,7 +14,7 @@ import (
 // chatTables is everything the bot keeps for one chat. A chat the bot no longer belongs to has no use for any of
 // it, so removeChat deletes all of it.
 var chatTables = []string{
-	"user_chats", "gban_bans", "captcha_pending", "captcha_settings", "warns", "warn_settings", "chat_logs",
+	"user_chats", "gban_bans", "captcha_pending", "captcha_settings", "warns", "warn_settings", "filter_settings", "chat_logs",
 	"disabled_commands", "connections", "chat_settings", "flood_settings", "blacklist", "blacklist_settings",
 	"greetings", "fed_chats", "fed_applied", "antiraid", "nightmode", "locks", "lock_settings", "lock_allowlist",
 	"rules", "join_blacklist", "notes", "filters", "approvals", "chat_prebans",
@@ -154,6 +154,7 @@ func (a *App) forgetChat(chatID int64) {
 	a.forgetFedChat(chatID)
 	a.joinLists.drop(chatID)
 	a.filterCache.drop(chatID)
+	a.filterWaits.drop(chatID)
 	a.chats.presence.mu.Lock()
 	for k := range a.chats.presence.m {
 		if k[1] == chatID {

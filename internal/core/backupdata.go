@@ -152,6 +152,7 @@ func backupItems() []BackupItem {
 		{Key: "filters", Label: "Filters", tables: []backupTable{
 			{name: "filters", columns: cols("pattern", "s", "content", "s", "media_type", "s?", "media_file_id", "s?", "created_by", "i?"),
 				key: []string{"pattern"}, choices: map[string][]string{"media_type": backupMedia}, check: backupContent, limit: 500},
+			{name: "filter_settings", columns: cols("cooldown", "i"), single: true, ranges: map[string][2]int64{"cooldown": {0, MaxFilterCooldown}}},
 		}},
 		{Key: "blacklist", Label: "The blacklist and its settings", aliases: []string{"blacklists"}, tables: []backupTable{
 			{name: "blacklist", columns: cols("pattern", "s", "action", "s?", "action_seconds", "i", "reason", "s?", "added_by", "i?"),
