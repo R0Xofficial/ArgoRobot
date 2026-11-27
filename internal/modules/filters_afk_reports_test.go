@@ -64,7 +64,6 @@ func TestFilters(t *testing.T) {
 	e.Fake.Reset()
 	e.Send(Msg{Chat: chat, From: bob, Text: "shell"}) // not a whole word
 	e.Send(Msg{Chat: chat, From: bob, Text: "ping pong"})
-	e.Send(Msg{Chat: chat, From: bob, Text: "/hello"})
 	if len(e.Fake.Calls("sendMessage")) != 0 {
 		t.Fatalf("should not match: %v", sent(e))
 	}
@@ -202,5 +201,31 @@ func TestReportNamedUser(t *testing.T) {
 	e.Send(Msg{Chat: chat, From: carol, Text: "/report @nobody_here_1 hi"})
 	if said(e, "to the admins.") {
 		t.Fatalf("reported someone nobody knows: %v", sent(e))
+	}
+}
+
+func TestFilterNamedLikeACommand(t *testing.T) {
+	e := setup2(t)
+	e.Send(Msg{Chat: chat, From: alice, Text: "/filter /gbam Gbam!"})
+	// a joke command the bot doesn't have is just text: the filter answers it
+	e.Fake.Reset()
+	e.Send(Msg{Chat: chat, From: bob, Text: "/gbam"})
+	want(t, lastText(t, e), "Gbam!")
+	// a filter named like a real command answers it, and the command still runs
+	e.Send(Msg{Chat: chat, From: alice, Text: "/filter /filters Here are the filters"})
+	e.Fake.Reset()
+	e.Send(Msg{Chat: chat, From: bob, Text: "/filters"})
+	got := sent(e)
+	if len(got) < 2 || got[0] != "Here are the filters" {
+		t.Fatalf("the filter answers the command, then the command runs: %v", got)
+	}
+	// but a filter for a plain word is not answered by the arguments of a command
+	e.Send(Msg{Chat: chat, From: alice, Text: "/filter hello Updated"})
+	e.Fake.Reset()
+	e.Send(Msg{Chat: chat, From: bob, Text: "/filters hello"})
+	for _, m := range sent(e) {
+		if m == "Updated" {
+			t.Fatal("a filter answered the arguments of a command")
+		}
 	}
 }

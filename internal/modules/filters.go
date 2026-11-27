@@ -28,8 +28,7 @@ func registerFilters(r *core.Router) {
 	r.Command(cmdStop, "stop")
 	r.Command(cmdStopall, "stopall")
 	r.Button(cbFiltersClear, cbStopall)
-	// Last: by now the modules that act on commands and unwanted messages have had their say, and answering a keyword never
-	// takes a message from anyone else.
+	// Answering a keyword (or a filter named like a command) never takes a message from anyone else.
 	r.Watch(50, "filters", watchFilters)
 }
 
@@ -210,9 +209,24 @@ func cbStopall(c *core.Ctx) error {
 
 // --- Answering ------------------------------------------------------------------------------
 
-func looksLikeCommand(c *core.Ctx, s string) bool {
-	r := []rune(s)
-	return len(r) > 1 && strings.ContainsRune(c.App.Cfg.CommandPrefix, r[0]) && unicode.IsLetter(r[1])
+// commandWord is the command as typed (without "@bot") when the text starts with a real command of the bot, else "".
+// Such a message is matched by its command word only, so a filter named "/ban" answers /ban (the command still runs),
+// while a filter named "bot" is not answered by "/filter bot hi". Anything that starts with "/" but is not a command
+// of the bot (a joke command like "/gbam") is just text.
+func commandWord(c *core.Ctx, s string) string {
+	word := s
+	if i := strings.IndexFunc(s, unicode.IsSpace); i >= 0 {
+		word = s[:i]
+	}
+	r := []rune(word)
+	if len(r) < 2 || !strings.ContainsRune(c.App.Cfg.CommandPrefix, r[0]) || !unicode.IsLetter(r[1]) {
+		return ""
+	}
+	word, _, _ = strings.Cut(word, "@")
+	if _, _, ok := c.App.CommandOf(word); ok {
+		return word
+	}
+	return ""
 }
 
 func watchFilters(c *core.Ctx) (bool, error) {
@@ -224,8 +238,11 @@ func watchFilters(c *core.Ctx) (bool, error) {
 	if body == "" {
 		body = m.Caption
 	}
-	if body == "" || looksLikeCommand(c, body) {
+	if body == "" {
 		return false, nil
+	}
+	if word := commandWord(c, body); word != "" {
+		body = word
 	}
 	pattern := c.App.FilterMatch(c.Ctx, m.Chat.Id, body)
 	if pattern == "" || !c.App.Cooldown(fmt.Sprintf("filter:%d/%s", m.Chat.Id, pattern), filterCooldown) {
