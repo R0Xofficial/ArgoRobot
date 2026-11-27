@@ -321,6 +321,20 @@ async def perform(call: Awaitable[Any], rights_message: str = RIGHTS_MESSAGE) ->
         raise
 
 
+class UnknownUser(ModerationError):
+    """Telegram can't find the user: the bot has never seen them. A ban or mute of theirs can be saved for later."""
+
+
+async def perform_ban(call: Awaitable[Any]) -> Any:
+    """Like perform(), but says apart a user Telegram can't find: a ban or mute of theirs is saved, not refused."""
+    try:
+        return await perform(call)
+    except ModerationError as exc:
+        if str(exc) == tr("common.that_user_isn_t_in_this"):
+            raise UnknownUser(str(exc)) from None
+        raise
+
+
 # --- Wording ------------------------------------------------------------------
 
 CB_UNDO = "undo:"  # undo:<ban|mute>:<user or channel id>, the button under a ban or a mute

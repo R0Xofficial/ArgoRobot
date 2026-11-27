@@ -368,6 +368,19 @@ CREATE TABLE IF NOT EXISTS gban_requests (
 );
 ALTER TABLE gban_requests ADD COLUMN IF NOT EXISTS deliveries TEXT NOT NULL DEFAULT '[]';
 
+-- Bans of people Telegram won't let the bot touch yet; applied when they show up (core/prebans.py).
+CREATE TABLE IF NOT EXISTS chat_prebans (
+    chat_id    BIGINT NOT NULL,
+    user_id    BIGINT NOT NULL,
+    reason     TEXT NOT NULL DEFAULT '',
+    until      TIMESTAMPTZ,
+    by_id      BIGINT,
+    by_name    TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (chat_id, user_id)
+);
+ALTER TABLE chat_prebans ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'ban';
+
 -- Staff who turned the global ban requests off in their private chat (see modules/gbans.py).
 CREATE TABLE IF NOT EXISTS gban_request_optout (
     user_id BIGINT PRIMARY KEY

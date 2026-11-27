@@ -155,7 +155,7 @@ CHAT_TABLES = (
     "user_chats", "gban_bans", "captcha_pending", "captcha_settings", "warns", "warn_settings", "chat_logs",
     "disabled_commands", "connections", "chat_settings", "flood_settings", "blacklist", "blacklist_settings",
     "greetings", "fed_chats", "fed_applied", "antiraid", "nightmode", "locks", "lock_settings", "lock_allowlist",
-    "rules", "join_blacklist", "notes", "filters", "approvals",
+    "rules", "join_blacklist", "notes", "filters", "approvals", "chat_prebans",
 )
 
 # One statement, so a chat is removed whole or not at all. A data-modifying CTE runs even though nothing reads from it.
@@ -259,7 +259,7 @@ async def migrate_chat(old_id: int, new_id: int) -> None:
         new_id,
     )
     # Settings, warns and approvals follow the chat to its new id.
-    for table in ("chat_settings", "warn_settings", "warns", "approvals", "gban_bans", "flood_settings", "blacklist", "blacklist_settings", "filters", "greetings", "join_blacklist", "notes", "rules", "locks", "lock_settings", "lock_allowlist", "fed_chats", "fed_applied", "disabled_commands", "connections", "captcha_settings", "captcha_pending", "chat_logs", "antiraid", "nightmode"):
+    for table in ("chat_settings", "warn_settings", "warns", "approvals", "gban_bans", "flood_settings", "blacklist", "blacklist_settings", "filters", "greetings", "join_blacklist", "notes", "rules", "locks", "lock_settings", "lock_allowlist", "fed_chats", "fed_applied", "disabled_commands", "connections", "captcha_settings", "captcha_pending", "chat_logs", "antiraid", "nightmode", "chat_prebans"):
         await database.execute(f"UPDATE {table} SET chat_id = $2 WHERE chat_id = $1", old_id, new_id)
     connection.forget_chat(old_id, new_id)
     _forget_caches(old_id)

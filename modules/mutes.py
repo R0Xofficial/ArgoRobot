@@ -8,10 +8,10 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
 from aiogram.types import CallbackQuery, ChatPermissions, Message
 
-from core import moderation
+from core import moderation, prebans
 from core.filters import cmd
 from core.helpers import edit, reply
-from core.moderation import ModerationError, perform
+from core.moderation import ModerationError, UnknownUser, perform, perform_ban
 from core.roles import Role
 from core.text import esc
 from core.i18n import tr
@@ -51,6 +51,20 @@ async def _silently(message: Message) -> None:
         await message.bot.delete_message(message.chat.id, message.message_id)
 
 
+async def _save(message: Message, target, reason: str, until: datetime | None) -> None:
+    """A mute works on people who are not here: it is saved, and applied when they show up."""
+    by = message.from_user
+    await prebans.add(message.chat.id, target.user_id, reason, until, by.id if by else None, by.full_name if by else None, prebans.MUTE)
+
+
+async def _say_saved(message: Message, target, actor, reason: str) -> None:
+    await reply(
+        message,
+        tr("mutes.saved_for_later", who=moderation.who(target), by=moderation.by(actor), reason_line=moderation.reason_line(reason), staff_note=moderation.staff_note(actor)),
+        reply_markup=moderation.undo_keyboard("mute", target),
+    )
+
+
 @router.message(cmd("mute", "smute"))
 async def cmd_mute(message: Message, command: CommandObject, role: Role | None = None) -> None:
     silent = command.command.lower() == "smute"
@@ -59,8 +73,12 @@ async def cmd_mute(message: Message, command: CommandObject, role: Role | None =
         return
     target, actor = started
 
+    saved = False
     try:
-        await perform(message.bot.restrict_chat_member(message.chat.id, target.user_id, permissions=MUTED))
+        await perform_ban(message.bot.restrict_chat_member(message.chat.id, target.user_id, permissions=MUTED))
+    except UnknownUser:
+        await _save(message, target, target.extra, None)
+        saved = True
     except ModerationError as exc:
         await reply(message, esc(exc))
         return
@@ -68,6 +86,9 @@ async def cmd_mute(message: Message, command: CommandObject, role: Role | None =
     await moderation.log_action(message, "MUTED", actor, target, target.extra, *(((lambda: (tr("chatlog.silent"), tr("common.yes"))),) if silent else ()))
     if silent:
         await _silently(message)
+        return
+    if saved:
+        await _say_saved(message, target, actor, target.extra)
         return
     await reply(
         message,
@@ -84,14 +105,18 @@ async def cmd_tmute(message: Message, command: CommandObject, role: Role | None 
         return
     target, actor = started
 
+    saved = False
     try:
         duration, reason = moderation.split_duration(target.extra)
         until = datetime.now(timezone.utc) + duration
-        await perform(
+        await perform_ban(
             message.bot.restrict_chat_member(
                 message.chat.id, target.user_id, permissions=MUTED, until_date=until
             )
         )
+    except UnknownUser:
+        await _save(message, target, reason, until)
+        saved = True
     except ModerationError as exc:
         await reply(message, esc(exc))
         return
@@ -99,6 +124,9 @@ async def cmd_tmute(message: Message, command: CommandObject, role: Role | None 
     await moderation.log_action(message, "TMUTED", actor, target, reason, lambda: (tr("chatlog.duration"), moderation.format_duration(duration)), *(((lambda: (tr("chatlog.silent"), tr("common.yes"))),) if silent else ()))
     if silent:
         await _silently(message)
+        return
+    if saved:
+        await _say_saved(message, target, actor, reason)
         return
     await reply(
         message,
@@ -114,6 +142,15 @@ async def cmd_unmute(message: Message, command: CommandObject, role: Role | None
     if started is None:
         return
     target, actor = started
+
+    if await prebans.remove(message.chat.id, target.user_id, prebans.MUTE):
+        # Only saved so far: forgetting it is the unmute.
+        await moderation.log_action(message, "UNMUTED", actor, target, "", *(((lambda: (tr("chatlog.silent"), tr("common.yes"))),) if silent else ()))
+        if silent:
+            await _silently(message)
+            return
+        await reply(message, tr("mutes.was_unmuted", who=moderation.who(target), by=moderation.by(actor), staff_note=moderation.staff_note(actor)))
+        return
 
     member = await moderation.get_member(message.bot, message.chat.id, target.user_id)
     if member is not None:
@@ -153,6 +190,11 @@ async def cb_unmute(callback: CallbackQuery, role: Role | None = None) -> None:
         return
     bot = callback.bot
     target = await moderation.target_by_id(bot, message.chat.id, user_id)
+    if await prebans.remove(message.chat.id, user_id, prebans.MUTE):  # only saved so far
+        await callback.answer()
+        await moderation.log_action(message, "UNMUTED", actor, target, "", lambda: (tr("chatlog.undo"), tr("common.yes")))
+        await edit(message, tr("mutes.was_unmuted", who=moderation.who(target), by=moderation.by(actor), staff_note=moderation.staff_note(actor)), reply_markup=None)
+        return
     member = await moderation.get_member(bot, message.chat.id, user_id)
     status = getattr(getattr(member, "status", None), "value", getattr(member, "status", None))
     if member is not None and (status != "restricted" or getattr(member, "can_send_messages", False) is not False):

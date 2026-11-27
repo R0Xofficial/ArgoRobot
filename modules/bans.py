@@ -6,12 +6,12 @@ from datetime import datetime, timezone
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandObject
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, ChatMemberUpdated, ChatPermissions, Message
 
-from core import moderation
+from core import moderation, prebans
 from core.filters import cmd
 from core.helpers import edit, reply
-from core.moderation import ModerationError, perform
+from core.moderation import ModerationError, UnknownUser, perform, perform_ban
 from core.roles import Role
 from core.text import esc, user_link
 from core.i18n import tr
@@ -32,7 +32,13 @@ HELP = [
     ("/sban <user> [reason]", "bans.help.silent_ban_bans_deletes_your"),
 ]
 
+# Asked early: someone whose ban was saved is dealt with before anything they write is looked at.
+PRIORITY = -99
+
 router = Router(name="bans")
+
+
+_perform_ban = perform_ban
 
 
 async def _ban(bot, chat_id: int, target) -> None:
@@ -40,12 +46,12 @@ async def _ban(bot, chat_id: int, target) -> None:
     if target.is_chat:
         await perform(bot.ban_chat_sender_chat(chat_id, target.user_id))
     else:
-        await perform(bot.ban_chat_member(chat_id, target.user_id))
+        await _perform_ban(bot.ban_chat_member(chat_id, target.user_id))
 
 
 async def _timed_ban(bot, chat_id: int, user_id: int, duration) -> None:
     until = datetime.now(timezone.utc) + duration
-    await perform(bot.ban_chat_member(chat_id, user_id, until_date=until))
+    await _perform_ban(bot.ban_chat_member(chat_id, user_id, until_date=until))
 
 
 async def _silently(message: Message, replied: Message | None = None) -> None:
@@ -54,6 +60,19 @@ async def _silently(message: Message, replied: Message | None = None) -> None:
         if gone is not None:
             with suppress(TelegramAPIError):
                 await message.bot.delete_message(message.chat.id, gone.message_id)
+
+
+async def _save(message: Message, target, actor, reason: str, until: datetime | None) -> None:
+    by = message.from_user
+    await prebans.add(message.chat.id, target.user_id, reason, until, by.id if by else None, by.full_name if by else None)
+
+
+async def _say_saved(message: Message, target, actor, reason: str) -> None:
+    await reply(
+        message,
+        tr("bans.saved_for_later", who=moderation.who(target), by=moderation.by(actor), reason_line=moderation.reason_line(reason), staff_note=moderation.staff_note(actor)),
+        reply_markup=moderation.undo_keyboard("ban", target),
+    )
 
 
 @router.message(cmd("ban", "dban", "sban"))
@@ -71,13 +90,23 @@ async def cmd_ban(message: Message, command: CommandObject, role: Role | None = 
     if deleting and replied is None:
         return
 
+    saved = False
     try:
         await _ban(message.bot, message.chat.id, target)
+    except UnknownUser as exc:
+        if deleting and replied is not None or target.is_chat:
+            await reply(message, esc(exc))
+            return
+        await _save(message, target, actor, target.extra, None)  # a ban works on people who are not here
+        saved = True
     except ModerationError as exc:
         await reply(message, esc(exc))
         return
 
     await moderation.log_action(message, "BANNED", actor, target, target.extra, *(((lambda: (tr("chatlog.silent"), tr("common.yes"))),) if silent else ()))
+    if saved and not silent:
+        await _say_saved(message, target, actor, target.extra)
+        return
     if silent:
         await _silently(message, replied)
         return
@@ -100,9 +129,15 @@ async def cmd_tban(message: Message, command: CommandObject, role: Role | None =
         return
     target, actor = started
 
+    saved = False
     try:
         duration, reason = moderation.split_duration(target.extra)
         await _timed_ban(message.bot, message.chat.id, target.user_id, duration)
+    except UnknownUser:
+        await _save(message, target, actor, reason, datetime.now(timezone.utc) + duration)
+        await moderation.log_action(message, "TBANNED", actor, target, reason, lambda: (tr("chatlog.duration"), moderation.format_duration(duration)))
+        await _say_saved(message, target, actor, reason)
+        return
     except ModerationError as exc:
         await reply(message, esc(exc))
         return
@@ -121,6 +156,12 @@ async def cmd_unban(message: Message, command: CommandObject, role: Role | None 
     if started is None:
         return
     target, actor = started
+
+    if not target.is_chat and await prebans.remove(message.chat.id, target.user_id):
+        # Only saved so far (Telegram never let me touch them): forgetting it is the unban.
+        await moderation.log_action(message, "UNBANNED", actor, target)
+        await reply(message, tr("bans.was_unbanned", who=moderation.who(target), by=moderation.by(actor), staff_note=moderation.staff_note(actor)))
+        return
 
     if not target.is_chat:
         status = await moderation.member_status(message.bot, message.chat.id, target.user_id)
@@ -157,6 +198,11 @@ async def cb_unban(callback: CallbackQuery, role: Role | None = None) -> None:
         return
     bot = callback.bot
     target = await moderation.target_by_id(bot, message.chat.id, user_id)
+    if not target.is_chat and await prebans.remove(message.chat.id, user_id):  # only saved so far
+        await callback.answer()
+        await moderation.log_action(message, "UNBANNED", actor, target, "", lambda: (tr("chatlog.undo"), tr("common.yes")))
+        await edit(message, tr("bans.was_unbanned", who=moderation.who(target), by=moderation.by(actor), staff_note=moderation.staff_note(actor)), reply_markup=None)
+        return
     if not target.is_chat:
         status = await moderation.member_status(bot, message.chat.id, user_id)
         if status is not None and status != "kicked":
@@ -220,3 +266,70 @@ async def cmd_kickme(message: Message) -> None:
         return
     await moderation.log_self(message, "KICKED", user.id, user.full_name, lambda: tr("bans.used_kickme"))
     await reply(message, tr("bans.kicked_themselves_out_they_can_come", id=user_link(user.id, user.full_name)), quote=False)
+
+
+# --- Saved bans: applied when the person shows up ------------------------------------------------
+
+async def _apply_saved(bot, chat_id: int, user_id: int, name: str | None, thread_id: int | None = None) -> bool:
+    """Ban (or mute) someone whose ban (or mute) was saved; True when they were banned. The saved ban is used up either way: without the right to ban there is nothing to wait for."""
+    row = await prebans.take(chat_id, user_id)
+    if row is None:
+        return False
+    muting = row["kind"] == prebans.MUTE
+    try:
+        if muting:
+            await bot.restrict_chat_member(chat_id, user_id, permissions=ChatPermissions(can_send_messages=False), until_date=row["until"])
+        else:
+            await bot.ban_chat_member(chat_id, user_id, until_date=row["until"])
+    except TelegramAPIError:
+        return False
+    by = tr("moderation.by_2", link=user_link(row["by_id"], row["by_name"])) if row["by_id"] else ""
+    reason_line = moderation.reason_line(row["reason"])
+    with suppress(TelegramAPIError):
+        await bot.send_message(
+            chat_id,
+            tr("mutes.saved_mute_applied" if muting else "bans.saved_ban_applied", who=user_link(user_id, name), by=by, reason_line=reason_line),
+            message_thread_id=thread_id,
+        )
+    return not muting
+
+
+def _in(message: Message) -> list:
+    members = getattr(message, "new_chat_members", None)
+    if members:
+        return list(members)
+    return [message.from_user] if message.from_user else []
+
+
+async def _saved_in_message(message: Message) -> bool:
+    if message.chat.type not in moderation.GROUP_TYPES:
+        return False
+    return any([await prebans.pending(message.chat.id, user.id) for user in _in(message)])
+
+
+@router.message(_saved_in_message)
+@router.edited_message(_saved_in_message)
+async def apply_saved_on_message(message: Message) -> None:
+    thread = message.message_thread_id if message.is_topic_message else None
+    banned = False
+    for user in _in(message):
+        banned = await _apply_saved(message.bot, message.chat.id, user.id, user.full_name, thread) or banned
+    if banned:
+        with suppress(TelegramAPIError):
+            await message.bot.delete_message(message.chat.id, message.message_id)
+
+
+async def _saved_joined(event: ChatMemberUpdated) -> bool:
+    user = event.new_chat_member.user
+    status = str(getattr(event.new_chat_member.status, "value", event.new_chat_member.status))
+    return (
+        event.chat.type in moderation.GROUP_TYPES
+        and status in ("member", "restricted")
+        and await prebans.pending(event.chat.id, user.id)
+    )
+
+
+@router.chat_member(_saved_joined)
+async def apply_saved_on_join(event: ChatMemberUpdated) -> None:
+    user = event.new_chat_member.user
+    await _apply_saved(event.bot, event.chat.id, user.id, user.full_name)

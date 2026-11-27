@@ -705,13 +705,11 @@ async def cmd_gstat(message: Message, command: CommandObject, role: Role | None 
 
     ban = await gbans.get(target_id)
     name = await display_name(bot, target_id, (ban or {}).get("name") or stored_name)
-    title = tr("gbans.your_global_ban_status") if target_id == viewer.id else tr("gbans.global_ban_status")
-    lines = [f"<b>{title}</b>", tr("gbans.user_3", target_id=user_ref(target_id, name)), ""]
-
-    target_role = await roles.get_role(target_id)
-    if target_role is not None:
-        lines.append("This user is a member of my staff and can't have a global ban.")
-    elif ban:
+    if await roles.get_role(target_id) is not None:  # staff can't be banned: nothing else to tell
+        await reply(message, f"{user_ref(target_id, name)} is a member of my staff and can't have a global ban.")
+        return
+    lines = [f"<b>{tr('gbans.global_ban_status')}</b>", tr("gbans.user_3", target_id=user_ref(target_id, name))]
+    if ban:
         lines.append("• <b>Status:</b> <code>Banned</code>")
         lines.append(f"• <b>Reason:</b> <code>{esc(ban['reason'])}</code>")
         lines.append(f"• <b>Timestamp:</b> {logs.timestamp(ban['created_at'])}")
@@ -723,7 +721,7 @@ async def cmd_gstat(message: Message, command: CommandObject, role: Role | None 
             else:
                 lines.append(f"• <b>Admin:</b> {user_ref(ban['admin_id'], ban['admin_name'])}")
         if at_name(settings.SUPPORT_CHAT_USERNAME):
-            lines.append(f"• <b>Support:</b> {esc(at_name(settings.SUPPORT_CHAT_USERNAME))}")
+            lines.append(f"\nIf you think this is a mistake, contact {esc(at_name(settings.SUPPORT_CHAT_USERNAME))}.")
     else:
         lines.append("• <b>Status:</b> <code>Not Banned</code>")
 
